@@ -1,0 +1,4 @@
+fastapi>=0.104.0
+uvicorn>=0.24.0
+apscheduler>=3.10.0
+akshare>=1.12.0
