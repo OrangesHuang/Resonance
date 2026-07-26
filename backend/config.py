@@ -78,3 +78,12 @@ RESONANCE_VERDICT_N = 3          # 同色灯≥此数→共振判定
 CALENDAR_SYNC_HOUR = 20          # 每周同步时
 CALENDAR_SYNC_MIN = 0
 CALENDAR_SYNC_DOW = "sun"        # 每周同步日(日历极少变化,周更即可)
+
+# 数据管理 / 回填模块
+DEFAULT_ETF_SEED_DAYS = 160        # 一键重建: ETF 日度回填交易日数
+DEFAULT_SHARES_BACKFILL_DAYS = 140 # 一键重建: 份额回填交易日数
+SEED_MIN_BARS = 20                 # 种子化所需最少K线数
+BACKFILL_SLEEP_SEC = 0.15          # 份额逐日回填间隔(秒)
+TURNOVER_FETCH_SLEEP_SEC = 0.1     # 成交额逐日akshare间隔(秒,限流保护)
+JOB_LIST_LIMIT = 30                # /api/data/jobs 返回的最大历史条数
+JOB_DAYS_MAX = 1000                # 回填深度参数上限

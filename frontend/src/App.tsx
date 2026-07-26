@@ -5,6 +5,7 @@ import EtfDetail from './pages/EtfDetail'
 import Sentiment from './pages/Sentiment'
 import TradeCalendar from './pages/TradeCalendar'
 import Resonance from './pages/Resonance'
+import DataManage from './pages/DataManage'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/resonance" element={<Resonance />} />
           <Route path="/sentiment" element={<Sentiment />} />
           <Route path="/calendar" element={<TradeCalendar />} />
+          <Route path="/data" element={<DataManage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -1,4 +1,4 @@
-import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail } from './types'
+import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, DataStatus, JobState, StartJobRequest, StartJobResponse } from './types'
 
 const BASE = '/api'
 
@@ -8,8 +8,13 @@ async function get<T>(path: string): Promise<T> {
   return res.json()
 }
 
-async function post<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST' })
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const hasBody = body !== undefined
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+    body: hasBody ? JSON.stringify(body) : undefined,
+  })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
@@ -64,4 +69,16 @@ export function fetchCalendarDays(year: number): Promise<CalendarDays> {
 
 export function refreshCalendar(): Promise<CalendarRefreshResult> {
   return post('/calendar/refresh')
+}
+
+export function fetchDataStatus(): Promise<DataStatus> {
+  return get('/data/status')
+}
+
+export function fetchDataJobs(): Promise<JobState[]> {
+  return get('/data/jobs')
+}
+
+export function startDataJob(req: StartJobRequest): Promise<StartJobResponse> {
+  return post('/data/jobs', req)
 }

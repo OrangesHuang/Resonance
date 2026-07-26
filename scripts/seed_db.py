@@ -1,46 +1,19 @@
-"""回填历史数据到 etf_monitor.db"""
+"""回填历史 ETF 日度数据到 etf_monitor.db(薄壳,逻辑在 scheduler/data_jobs.py)"""
 import sys
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "backend"))
 
-from datetime import datetime, timedelta
-from config import ETFS
-from fetch.kline import fetch_kline, fetch_index_kline
-from analysis.composite import analyze_single_etf
+from config import DEFAULT_ETF_SEED_DAYS
 from store.database import init_db
-from store.daily_repo import upsert_daily
+from scheduler.data_jobs import job_backfill_etf_daily
 
 
-def seed(days: int = 60):
-    init_db()
-    print(f"[SEED] fetching index kline ({days} days)...")
-    idx_kline = fetch_index_kline(limit=days)
-    if not idx_kline:
-        print("[SEED] ERROR: cannot fetch index kline")
-        return
-
-    for code, info in ETFS.items():
-        print(f"[SEED] processing {code} {info['name']}...")
-        kline = fetch_kline(code, limit=days)
-        if len(kline) < 20:
-            print(f"  skipped (only {len(kline)} bars)")
-            continue
-
-        count = 0
-        for i in range(19, len(kline)):
-            result = analyze_single_etf(
-                kline=kline[:i + 1],
-                idx_kline=idx_kline[:i + 1],
-                shares_delta_pct=None,
-                target_idx=i,
-            )
-            if result:
-                upsert_daily(result["date"], code, result)
-                count += 1
-        print(f"  inserted {count} records")
-
-    print("[SEED] done")
+def _print_progress(current: int, total: int, message: str) -> None:
+    print(f"  [{current}/{total}] {message}")
 
 
 if __name__ == "__main__":
-    days = int(sys.argv[1]) if len(sys.argv) > 1 else 60
-    seed(days)
+    days = int(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_ETF_SEED_DAYS
+    init_db()
+    print(f"[SEED] backfilling ETF daily ({days} days)...")
+    result = job_backfill_etf_daily(_print_progress, days)
+    print(f"[SEED] done: {result}")

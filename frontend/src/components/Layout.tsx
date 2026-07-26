@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'ETF 国家队监控', end: true },
   { to: '/sentiment', label: '市场情绪', end: false },
   { to: '/calendar', label: '交易日历', end: false },
+  { to: '/data', label: '数据管理', end: false },
 ]
 
 export default function Layout() {

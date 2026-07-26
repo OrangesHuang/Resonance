@@ -1,6 +1,8 @@
+import time
 from datetime import datetime, timedelta
+from typing import Callable, Optional
 
-from config import MARGIN_USE_SSE_FALLBACK
+from config import MARGIN_USE_SSE_FALLBACK, TURNOVER_FETCH_SLEEP_SEC
 
 
 _TURNOVER_CACHE: dict[str, list[dict]] = {}
@@ -35,30 +37,49 @@ def _szse_turnover_yi(d8: str):
         return None
 
 
-def fetch_market_turnover(start_date: str, end_date: str) -> list[dict]:
+def _weekday_dates(start_date: str, end_date: str) -> list[datetime]:
+    cur = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    out: list[datetime] = []
+    while cur <= end:
+        if cur.weekday() < 5:
+            out.append(cur)
+        cur += timedelta(days=1)
+    return out
+
+
+def _turnover_row(cur: datetime) -> Optional[dict]:
+    d8 = cur.strftime("%Y%m%d")
+    sh = _sse_turnover_yi(d8)
+    sz = _szse_turnover_yi(d8)
+    if sh is None and sz is None:
+        return None
+    sh_yi = sh or 0.0
+    sz_yi = sz or 0.0
+    return {
+        "date": cur.strftime("%Y-%m-%d"),
+        "sh_amount_yi": sh_yi,
+        "sz_amount_yi": sz_yi,
+        "total_amount_yi": round(sh_yi + sz_yi, 2),
+    }
+
+
+def fetch_market_turnover(start_date: str, end_date: str,
+                          on_progress: Optional[Callable[[int, int, str], None]] = None) -> list[dict]:
     key = f"{start_date}_{end_date}"
     if key in _TURNOVER_CACHE:
         return _TURNOVER_CACHE[key]
 
+    days = _weekday_dates(start_date, end_date)
     rows = []
     try:
-        cur = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-        while cur <= end:
-            if cur.weekday() < 5:
-                d8 = cur.strftime("%Y%m%d")
-                sh = _sse_turnover_yi(d8)
-                sz = _szse_turnover_yi(d8)
-                if sh is not None or sz is not None:
-                    sh_yi = sh or 0.0
-                    sz_yi = sz or 0.0
-                    rows.append({
-                        "date": cur.strftime("%Y-%m-%d"),
-                        "sh_amount_yi": sh_yi,
-                        "sz_amount_yi": sz_yi,
-                        "total_amount_yi": round(sh_yi + sz_yi, 2),
-                    })
-            cur += timedelta(days=1)
+        for i, cur in enumerate(days, 1):
+            if on_progress:
+                on_progress(i, len(days), cur.strftime("%Y-%m-%d"))
+            row = _turnover_row(cur)
+            if row:
+                rows.append(row)
+            time.sleep(TURNOVER_FETCH_SLEEP_SEC)
         _TURNOVER_CACHE[key] = rows
         return rows
     except Exception as e:

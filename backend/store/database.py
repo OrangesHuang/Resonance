@@ -68,17 +68,6 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_rt_code_ts ON etf_realtime(code, timestamp);
             CREATE INDEX IF NOT EXISTS idx_rt_ts ON etf_realtime(timestamp);
 
-            CREATE TABLE IF NOT EXISTS etf_kline (
-                date    TEXT NOT NULL,
-                code    TEXT NOT NULL,
-                open    REAL,
-                close   REAL,
-                high    REAL,
-                low     REAL,
-                volume  REAL,
-                PRIMARY KEY (date, code)
-            );
-
             CREATE TABLE IF NOT EXISTS market_turnover (
                 date            TEXT PRIMARY KEY,
                 sh_amount_yi    REAL,
@@ -104,6 +93,7 @@ def init_db() -> None:
             );
         """)
         _migrate_add_direction_columns(conn)
+        _migrate_drop_etf_kline(conn)
         conn.commit()
     finally:
         conn.close()
@@ -116,3 +106,7 @@ def _migrate_add_direction_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN price_position REAL")
         if "trade_direction" not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN trade_direction TEXT")
+
+
+def _migrate_drop_etf_kline(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS etf_kline")
