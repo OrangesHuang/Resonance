@@ -34,11 +34,19 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, dateWin
 
   const dates = history.map(h => h.date)
   const zoom = windowToZoom(dates, dateWindow ?? null)
-  const heatData: Array<[number, number, number]> = []
+  type HeatCell = [number, number, number] | {
+    value: [number, number, number]
+    itemStyle: { borderColor: string; borderWidth: number; shadowBlur: number; shadowColor: string }
+  }
+  const heatData: HeatCell[] = []
   history.forEach((h, x) => {
+    const isSel = selectedDate != null && h.date === selectedDate
     keys.forEach((key, y) => {
       const st: LightState = h.states[key] ?? 'gray'
-      heatData.push([x, y, STATE_VALUE[st]])
+      const v: [number, number, number] = [x, y, STATE_VALUE[st]]
+      heatData.push(isSel
+        ? { value: v, itemStyle: { borderColor: '#38bdf8', borderWidth: 2, shadowBlur: 10, shadowColor: 'rgba(56, 189, 248, 0.9)' } }
+        : v)
     })
   })
 
@@ -127,44 +135,11 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, dateWin
     },
   }
 
-  const showHalo = selectedDate != null && dates.includes(selectedDate)
-
   return (
     <ReactECharts
       option={{
         ...option,
-        series: option.series.map(s => ({
-          ...s,
-          cursor: 'pointer',
-          ...(showHalo
-            ? {
-                markArea: {
-                  silent: true,
-                  animation: false,
-                  data: [
-                    [
-                      {
-                        xAxis: selectedDate,
-                        itemStyle: {
-                          color: 'rgba(56, 189, 248, 0.12)',
-                          borderColor: 'rgba(56, 189, 248, 0.35)',
-                          borderWidth: 6,
-                        },
-                      },
-                      { xAxis: selectedDate },
-                    ],
-                    [
-                      {
-                        xAxis: selectedDate,
-                        itemStyle: { color: 'transparent', borderColor: '#38bdf8', borderWidth: 1.5 },
-                      },
-                      { xAxis: selectedDate },
-                    ],
-                  ],
-                },
-              }
-            : {}),
-        })),
+        series: option.series.map(s => ({ ...s, cursor: 'pointer' })),
       }}
       onEvents={onEvents}
       style={{ height: 260 }}
