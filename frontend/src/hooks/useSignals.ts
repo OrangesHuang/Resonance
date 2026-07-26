@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchSignalsToday, fetchRealtimeStatus } from '../api/client'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchSignalsToday, fetchRealtimeStatus, refreshEtf } from '../api/client'
 
 export function useSignals(refetchInterval: number | false = false) {
   return useQuery({
@@ -7,6 +7,16 @@ export function useSignals(refetchInterval: number | false = false) {
     queryFn: fetchSignalsToday,
     refetchInterval,
     refetchIntervalInBackground: false,
+  })
+}
+
+export function useRefreshEtf() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: refreshEtf,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['signals', 'today'] })
+    },
   })
 }
 

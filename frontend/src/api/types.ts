@@ -50,6 +50,10 @@ export interface DailySignal {
   signal_level: string | null
   price_position: number | null
   trade_direction: string | null
+  shares_yi: number | null
+  shares_delta_yi: number | null
+  shares_delta_pct: number | null
+  share_prob: number | null
 }
 
 export interface EtfHistoryResponse {
@@ -58,6 +62,12 @@ export interface EtfHistoryResponse {
   idx: string
   kline: KlinePoint[]
   daily_signals: DailySignal[]
+}
+
+export interface EtfInfo {
+  code: string
+  name: string
+  idx: string
 }
 
 export interface RealtimeStatus {
@@ -74,4 +84,173 @@ export interface StatsResponse {
   date_range: [string | null, string | null]
   records_with_shares: number
   realtime_snapshot_count: number
+}
+
+export interface TurnoverPoint {
+  date: string
+  sh_amount_yi: number
+  sz_amount_yi: number
+  total_amount_yi: number
+  ma5_yi: number | null
+  vol_ratio: number | null
+}
+
+export interface MarginPoint {
+  date: string
+  fin_balance_yi: number
+  loan_balance_yi: number | null
+  fin_buy_yi: number | null
+  net_fin_buy_yi: number | null
+}
+
+export type VolumeState = '放量' | '缩量' | '持平'
+
+export interface TurnoverSummary {
+  latest_date: string | null
+  latest_yi: number | null
+  ma5_yi: number | null
+  vol_ratio: number | null
+  volume_state: VolumeState | null
+}
+
+export interface MarginSummary {
+  latest_date: string | null
+  fin_balance_yi: number | null
+  net_fin_buy_yi: number | null
+  prev_fin_balance_yi: number | null
+}
+
+export type ZoneKey = 'danger' | 'neutral' | 'safe'
+export type ZoneLevel = 'high' | 'mid' | 'low'
+
+export interface ZoneIndicator {
+  percentile: number
+  level: ZoneLevel
+}
+
+export interface ZoneCurrent {
+  date: string
+  zone: ZoneKey
+  label: string
+  score: number
+  window: number
+  turnover: ZoneIndicator
+  margin: ZoneIndicator
+}
+
+export interface ZonePoint {
+  date: string
+  zone: ZoneKey
+  label: string
+  score: number
+}
+
+export interface SentimentZone {
+  current: ZoneCurrent | null
+  history: ZonePoint[]
+}
+
+export interface SentimentOverview {
+  turnover: TurnoverPoint[]
+  margin: MarginPoint[]
+  summary: {
+    turnover: TurnoverSummary | null
+    margin: MarginSummary | null
+  }
+  zone: SentimentZone
+  updated_at: string | null
+}
+
+export interface SentimentRefreshResult {
+  status: string
+  turnover_days: number
+  margin_days: number
+  range: [string, string]
+}
+
+export type LightState = 'red' | 'green' | 'gray'
+
+export interface ResonanceIndicator {
+  key: string
+  name: string
+  group: 'etf' | 'market'
+  state: LightState
+  value: number | string | null
+  display: string
+  note: string
+}
+
+export interface ResonanceHistoryPoint {
+  date: string
+  red: number
+  green: number
+  states: Record<string, LightState>
+}
+
+export interface ResonanceOverview {
+  code: string
+  name: string
+  date: string | null
+  indicators: ResonanceIndicator[]
+  red_count: number
+  green_count: number
+  gray_count: number
+  total: number
+  verdict: string
+  history: ResonanceHistoryPoint[]
+}
+
+export interface IndicatorEvidence {
+  method: string
+  formula: string
+  thresholds: string
+  reason: string
+  value: number | string | null
+  inputs: Record<string, number | string | null>
+  window?: number[]
+  window_stats?: {
+    count: number
+    below: number
+    equal: number
+    min: number
+    max: number
+  }
+  data_note?: string
+}
+
+export interface ResonanceDayIndicator extends ResonanceIndicator {
+  evidence: IndicatorEvidence
+}
+
+export interface ResonanceDayDetail {
+  code: string
+  name: string
+  date: string
+  indicators: ResonanceDayIndicator[]
+  red_count: number
+  green_count: number
+  gray_count: number
+  total: number
+  verdict: string
+}
+
+export interface EtfRefreshResult {
+  status: string
+  count: number
+  date: string | null
+}
+
+export interface CalendarDays {
+  year: number
+  days: string[]
+  total: number
+  range: [string | null, string | null]
+  updated_at: string | null
+  today: string
+}
+
+export interface CalendarRefreshResult {
+  status: string
+  count: number
+  range: [string | null, string | null]
 }

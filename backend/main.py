@@ -7,6 +7,9 @@ from api.signals import router as signals_router
 from api.etf import router as etf_router
 from api.realtime import router as realtime_router
 from api.stats import router as stats_router
+from api.sentiment import router as sentiment_router
+from api.calendar import router as calendar_router
+from api.resonance import router as resonance_router
 
 
 @asynccontextmanager
@@ -35,6 +38,9 @@ app.include_router(signals_router)
 app.include_router(etf_router)
 app.include_router(realtime_router)
 app.include_router(stats_router)
+app.include_router(sentiment_router)
+app.include_router(calendar_router)
+app.include_router(resonance_router)
 
 
 @app.get("/api/health")

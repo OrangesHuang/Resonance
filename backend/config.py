@@ -20,6 +20,8 @@ ETFS = {
 INDEX_CODE = "sh000300"
 INDEX_NAME = "沪深300"
 
+DEFAULT_RESONANCE_CODE = "510300"
+
 WEIGHT_VOLUME = 0.50
 WEIGHT_DIRECTION = 0.20
 WEIGHT_SHARES = 0.30
@@ -51,3 +53,28 @@ MAX_RETRY = 2
 
 KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,{limit},qfq"
 REALTIME_URL = "http://qt.gtimg.cn/q={symbols}"
+
+# 市场情绪模块
+SENTIMENT_MA_WINDOW = 5          # 成交额均线窗口
+SENTIMENT_BACKFILL_DAYS = 190    # 启动回填交易日数(需覆盖K线窗口+分位数暖机)
+SENTIMENT_FETCH_HOUR = 16        # 每日采集时(收盘后)
+SENTIMENT_FETCH_MIN = 0
+MARGIN_USE_SSE_FALLBACK = False  # True 则融资数据仅取上交所(更快但非两市合并)
+VOLUME_UP_RATIO = 1.05           # 量比≥此值判为放量
+VOLUME_DOWN_RATIO = 0.95         # 量比≤此值判为缩量
+
+# 情绪分区(危险区/中性区/安全区)
+SENTIMENT_ZONE_WINDOW = 60       # 分位数滚动窗口(交易日)
+SENTIMENT_ZONE_MIN_PTS = 20      # 分位数计算最少样本数
+SENTIMENT_ZONE_P_HIGH = 80.0     # 高分位阈值(≥判为过热)
+SENTIMENT_ZONE_P_LOW = 20.0      # 低分位阈值(≤判为冷清)
+
+# 多指标共振模块
+SHARE_PROB_RED = 30.0            # 份额概率≤此值→净赎回(红灯)
+SHARE_PROB_GREEN = 65.0          # 份额概率≥此值→净申购(绿灯)
+RESONANCE_VERDICT_N = 3          # 同色灯≥此数→共振判定
+
+# 交易日历模块
+CALENDAR_SYNC_HOUR = 20          # 每周同步时
+CALENDAR_SYNC_MIN = 0
+CALENDAR_SYNC_DOW = "sun"        # 每周同步日(日历极少变化,周更即可)

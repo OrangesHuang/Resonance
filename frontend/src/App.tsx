@@ -1,22 +1,23 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import EtfDetail from './pages/EtfDetail'
+import Sentiment from './pages/Sentiment'
+import TradeCalendar from './pages/TradeCalendar'
+import Resonance from './pages/Resonance'
 
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen w-full px-4 py-6">
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-white">
-            ETF 国家队监控
-            <span className="ml-2 text-sm font-normal text-gray-400">三因子信号系统</span>
-          </h1>
-        </header>
-        <Routes>
+      <Routes>
+        <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/etf/:code" element={<EtfDetail />} />
-        </Routes>
-      </div>
+          <Route path="/resonance" element={<Resonance />} />
+          <Route path="/sentiment" element={<Sentiment />} />
+          <Route path="/calendar" element={<TradeCalendar />} />
+        </Route>
+      </Routes>
     </BrowserRouter>
   )
 }

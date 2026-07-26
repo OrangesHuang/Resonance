@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime, timedelta
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -7,17 +7,27 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from config import (
     ETFS, REALTIME_INTERVAL_SEC,
-    MARKET_OPEN_HOUR, MARKET_OPEN_MIN,
-    MARKET_CLOSE_HOUR, MARKET_CLOSE_MIN,
+    SENTIMENT_BACKFILL_DAYS, SENTIMENT_FETCH_HOUR, SENTIMENT_FETCH_MIN,
+    CALENDAR_SYNC_HOUR, CALENDAR_SYNC_MIN, CALENDAR_SYNC_DOW,
 )
 from fetch.kline import fetch_kline, fetch_index_kline
 from fetch.realtime import fetch_realtime_quotes
 from fetch.shares import calc_share_delta
+from fetch.sentiment import fetch_market_turnover, fetch_margin_series
+from fetch.calendar import fetch_trade_dates
 from analysis.intraday import calc_intraday_signal, IntradaySignal
 from analysis.composite import analyze_single_etf
+from analysis.factors import calc_share_probability
 from store.database import init_db
-from store.daily_repo import upsert_daily
+from store.daily_repo import upsert_daily, update_share_data
 from store.realtime_repo import insert_snapshots, cleanup_old_snapshots
+from store.sentiment_repo import (
+    upsert_turnover, upsert_margin, get_turnover_count, get_margin_count,
+)
+from store.calendar_repo import (
+    upsert_trade_dates, get_calendar_count, get_range, reload_cache,
+)
+from scheduler.time_guard import is_trading_time, trading_day_guard
 
 _kline_cache: dict[str, list[dict]] = {}
 _idx_kline_cache: list[dict] = []
@@ -34,16 +44,6 @@ def get_latest_signals() -> list[dict]:
 
 def get_last_update() -> Optional[str]:
     return _last_update
-
-
-def is_trading_time(now: Optional[datetime] = None) -> bool:
-    now = now or datetime.now()
-    if now.weekday() >= 5:
-        return False
-    t = now.time()
-    morning = time(MARKET_OPEN_HOUR, MARKET_OPEN_MIN) <= t <= time(11, 30)
-    afternoon = time(13, 0) <= t <= time(MARKET_CLOSE_HOUR, MARKET_CLOSE_MIN)
-    return morning or afternoon
 
 
 def task_preload_kline() -> None:
@@ -111,12 +111,13 @@ def task_realtime_poll() -> None:
         insert_snapshots(signals)
 
 
-def task_daily_analysis() -> None:
+def task_daily_analysis() -> dict:
     global _kline_cache, _idx_kline_cache
     print("[SCHEDULER] running daily analysis...")
     _idx_kline_cache = fetch_index_kline()
-    today = datetime.now().strftime("%Y-%m-%d")
 
+    count = 0
+    latest_date: Optional[str] = None
     for code in ETFS:
         kline = fetch_kline(code)
         if kline:
@@ -132,9 +133,17 @@ def task_daily_analysis() -> None:
             result["shares_yi"] = share_info.get("shares_yi")
             result["shares_delta_yi"] = share_info.get("delta_yi")
             result["shares_delta_pct"] = share_info.get("delta_pct")
-            upsert_daily(today, code, result)
+            upsert_daily(result["date"], code, result)
+            count += 1
+            latest_date = result["date"]
 
-    print("[SCHEDULER] daily analysis complete")
+    print(f"[SCHEDULER] daily analysis complete: {count} ETFs ({latest_date})")
+    return {"count": count, "date": latest_date}
+
+
+def task_manual_refresh() -> dict:
+    task_fetch_shares()
+    return task_daily_analysis()
 
 
 def task_fetch_shares() -> None:
@@ -145,11 +154,11 @@ def task_fetch_shares() -> None:
     if deltas:
         _share_delta_cache = deltas
         for code, info in deltas.items():
-            upsert_daily(today, code, {
-                "shares_yi": info.get("shares_yi"),
-                "shares_delta_yi": info.get("delta_yi"),
-                "shares_delta_pct": info.get("delta_pct"),
-            })
+            update_share_data(
+                info["date"], code,
+                info.get("shares_yi"), info.get("delta_yi"), info.get("delta_pct"),
+                calc_share_probability(info.get("delta_pct")),
+            )
         print(f"[SCHEDULER] shares updated for {len(deltas)} ETFs")
     else:
         print("[SCHEDULER] no share data available (non-trading day?)")
@@ -161,10 +170,55 @@ def task_cleanup() -> None:
         print(f"[SCHEDULER] cleaned {deleted} old realtime records")
 
 
+def task_fetch_sentiment(backfill: bool = False) -> dict:
+    now = datetime.now()
+    if backfill:
+        cal_days = int(SENTIMENT_BACKFILL_DAYS * 1.5)
+    else:
+        cal_days = 10
+    start = (now - timedelta(days=cal_days)).strftime("%Y-%m-%d")
+    end = now.strftime("%Y-%m-%d")
+    print(f"[SCHEDULER] fetching sentiment ({start} ~ {end}, backfill={backfill})...")
+
+    turnover = fetch_market_turnover(start, end)
+    if turnover:
+        upsert_turnover(turnover)
+        print(f"[SCHEDULER] turnover upserted: {len(turnover)} days")
+
+    margin = fetch_margin_series(start, end)
+    if margin:
+        upsert_margin(margin)
+        print(f"[SCHEDULER] margin upserted: {len(margin)} days")
+
+    if not turnover and not margin:
+        print("[SCHEDULER] no sentiment data fetched")
+
+    return {"turnover": len(turnover), "margin": len(margin), "start": start, "end": end}
+
+
+def task_sync_calendar() -> dict:
+    print("[SCHEDULER] syncing trade calendar...")
+    dates = fetch_trade_dates()
+    if dates:
+        upsert_trade_dates(dates)
+        reload_cache()
+        print(f"[SCHEDULER] trade calendar synced: {len(dates)} days")
+    else:
+        print("[SCHEDULER] no trade calendar data fetched")
+    return {"count": get_calendar_count(), "range": get_range()}
+
+
 def start_scheduler() -> None:
     init_db()
+    reload_cache()
+    if get_calendar_count() == 0:
+        task_sync_calendar()
+
     task_preload_kline()
     task_fetch_shares()
+
+    if get_turnover_count() == 0 or get_margin_count() == 0:
+        task_fetch_sentiment(backfill=True)
 
     scheduler.add_job(
         task_realtime_poll,
@@ -173,19 +227,19 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     scheduler.add_job(
-        task_preload_kline,
+        trading_day_guard(task_preload_kline),
         CronTrigger(hour=9, minute=0, day_of_week="mon-fri"),
         id="preload_kline",
         replace_existing=True,
     )
     scheduler.add_job(
-        task_daily_analysis,
+        trading_day_guard(task_daily_analysis),
         CronTrigger(hour=15, minute=30, day_of_week="mon-fri"),
         id="daily_analysis",
         replace_existing=True,
     )
     scheduler.add_job(
-        task_fetch_shares,
+        trading_day_guard(task_fetch_shares),
         CronTrigger(hour=19, minute=30, day_of_week="mon-fri"),
         id="fetch_shares",
         replace_existing=True,
@@ -194,6 +248,18 @@ def start_scheduler() -> None:
         task_cleanup,
         CronTrigger(hour=2, minute=0),
         id="cleanup",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        trading_day_guard(task_fetch_sentiment),
+        CronTrigger(hour=SENTIMENT_FETCH_HOUR, minute=SENTIMENT_FETCH_MIN, day_of_week="mon-fri"),
+        id="fetch_sentiment",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        task_sync_calendar,
+        CronTrigger(day_of_week=CALENDAR_SYNC_DOW, hour=CALENDAR_SYNC_HOUR, minute=CALENDAR_SYNC_MIN),
+        id="sync_calendar",
         replace_existing=True,
     )
     scheduler.start()

@@ -78,6 +78,30 @@ def init_db() -> None:
                 volume  REAL,
                 PRIMARY KEY (date, code)
             );
+
+            CREATE TABLE IF NOT EXISTS market_turnover (
+                date            TEXT PRIMARY KEY,
+                sh_amount_yi    REAL,
+                sz_amount_yi    REAL,
+                total_amount_yi REAL,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS margin_trading (
+                date            TEXT PRIMARY KEY,
+                fin_balance_yi  REAL,
+                loan_balance_yi REAL,
+                fin_buy_yi      REAL,
+                source          TEXT,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            CREATE TABLE IF NOT EXISTS trade_calendar (
+                date        TEXT PRIMARY KEY,
+                created_at  TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
         _migrate_add_direction_columns(conn)
         conn.commit()

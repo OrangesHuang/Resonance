@@ -4,8 +4,27 @@ from config import ETFS
 from fetch.kline import fetch_kline
 from store.daily_repo import get_by_code
 from store.realtime_repo import get_today_snapshots
+from scheduler.tasks import task_manual_refresh
 
 router = APIRouter(prefix="/api/etf", tags=["etf"])
+
+
+@router.post("/refresh")
+def etf_refresh():
+    result = task_manual_refresh()
+    return {
+        "status": "ok",
+        "count": result["count"],
+        "date": result["date"],
+    }
+
+
+@router.get("/list")
+def etf_list():
+    return [
+        {"code": code, "name": info["name"], "idx": info["idx"]}
+        for code, info in ETFS.items()
+    ]
 
 
 @router.get("/{code}/history")

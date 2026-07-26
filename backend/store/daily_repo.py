@@ -46,6 +46,39 @@ def upsert_daily(date: str, code: str, data: dict) -> None:
         conn.close()
 
 
+def update_share_data(date: str, code: str, shares_yi: float,
+                      delta_yi: Optional[float], delta_pct: Optional[float],
+                      share_prob: Optional[float]) -> None:
+    conn = get_connection()
+    try:
+        conn.execute("""
+            UPDATE etf_daily
+            SET shares_yi=?, shares_delta_yi=?, shares_delta_pct=?, share_prob=?,
+                updated_at=datetime('now','localtime')
+            WHERE date=? AND code=?
+        """, (shares_yi, delta_yi, delta_pct, share_prob, date, code))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_trading_dates(start: Optional[str] = None, end: Optional[str] = None) -> list[str]:
+    conn = get_connection()
+    try:
+        sql = "SELECT DISTINCT date FROM etf_daily WHERE composite_prob IS NOT NULL"
+        params: list = []
+        if start:
+            sql += " AND date >= ?"
+            params.append(start)
+        if end:
+            sql += " AND date <= ?"
+            params.append(end)
+        sql += " ORDER BY date"
+        return [r["date"] for r in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+
 def get_by_date(date: str) -> list[dict]:
     conn = get_connection()
     try:
