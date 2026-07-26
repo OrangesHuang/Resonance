@@ -39,16 +39,20 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, dateWin
     itemStyle: { borderColor: string; borderWidth: number; shadowBlur: number; shadowColor: string }
   }
   const heatData: HeatCell[] = []
+  const selectedCells: HeatCell[] = []
   history.forEach((h, x) => {
     const isSel = selectedDate != null && h.date === selectedDate
     keys.forEach((key, y) => {
       const st: LightState = h.states[key] ?? 'gray'
       const v: [number, number, number] = [x, y, STATE_VALUE[st]]
-      heatData.push(isSel
-        ? { value: v, itemStyle: { borderColor: '#38bdf8', borderWidth: 2, shadowBlur: 10, shadowColor: 'rgba(56, 189, 248, 0.9)' } }
-        : v)
+      if (isSel) {
+        selectedCells.push({ value: v, itemStyle: { borderColor: '#38bdf8', borderWidth: 2, shadowBlur: 10, shadowColor: 'rgba(56, 189, 248, 0.9)' } })
+      } else {
+        heatData.push(v)
+      }
     })
   })
+  heatData.push(...selectedCells)
 
   const option = {
     backgroundColor: 'transparent',
