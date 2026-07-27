@@ -1,4 +1,4 @@
-import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, DataStatus, JobState, StartJobRequest, StartJobResponse } from './types'
+import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse } from './types'
 
 const BASE = '/api'
 
@@ -61,6 +61,10 @@ export function fetchResonance(code = '510300'): Promise<ResonanceOverview> {
 
 export function fetchResonanceDay(code: string, date: string): Promise<ResonanceDayDetail> {
   return get(`/resonance/day?code=${code}&date=${date}`)
+}
+
+export function fetchResonanceTrades(code = '510300'): Promise<TradesResponse> {
+  return get(`/resonance/trades?code=${code}`)
 }
 
 export function fetchCalendarDays(year: number): Promise<CalendarDays> {

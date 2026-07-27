@@ -52,15 +52,13 @@ def _turnover_row(cur: datetime) -> Optional[dict]:
     d8 = cur.strftime("%Y%m%d")
     sh = _sse_turnover_yi(d8)
     sz = _szse_turnover_yi(d8)
-    if sh is None and sz is None:
+    if not sh or not sz:
         return None
-    sh_yi = sh or 0.0
-    sz_yi = sz or 0.0
     return {
         "date": cur.strftime("%Y-%m-%d"),
-        "sh_amount_yi": sh_yi,
-        "sz_amount_yi": sz_yi,
-        "total_amount_yi": round(sh_yi + sz_yi, 2),
+        "sh_amount_yi": sh,
+        "sz_amount_yi": sz,
+        "total_amount_yi": round(sh + sz, 2),
     }
 
 

@@ -234,6 +234,18 @@ export interface ResonanceDayDetail {
   verdict: string
 }
 
+export interface TradePoint {
+  date: string
+  action: 'BUY' | 'SELL'
+  price: number
+  reason: string
+}
+
+export interface TradesResponse {
+  code: string
+  trades: TradePoint[]
+}
+
 export interface EtfRefreshResult {
   status: string
   count: number

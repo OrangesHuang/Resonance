@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useResonance } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
-import { fetchEtfList, fetchEtfHistory } from '../api/client'
+import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
 import ResonanceLights from '../components/ResonanceLights'
 import ResonanceKline from '../components/ResonanceKline'
 import ResonanceChart from '../components/ResonanceChart'
@@ -14,7 +14,7 @@ import SentimentLineChart from '../components/SentimentLineChart'
 import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/chartZoom'
 import type { ZoneKey } from '../api/types'
 
-const KLINE_DAYS = 160
+const KLINE_DAYS = 640
 
 const ZONE_TEXT: Record<ZoneKey, string> = {
   danger: 'text-red-400',
@@ -130,6 +130,11 @@ export default function Resonance() {
     queryFn: () => fetchEtfHistory(code, KLINE_DAYS),
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
+  })
+  const { data: tradesData } = useQuery({
+    queryKey: ['resonanceTrades', code],
+    queryFn: () => fetchResonanceTrades(code),
+    staleTime: 10 * 60 * 1000,
   })
 
   const tradeDates = history?.kline.map(k => k.date) ?? []
@@ -253,6 +258,7 @@ export default function Resonance() {
             kline={history.kline}
             history={resonanceHistory}
             signals={history.daily_signals}
+            trades={tradesData?.trades ?? []}
             selectedDate={selected?.date ?? null}
             onSelectDate={selectDate}
             dateWindow={dateWindow}

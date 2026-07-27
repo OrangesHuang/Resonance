@@ -22,16 +22,32 @@ def fetch_shares_sse(date_str: str) -> dict[str, float]:
         return _SSE_CACHE[key]
 
     try:
-        import akshare as ak
-        df = ak.fund_etf_scale_sse(date=_date_to_ak(date_str))
-        if df is None or df.empty:
+        import requests
+        url = "https://query.sse.com.cn/commonQuery.do"
+        params = {
+            "isPagination": "true",
+            "pageHelp.pageSize": "10000",
+            "pageHelp.pageNo": "1",
+            "pageHelp.beginPage": "1",
+            "pageHelp.cacheSize": "1",
+            "pageHelp.endPage": "1",
+            "sqlId": "COMMON_SSE_ZQPZ_ETFZL_XXPL_ETFGM_SEARCH_L",
+            "STAT_DATE": date_str,
+        }
+        headers = {
+            "Referer": "https://www.sse.com.cn/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+        r = requests.get(url, params=params, headers=headers, timeout=AKSHARE_TIMEOUT)
+        rows = r.json().get("result") or []
+        if not rows:
             return {}
         result = {}
-        for _, row in df.iterrows():
-            code = str(row.get("基金代码", ""))
-            shares = row.get("基金份额")
-            if code and shares is not None:
-                result[code] = float(shares) / 1e8
+        for row in rows:
+            code = str(row.get("SEC_CODE", ""))
+            vol = row.get("TOT_VOL")
+            if code and vol is not None:
+                result[code] = float(vol) / 1e4
         _SSE_CACHE[key] = result
         return result
     except Exception as e:

@@ -72,6 +72,8 @@ SENTIMENT_ZONE_P_LOW = 20.0      # 低分位阈值(≤判为冷清)
 # 多指标共振模块
 SHARE_PROB_RED = 30.0            # 份额概率≤此值→净赎回(红灯)
 SHARE_PROB_GREEN = 65.0          # 份额概率≥此值→净申购(绿灯)
+COMPOSITE_PROB_RED = 35.0        # 综合概率≤此值→出货信号(红灯)
+COMPOSITE_PROB_GREEN = 65.0      # 综合概率≥此值→吸筹信号(绿灯)
 RESONANCE_VERDICT_N = 3          # 同色灯≥此数→共振判定
 
 # 交易日历模块
@@ -87,3 +89,15 @@ BACKFILL_SLEEP_SEC = 0.15          # 份额逐日回填间隔(秒)
 TURNOVER_FETCH_SLEEP_SEC = 0.1     # 成交额逐日akshare间隔(秒,限流保护)
 JOB_LIST_LIMIT = 30                # /api/data/jobs 返回的最大历史条数
 JOB_DAYS_MAX = 1000                # 回填深度参数上限
+
+# 交易策略 / 回测模块
+STRATEGY_CODE = "510300"           # 默认策略标的
+WARN_RED_N = 2                     # 红灯≥此数→预警
+REENTRY_GREEN_N = 3                # 锁定后绿灯≥此数→计入复入连续天数
+REENTRY_CONFIRM_DAYS = 2           # 连续N天满足复入条件→解锁
+WARN_CONFIRM = 2                   # 预警确认次数(第N次预警触发减仓)
+REDUCE_STEP = 0.20                 # 减仓幅度(从满仓减去)
+BACKTEST_INIT_CAPITAL = 1_000_000  # 回测初始资金
+BACKTEST_COST_RATE = 0.0           # 单边交易成本(万分之三=0.0003)
+BACKTEST_RISK_FREE = 0.0           # 无风险利率(年化)
+TRADING_DAYS_PER_YEAR = 244        # A股年交易日

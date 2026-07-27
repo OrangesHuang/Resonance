@@ -1,12 +1,13 @@
 from analysis.sentiment import pct_rank_parts
 from analysis.resonance import (
-    INDICATORS, DIRECTION_LABEL, RED, GREEN,
+    INDICATORS, RED, GREEN,
     eval_day, verdict_of, fmt_position, fmt_share, fmt_pct, turnover_value,
 )
 from config import (
     ETFS, POSITION_WINDOW, POSITION_LOW, POSITION_HIGH,
     VOLUME_MA_WINDOW, VOLUME_ACTIVE_RATIO,
     SHARE_PROB_RED, SHARE_PROB_GREEN,
+    COMPOSITE_PROB_RED, COMPOSITE_PROB_GREEN,
     SENTIMENT_MA_WINDOW, SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS,
     SENTIMENT_ZONE_P_HIGH, SENTIMENT_ZONE_P_LOW,
 )
@@ -108,32 +109,30 @@ def _evidence_share(etf_row, state):
     }
 
 
-def _evidence_direction(etf_row, state):
-    vr = etf_row.get("volume_ratio")
-    pp = etf_row.get("price_position")
-    td = etf_row.get("trade_direction")
-    method = (f"交易方向：先看量比(当日成交量/{VOLUME_MA_WINDOW}日均量)是否 "
-              f"≥{VOLUME_ACTIVE_RATIO} 放量；放量时价格位置 "
-              f"≤{POSITION_LOW:.0f} 判吸筹、≥{POSITION_HIGH:.0f} 判出货，否则中性")
-    if td == "DISTRIBUTE":
-        reason = (f"量比 {vr} ≥ {VOLUME_ACTIVE_RATIO} 放量 且 位置 "
-                  f"{fmt_position(pp)} ≥ {POSITION_HIGH:.0f}% → 出货 → 红灯")
-    elif td == "ACCUMULATE":
-        reason = (f"量比 {vr} ≥ {VOLUME_ACTIVE_RATIO} 放量 且 位置 "
-                  f"{fmt_position(pp)} ≤ {POSITION_LOW:.0f}% → 吸筹 → 绿灯")
-    elif vr is not None and vr < VOLUME_ACTIVE_RATIO:
-        reason = f"量比 {vr} < {VOLUME_ACTIVE_RATIO} 未放量 → 中性 → 灰灯"
+def _evidence_composite(etf_row, state):
+    cp = etf_row.get("composite_prob")
+    vp = etf_row.get("vol_prob")
+    dp = etf_row.get("dir_prob")
+    sp = etf_row.get("share_prob")
+    method = ("吸筹/出货：综合概率由量比概率(50%)、方向概率(20%)、份额概率(30%)加权合成，"
+              "反映 ETF 整体吸筹/出货强度")
+    thresholds = (f"≤{COMPOSITE_PROB_RED:.0f} 判出货(红灯)；"
+                  f"≥{COMPOSITE_PROB_GREEN:.0f} 判吸筹(绿灯)；其间为中性(灰灯)")
+    if cp is None:
+        reason = "无综合概率数据 → 灰灯"
+    elif state == RED:
+        reason = f"综合概率 {cp:.1f} ≤ {COMPOSITE_PROB_RED:.0f} → 出货信号 → 红灯"
+    elif state == GREEN:
+        reason = f"综合概率 {cp:.1f} ≥ {COMPOSITE_PROB_GREEN:.0f} → 吸筹信号 → 绿灯"
     else:
-        reason = (f"量比 {vr} 放量但位置 {fmt_position(pp)} 处于 "
-                  f"{POSITION_LOW:.0f}~{POSITION_HIGH:.0f} 中性区间 → 中性 → 灰灯")
+        reason = f"综合概率 {cp:.1f} 处于 {COMPOSITE_PROB_RED:.0f}~{COMPOSITE_PROB_GREEN:.0f} 之间 → 中性 → 灰灯"
     return {
         "method": method,
-        "formula": f"量比 {vr}，位置 {fmt_position(pp)} → {DIRECTION_LABEL.get(td, '-')}",
-        "thresholds": (f"量比 ≥{VOLUME_ACTIVE_RATIO} 才判方向；"
-                       f"位置 ≤{POSITION_LOW:.0f} 吸筹(绿)、≥{POSITION_HIGH:.0f} 出货(红)"),
+        "formula": f"vol_prob×0.5 + dir_prob×0.2 + share_prob×0.3 = {cp}",
+        "thresholds": thresholds,
         "reason": reason,
-        "value": td,
-        "inputs": {"volume_ratio": vr, "price_position": pp, "trade_direction": td},
+        "value": cp,
+        "inputs": {"vol_prob": vp, "dir_prob": dp, "share_prob": sp, "composite_prob": cp},
     }
 
 
@@ -205,11 +204,11 @@ def build_day_indicators(etf_row, turnover_rows, margin_rows, date,
 
     pp = etf_row.get("price_position")
     sp = etf_row.get("share_prob")
-    td = etf_row.get("trade_direction")
+    cp = etf_row.get("composite_prob")
     detail = {
         "price_position": (pp, fmt_position(pp), "60日区间位置"),
         "share_flow": (sp, fmt_share(sp), "份额变动概率"),
-        "trade_direction": (td, DIRECTION_LABEL.get(td, "-"), "量价配合方向"),
+        "composite_signal": (cp, fmt_share(cp), "综合吸筹/出货概率"),
         "turnover": (turn_p, fmt_pct(turn_p), "两市成交额分位"),
         "margin": (margin_p, fmt_pct(margin_p), "融资余额分位"),
     }
@@ -221,7 +220,7 @@ def build_day_indicators(etf_row, turnover_rows, margin_rows, date,
     evidences = {
         "price_position": _evidence_position(etf_row, states["price_position"]),
         "share_flow": _evidence_share(etf_row, states["share_flow"]),
-        "trade_direction": _evidence_direction(etf_row, states["trade_direction"]),
+        "composite_signal": _evidence_composite(etf_row, states["composite_signal"]),
         "turnover": _evidence_pct("成交额", turn_method, tp, states["turnover"]),
         "margin": _evidence_pct("融资余额", margin_method, mp, states["margin"]),
     }

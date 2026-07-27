@@ -4,6 +4,7 @@ from config import (
     SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS,
     SENTIMENT_ZONE_P_HIGH, SENTIMENT_ZONE_P_LOW,
     SHARE_PROB_RED, SHARE_PROB_GREEN, RESONANCE_VERDICT_N,
+    COMPOSITE_PROB_RED, COMPOSITE_PROB_GREEN,
 )
 
 RED, GREEN, GRAY = "red", "green", "gray"
@@ -11,7 +12,7 @@ RED, GREEN, GRAY = "red", "green", "gray"
 INDICATORS = [
     {"key": "price_position", "name": "价格位置", "group": "etf"},
     {"key": "share_flow", "name": "份额流向", "group": "etf"},
-    {"key": "trade_direction", "name": "交易方向", "group": "etf"},
+    {"key": "composite_signal", "name": "吸筹/出货", "group": "etf"},
     {"key": "turnover", "name": "成交额热度", "group": "market"},
     {"key": "margin", "name": "融资杠杆", "group": "market"},
 ]
@@ -47,6 +48,16 @@ def _direction_state(v):
     return GRAY
 
 
+def _composite_state(v):
+    if v is None:
+        return GRAY
+    if v <= COMPOSITE_PROB_RED:
+        return RED
+    if v >= COMPOSITE_PROB_GREEN:
+        return GREEN
+    return GRAY
+
+
 def _pct_state(p):
     if p is None:
         return GRAY
@@ -61,7 +72,7 @@ def eval_day(etf_row: dict, turn_p, margin_p) -> dict:
     return {
         "price_position": _position_state(etf_row.get("price_position")),
         "share_flow": _share_state(etf_row.get("share_prob")),
-        "trade_direction": _direction_state(etf_row.get("trade_direction")),
+        "composite_signal": _composite_state(etf_row.get("composite_prob")),
         "turnover": _pct_state(turn_p),
         "margin": _pct_state(margin_p),
     }
@@ -90,11 +101,11 @@ def fmt_pct(p):
 def _current_indicators(etf_row: dict, turn_p, margin_p, states: dict) -> list:
     pp = etf_row.get("price_position")
     sp = etf_row.get("share_prob")
-    td = etf_row.get("trade_direction")
+    cp = etf_row.get("composite_prob")
     detail = {
         "price_position": (pp, fmt_position(pp), "60日区间位置"),
         "share_flow": (sp, fmt_share(sp), "份额变动概率"),
-        "trade_direction": (td, DIRECTION_LABEL.get(td, "-"), "量价配合方向"),
+        "composite_signal": (cp, fmt_share(cp), "综合吸筹/出货概率"),
         "turnover": (turn_p, fmt_pct(turn_p), "两市成交额分位"),
         "margin": (margin_p, fmt_pct(margin_p), "融资余额分位"),
     }

@@ -1,5 +1,5 @@
 import ReactECharts from 'echarts-for-react'
-import type { KlinePoint, ResonanceHistoryPoint, DailySignal } from '../api/types'
+import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../api/types'
 import { windowToZoom, zoomToWindow, DEFAULT_VISIBLE_BARS, type DateWindow } from './chartZoom'
 
 const AXIS_LABEL = '#6b7280'
@@ -21,6 +21,8 @@ const DIR_LABELS: Record<string, string> = {
 
 interface ClickParam {
   dataIndex?: number
+  componentType?: string
+  data?: { coord?: [string, number] }
 }
 
 interface ZoomEvent {
@@ -33,10 +35,11 @@ interface TooltipParam {
   dataIndex?: number
 }
 
-export default function ResonanceKline({ kline, history, signals, selectedDate, onSelectDate, dateWindow, onZoomChange }: {
+export default function ResonanceKline({ kline, history, signals, trades, selectedDate, onSelectDate, dateWindow, onZoomChange }: {
   kline: KlinePoint[]
   history: ResonanceHistoryPoint[]
   signals: DailySignal[]
+  trades: TradePoint[]
   selectedDate: string | null
   onSelectDate: (date: string) => void
   dateWindow: DateWindow | null
@@ -72,6 +75,31 @@ export default function ResonanceKline({ kline, history, signals, selectedDate, 
       { xAxis: h.date },
     ])
 
+  const klineByDate = new Map(kline.map(k => [k.date, k]))
+  const tradeMarks = trades
+    .filter(t => klineByDate.has(t.date))
+    .map(t => {
+      const k = klineByDate.get(t.date)!
+      const isBuy = t.action === 'BUY'
+      return {
+        coord: [t.date, isBuy ? k.low * 0.995 : k.high * 1.005],
+        value: isBuy ? 'B' : 'S',
+        symbol: isBuy ? 'triangle' : 'pin',
+        symbolSize: isBuy ? 22 : 24,
+        symbolRotate: isBuy ? 0 : 180,
+        itemStyle: { color: isBuy ? '#15803d' : '#ef4444' },
+        label: { show: true, formatter: isBuy ? '买' : '卖', fontSize: 11, color: '#fff', offset: [0, isBuy ? 5 : -5] as [number, number] },
+        _reason: `${t.date} ${isBuy ? '买入' : '卖出'} @${t.price}\n${t.reason}`,
+      }
+    })
+  const markPoint = tradeMarks.length > 0 ? {
+    data: tradeMarks,
+    tooltip: {
+      formatter: (p: { data?: { _reason?: string } }) =>
+        (p.data?._reason ?? '').replace('\n', '<br/>'),
+    },
+  } : undefined
+
   const showMarkLine = selectedDate !== null && dates.includes(selectedDate)
   const markLine = showMarkLine ? {
     silent: true,
@@ -99,6 +127,10 @@ export default function ResonanceKline({ kline, history, signals, selectedDate, 
 
   const onEvents = {
     click: (params: ClickParam) => {
+      if (params.componentType === 'markPoint' && params.data?.coord) {
+        onSelectDate(params.data.coord[0])
+        return
+      }
       const d = params.dataIndex != null ? dates[params.dataIndex] : undefined
       if (d) onSelectDate(d)
     },
@@ -111,6 +143,7 @@ export default function ResonanceKline({ kline, history, signals, selectedDate, 
     },
   }
 
+  const tradeByDate = new Map(trades.map(t => [t.date, t]))
   const tooltipFormatter = (params: TooltipParam[]) => {
     const i = params[0]?.dataIndex
     const k = i != null ? kline[i] : undefined
@@ -120,6 +153,11 @@ export default function ResonanceKline({ kline, history, signals, selectedDate, 
     const dirColor = DIR_COLORS[dir] ?? '#9ca3af'
     const delta = s?.shares_delta_yi
     const prob = s?.composite_prob
+    const trade = tradeByDate.get(k.date)
+    const tradeHtml = trade
+      ? `<br/><span style="color:${trade.action === 'BUY' ? '#22c55e' : '#ef4444'};font-weight:bold">` +
+        `◆ ${trade.action === 'BUY' ? '买入' : '卖出'} @${trade.price} — ${trade.reason}</span>`
+      : ''
     return `<div style="font-size:11px;line-height:1.8">` +
       `<b>${k.date}</b><br/>` +
       `开 ${k.open} · 收 ${k.close} · 高 ${k.high} · 低 ${k.low}<br/>` +
@@ -127,6 +165,7 @@ export default function ResonanceKline({ kline, history, signals, selectedDate, 
       `份额净申赎：${delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 亿份` : '-'}<br/>` +
       `综合概率：${prob != null ? `${prob.toFixed(1)}%` : '-'}<br/>` +
       `方向：<span style="color:${dirColor}"><b>${DIR_LABELS[dir] ?? dir}</b></span>` +
+      tradeHtml +
       `</div>`
   }
 
@@ -189,6 +228,7 @@ export default function ResonanceKline({ kline, history, signals, selectedDate, 
         },
         markArea: bands.length > 0 ? { silent: true, data: bands } : undefined,
         markLine: markLineTop,
+        markPoint,
       },
       {
         name: '成交量',
