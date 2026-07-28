@@ -59,7 +59,7 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
     SELL_MP = 90
     MIN_HOLD = 10
     VOL_LOOKBACK = 20
-    TRADE_START = "2024-01-02"
+    TRADE_START = "2024-10-08"
 
     trades = []
     position = 0.0

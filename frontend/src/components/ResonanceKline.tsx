@@ -93,6 +93,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       }
     })
   const markPoint = tradeMarks.length > 0 ? {
+    clip: false,
     data: tradeMarks,
     tooltip: {
       formatter: (p: { data?: { _reason?: string } }) =>
@@ -207,7 +208,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       { type: 'category', data: dates, gridIndex: 4, boundaryGap: true, axisLabel: { show: false } },
     ],
     yAxis: [
-      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: AXIS_LABEL } },
+      { scale: true, gridIndex: 0, boundaryGap: ['8%', '8%'], splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: AXIS_LABEL } },
       { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
       { scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9 } },
       { min: 0, max: 100, gridIndex: 3, splitNumber: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9, formatter: '{value}%' } },
