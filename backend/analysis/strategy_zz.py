@@ -10,7 +10,7 @@ import math
 
 ZZ_CODE = "512100"
 
-BUY_PP_MAX = 35           # 比510300更严, 中证1000波动大
+BUY_PP_MAX = 25           # 中证1000波动大, 需更低才入场
 SELL_PP_MIN = 75
 SELL_VR_MIN = 1.4
 
@@ -33,6 +33,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     cooldown = COOLDOWN
     sell_threshold = 1
     dist_count = 0
+    last_sell_price = None    # 上次卖出价, 判断反弹幅度
 
     for i in range(n):
         row = rows[i]
@@ -54,24 +55,25 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         action = None
         reason = ""
 
-        # ---- 买入 (五路径) ----
+        # ---- 买入 ----
         if position == 0 and cooldown >= COOLDOWN:
             is_accum = td == "ACCUMULATE"
             pp_low = pp is not None and pp <= BUY_PP_MAX
-            pp_extreme = pp is not None and pp <= 15
+            pp_extreme = pp is not None and pp <= 10
             sp_ok = sp is not None and sp >= 50
-            cp_ok = cp is not None and cp >= 60
             tp_cold = tp is not None and tp <= 10
+            # 反弹确认: 距上次卖出跌超7%+ACCUMULATE+pp≤30
+            rebound = (is_accum and last_sell_price is not None
+                       and close < last_sell_price * 0.93
+                       and pp is not None and pp <= 30)
 
-            # 买入: 只在跌日买入 (中证1000 ACCUMULATE集群中第一个往往不是底)
-            buying = False
             if is_accum and chg <= -5:
                 action = "BUY"
                 reason = f"暴跌抄底: 跌{chg:.1f}%+pp{pp:.0f}"
             elif is_accum and pp_extreme:
                 action = "BUY"
                 reason = f"极端低位: pp{pp:.0f}"
-            elif is_accum and pp_low and sp_ok and chg <= -2.5:
+            elif is_accum and pp_low and sp_ok:
                 action = "BUY"
                 reason = f"低位吸筹: pp{pp:.0f}+sp{sp:.0f}"
             elif is_accum and pp_low and tp_cold:
@@ -80,6 +82,9 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             elif chg <= -3 and vr >= 1.5 and pp is not None and pp <= 35:
                 action = "BUY"
                 reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
+            elif rebound:
+                action = "BUY"
+                reason = f"反弹确认: 跌超10%后企稳 pp{pp:.0f}"
 
         # ---- 卖出 (DISTRIBUTE + pp + vr) ----
         if position == 1:
@@ -112,6 +117,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         elif action == "SELL":
             position = 0.0
             cooldown = 0
+            last_sell_price = close
             trades.append({"date": d, "action": "SELL", "price": close,
                            "reason": reason})
 
