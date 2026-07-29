@@ -53,6 +53,8 @@ def run_v5_strategy(rows: list[dict]) -> dict:
     accum_volumes: list[float] = []   # 持仓期间所有吸筹日的量比
     accum_count = 0                    # 持仓期间吸筹日计数
     dist_count = 0                     # 持仓期间出货日计数
+    entry_shares: Optional[float] = None  # 买入时的份额水平
+    peak_shares: float = 0.0           # 持仓期间份额峰值
     share_trend: list[float] = []     # 持仓期间份额变动序列
 
     for i in range(n):
@@ -89,6 +91,9 @@ def run_v5_strategy(rows: list[dict]) -> dict:
                 dist_count += 1
             if sd is not None:
                 share_trend.append(sd)
+            cur_shares = row.get("shares_yi")
+            if cur_shares is not None:
+                peak_shares = max(peak_shares, cur_shares)
 
         # ====== 买入 ======
         if position == 0 and cooldown >= COOLDOWN:
@@ -113,21 +118,30 @@ def run_v5_strategy(rows: list[dict]) -> dict:
                                 if accum_volumes else vr)
                 vol_confirmed = vr >= avg_accum_vr * 0.8  # 允许20%容差
 
-                # 份额辅助: 如果最近份额在下降，加强了卖出信号
-                recent_shares = share_trend[-3:] if len(share_trend) >= 3 else share_trend
-                share_declining = (len(recent_shares) >= 2
-                                   and sum(1 for s in recent_shares if s < 0) >= 2)
+                # 份额辅助: 份额从峰值回撤幅度 vs 前期扩张幅度
+                # 100亿买进来，回撤不到50%不算真离场
+                cur_shares = row.get("shares_yi")
+                share_reversal_ratio = 0.0
+                if (entry_shares is not None and cur_shares is not None
+                        and peak_shares > entry_shares):
+                    expansion = peak_shares - entry_shares
+                    reversal = peak_shares - cur_shares
+                    share_reversal_ratio = (reversal / expansion * 100
+                                            if expansion > 0 else 0)
+                # 份额回撤超过扩张的65%才算真正的资金离场
+                # 100亿买进来，回撤不到2/3不算真走
+                real_exit = share_reversal_ratio >= 65
 
                 if vol_confirmed:
                     action = "SELL"
                     reason = (f"出货卖出: 位置{pp:.0f}+量比{vr:.1f}"
                               f"+浮盈{profit_pct:.0f}%"
                               f" [吸筹均量{avg_accum_vr:.1f}]")
-                elif share_declining and profit_pct >= SELL_PROFIT_MIN:
+                elif real_exit and profit_pct >= SELL_PROFIT_MIN:
                     action = "SELL"
-                    reason = (f"出货+份额降: 位置{pp:.0f}+量比{vr:.1f}"
+                    reason = (f"主力离场: 份额回撤{share_reversal_ratio:.0f}%"
                               f"+浮盈{profit_pct:.0f}%"
-                              f"+份额连降")
+                              f" [扩张{expansion:.0f}→回撤{reversal:.0f}亿]")
 
         if action == "BUY":
             position = 1
@@ -136,6 +150,8 @@ def run_v5_strategy(rows: list[dict]) -> dict:
             accum_count = 0
             dist_count = 0
             share_trend = []
+            entry_shares = row.get("shares_yi")
+            peak_shares = entry_shares or 0.0
             trades.append({
                 "date": d, "action": "BUY", "price": close,
                 "reason": reason,
