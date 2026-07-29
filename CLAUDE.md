@@ -11,8 +11,6 @@ cd backend && python3 -m uvicorn main:app --port 8000   # API at :8000
 cd frontend && npm run dev                               # UI at :5173
 ```
 
-> **⚠️ Port gotcha**: `vite.config.ts` proxies `/api` to `localhost:8001`, but `start.sh` and README use port `8000`. When running the backend manually, either use `--port 8001` or update the Vite proxy target.
-
 Database lives at `~/.etf-monitor/etf_monitor.db` (override with `ETF_MONITOR_HOME` env var).
 
 ## Architecture
