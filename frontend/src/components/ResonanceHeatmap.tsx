@@ -104,6 +104,32 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, dateWin
         itemStyle: { borderColor: '#0a0f1a', borderWidth: 1 },
         emphasis: { itemStyle: { borderColor: '#e5e7eb', borderWidth: 1 } },
       },
+      ...(selectedDate != null && dates.includes(selectedDate) ? [{
+        name: '选中高亮',
+        type: 'custom',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: keys.map((_, y) => [dates.indexOf(selectedDate), y]),
+        silent: true,
+        z: 10,
+        renderItem: (_params: unknown, api: { value: (idx: number) => number; coord: (v: [number, number]) => [number, number]; getWidth: () => number; getHeight: () => number }) => {
+          const xIdx = api.value(0)
+          const yIdx = api.value(1)
+          const [cx, cy] = api.coord([xIdx, yIdx])
+          const colWidth = api.getWidth() / (dates.length * ((zoom.end - zoom.start) / 100))
+          const cellW = Math.max(colWidth, 10)
+          const rowH = keys.length > 1
+            ? Math.abs(api.coord([0, 1])[1] - api.coord([0, 0])[1])
+            : api.getHeight()
+          const st: LightState = history[xIdx]?.states[keys[yIdx]] ?? 'gray'
+          const color = st === 'red' ? '#ef4444' : st === 'green' ? '#22c55e' : '#374151'
+          return {
+            type: 'rect',
+            shape: { x: cx - cellW / 2, y: cy - rowH / 2, width: cellW, height: rowH - 1 },
+            style: { fill: color, stroke: '#38bdf8', lineWidth: 1.5 },
+          }
+        },
+      }] : []),
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, start: zoom.start, end: zoom.end },

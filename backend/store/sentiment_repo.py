@@ -76,6 +76,24 @@ def get_margin_series(limit: Optional[int] = None) -> list[dict]:
         conn.close()
 
 
+def get_turnover_latest_date() -> Optional[str]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT MAX(date) FROM market_turnover").fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def get_margin_latest_date() -> Optional[str]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT MAX(date) FROM margin_trading").fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
 def get_turnover_count() -> int:
     conn = get_connection()
     try:

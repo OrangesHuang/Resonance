@@ -22,7 +22,10 @@ from analysis.factors import calc_share_probability
 from store.daily_repo import (
     upsert_daily, update_share_data, get_trading_dates, get_by_date,
 )
-from store.sentiment_repo import upsert_turnover, upsert_margin
+from store.sentiment_repo import (
+    upsert_turnover, upsert_margin,
+    get_turnover_latest_date, get_margin_latest_date,
+)
 from store.calendar_repo import (
     upsert_trade_dates, get_calendar_count, get_range, reload_cache,
 )
@@ -123,28 +126,41 @@ def job_backfill_shares(progress: ProgressFn, days: int = DEFAULT_SHARES_BACKFIL
     return {"dates": len(dates), "written": written, "days": days}
 
 
-def job_fetch_sentiment(progress: ProgressFn, days: int = SENTIMENT_BACKFILL_DAYS) -> dict:
+def job_fetch_sentiment(progress: ProgressFn, days: int = SENTIMENT_BACKFILL_DAYS, force: bool = False) -> dict:
     now = datetime.now()
-    cal_days = int(days * 1.5)
-    start = (now - timedelta(days=cal_days)).strftime("%Y-%m-%d")
     end = now.strftime("%Y-%m-%d")
-    total_steps = {"n": 1}
 
-    def turnover_cb(i: int, total: int, date: str) -> None:
-        total_steps["n"] = total + 1
-        progress(i, total + 1, f"成交额 {date}")
+    latest_turnover = None if force else get_turnover_latest_date()
+    if latest_turnover and latest_turnover >= end:
+        progress(1, 1, "成交额已是最新")
+        turnover = []
+    else:
+        if latest_turnover:
+            start = (datetime.strptime(latest_turnover, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+        else:
+            cal_days = int(days * 1.5)
+            start = (now - timedelta(days=cal_days)).strftime("%Y-%m-%d")
 
-    turnover = fetch_market_turnover(start, end, on_progress=turnover_cb)
-    if turnover:
-        upsert_turnover(turnover)
+        def turnover_cb(i: int, total: int, date: str) -> None:
+            progress(i, total + 1, f"成交额 {date}")
 
-    final_total = total_steps["n"]
-    progress(final_total, final_total, "融资余额拉取中…")
-    margin = fetch_margin_series(start, end)
-    if margin:
-        upsert_margin(margin)
-    progress(final_total, final_total, "完成")
-    return {"turnover": len(turnover), "margin": len(margin), "start": start, "end": end}
+        turnover = fetch_market_turnover(start, end, on_progress=turnover_cb)
+        if turnover:
+            upsert_turnover(turnover)
+
+    latest_margin = None if force else get_margin_latest_date()
+    if latest_margin and latest_margin >= end:
+        progress(1, 1, "融资余额已是最新")
+        margin = []
+    else:
+        margin_start = (datetime.strptime(latest_margin, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d") if latest_margin else (now - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
+        progress(1, 1, "融资余额拉取中…")
+        margin = fetch_margin_series(margin_start, end)
+        if margin:
+            upsert_margin(margin)
+
+    progress(1, 1, "完成")
+    return {"turnover": len(turnover), "margin": len(margin), "start": latest_turnover or "full", "end": end}
 
 
 def _refresh_share_cache() -> dict:

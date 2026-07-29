@@ -24,7 +24,7 @@ JOB_DEFS: dict[str, dict] = {
     },
     "fetch_sentiment": {
         "label": "拉取市场情绪", "exclusive": False,
-        "defaults": {"days": SENTIMENT_BACKFILL_DAYS},
+        "defaults": {"days": SENTIMENT_BACKFILL_DAYS, "force": False},
     },
     "fetch_etf_latest": {
         "label": "刷新最新ETF数据", "exclusive": False, "defaults": {},
