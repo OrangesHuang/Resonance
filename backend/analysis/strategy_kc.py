@@ -30,8 +30,10 @@ TRADE_START = "2025-04-01"
 def _is_quasi_accum(row: dict) -> bool:
     """类吸筹判定: 捕捉实质吸筹但td!=ACCUMULATE的日子。
 
-    科创综指 ACCUMULATE 仅1.2%, 很多低位放量日被td=NEUTRAL错过。
-    类吸筹 = (低位 + 放量 + 资金流入) OR (恐慌暴跌)
+    科创综指量能中枢低于沪深300:
+      - 极低位(pp≤20): 低量=卖压耗尽, 不需要放量确认
+      - 低位(pp≤40): 需要放量+资金流入确认
+      - 暴跌日: 恐慌本身就是信号
     """
     pp = row.get("price_position")
     vr = row.get("volume_ratio") or 0
@@ -41,22 +43,25 @@ def _is_quasi_accum(row: dict) -> bool:
     td = row.get("trade_direction")
 
     if td == "ACCUMULATE":
-        return True  # 原版ACCUMULATE直接通过
+        return True
 
     if pp is None:
         return False
 
-    # 低位+放量+资金流入(份额增加)
-    if pp <= 30 and vr >= BUY_VR_MIN:
+    # 极低位: 不需要量比确认, 卖压耗尽就是买入信号
+    # 排除 DISTRIBUTE 日(出货日不买)
+    if pp <= 20 and td != "DISTRIBUTE":
+        return True
+
+    # 低位+放量+资金流入
+    if pp <= 40 and vr >= BUY_VR_MIN:
         if sp is not None and sp >= 60:
             return True
         if sd is not None and sd >= 3:
             return True
 
-    # 恐慌暴跌日: 跌超3%+放量+非高位
-    # 极端暴跌(-5%+)放宽量比要求: 暴跌本身就是信号, 不需要量比确认
-    # pp≤70: 不要求在极端低位, 连续下跌后的暴跌也应捕获
-    if chg <= -5 and vr >= 0.8 and pp is not None and pp <= 70:
+    # 恐慌暴跌 (-4.5%对科创综指已经是极端事件)
+    if chg <= -4.5 and vr >= 0.8 and pp <= 70:
         return True
     if chg <= PANIC_DROP and vr >= 1.5 and pp <= PANIC_PP_MAX:
         return True
@@ -115,10 +120,20 @@ def run_kc_strategy(rows: list[dict]) -> dict:
                 action = "BUY"
                 reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
 
-            # 路径3: 极端低位
+            # 路径3: 极端低位 (需要有cp确认)
             elif qa and pp_extreme and cp_ok:
                 action = "BUY"
                 reason = f"极端低位: pp{pp:.0f}+cp{cp:.0f}%"
+
+            # 路径4: 极低位不需要额外确认 (卖压耗尽, 低量=洗盘底)
+            elif qa and pp is not None and pp <= 20:
+                action = "BUY"
+                reason = f"极低位吸筹: pp{pp:.0f}(卖压耗尽)"
+
+            # 路径5: 恐慌暴跌买入 (暴跌+放量, 不要求pp够低)
+            elif chg <= -4.5 and vr >= 1.5 and pp is not None and pp <= 70:
+                action = "BUY"
+                reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
 
         # ---- 卖出 ----
         if position == 1:
@@ -146,11 +161,9 @@ def run_kc_strategy(rows: list[dict]) -> dict:
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
             avg_vol = sum(prev_vols) / len(prev_vols) if prev_vols else 1
             ratio = vol / avg_vol if avg_vol > 0 else 1.0
-            # KC DISTRIBUTE密度低于510300, 降低卖出门槛基数(2→1)
-            if vr < 0.8:
-                sell_threshold = 1
-            else:
-                sell_threshold = max(2, math.ceil(1 + ratio * 0.55))
+            # KC DISTRIBUTE密度低于510300, 降低卖出门槛基数
+            # 但极低位买入不能降低门槛: 低量=卖压耗尽, 不是弱信号
+            sell_threshold = max(2, math.ceil(1 + ratio * 0.55))
             trades.append({"date": d, "action": "BUY", "price": close,
                            "reason": f"{reason} [阈值{sell_threshold}]"})
         elif action == "SELL":
