@@ -1,23 +1,37 @@
-"""中证1000 (512100) V1 量价记忆策略。
+"""中证1000 (512100) 右侧量价记忆策略。
 
-与 510300 同构, 中证1000特征:
-  - 高频信号 (41 ACCUMULATE / 37 DISTRIBUTE)
-  - 高波动, 与科创综指相似
-  - 融资敏感型 (小盘股资金驱动)
+核心认知:
+  中证1000 暴跌集群特征明显 — 连续5-9个ACCUMULATE密集出现
+  左侧抄底会在集群中段入场, 继续承压5-10%
+  需要等待集群结束+反弹确认后右侧入场
+
+算法:
+  Phase 1 — 暴跌集群检测: 10天内≥3个ACCUMULATE → 进入等待
+  Phase 2 — 右侧确认: 集群结束后连续2天涨+放量 → 买入
+  Phase 3 — 单日恐慌: 跌≥5%+ACCUMULATE → 直接左侧买入(单日极端)
+  Phase 4 — 卖出: DISTRIBUTE集群确认 + 量价记忆
 """
 
 import math
 
 ZZ_CODE = "512100"
 
-BUY_PP_MAX = 25           # 中证1000波动大, 需更低才入场
 SELL_PP_MIN = 75
-SELL_VR_MIN = 1.4
+SELL_VR_MIN = 1.3
 
 MIN_HOLD = 5
-COOLDOWN = 1            # 中证1000节奏快, 极短冷却期
+COOLDOWN = 3
 VOL_LOOKBACK = 20
 TRADE_START = "2024-01-01"
+
+
+def _count_crash_accum(rows: list[dict], idx: int, window: int = 10) -> int:
+    """统计最近 window 天内的 ACCUMULATE 数量 (判断暴跌集群)。"""
+    count = 0
+    for j in range(max(0, idx - window + 1), idx + 1):
+        if rows[j].get("trade_direction") == "ACCUMULATE":
+            count += 1
+    return count
 
 
 def run_zz_strategy(rows: list[dict]) -> dict:
@@ -33,7 +47,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     cooldown = COOLDOWN
     sell_threshold = 1
     dist_count = 0
-    last_sell_price = None    # 上次卖出价, 判断反弹幅度
+    waiting_for_reversal = False
+    last_sell_price = None
 
     for i in range(n):
         row = rows[i]
@@ -42,11 +57,9 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         pp = row.get("price_position")
         td = row.get("trade_direction")
         sp = row.get("share_prob")
-        cp = row.get("composite_prob")
+        tp = row.get("_tp")
         vr = row.get("volume_ratio") or 0
         chg = row.get("change_pct") or 0
-        tp = row.get("_tp")
-        mp = row.get("_mp")
 
         if d < TRADE_START:
             continue
@@ -55,38 +68,65 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         action = None
         reason = ""
 
-        # ---- 买入 ----
-        if position == 0 and cooldown >= COOLDOWN:
+        # ---- Phase 1: 暴跌集群检测 ----
+        if position == 0 and not waiting_for_reversal:
             is_accum = td == "ACCUMULATE"
-            pp_low = pp is not None and pp <= BUY_PP_MAX
-            pp_extreme = pp is not None and pp <= 10
-            sp_ok = sp is not None and sp >= 50
-            tp_cold = tp is not None and tp <= 10
-            # 反弹确认: 距上次卖出跌超7%+ACCUMULATE+pp≤30
-            rebound = (is_accum and last_sell_price is not None
-                       and close < last_sell_price * 0.93
-                       and pp is not None and pp <= 30)
+            crash_count = _count_crash_accum(rows, i, 10)
+            in_crash_cluster = crash_count >= 2
 
+            # 单日极端暴跌: 跌≥5%+ACCUMULATE → 直接左侧买入
             if is_accum and chg <= -5:
                 action = "BUY"
                 reason = f"暴跌抄底: 跌{chg:.1f}%+pp{pp:.0f}"
-            elif is_accum and pp_extreme:
-                action = "BUY"
-                reason = f"极端低位: pp{pp:.0f}"
-            elif is_accum and pp_low and sp_ok:
-                action = "BUY"
-                reason = f"低位吸筹: pp{pp:.0f}+sp{sp:.0f}"
-            elif is_accum and pp_low and tp_cold:
-                action = "BUY"
-                reason = f"极冷吸筹: pp{pp:.0f}+成交额{tp:.0f}分位"
-            elif chg <= -3 and vr >= 1.5 and pp is not None and pp <= 35:
-                action = "BUY"
-                reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
-            elif rebound:
-                action = "BUY"
-                reason = f"反弹确认: 跌超10%后企稳 pp{pp:.0f}"
 
-        # ---- 卖出 (DISTRIBUTE + pp + vr) ----
+            # 暴跌集群: ≥3个ACCUMULATE → 进入等待右侧确认
+            elif in_crash_cluster:
+                waiting_for_reversal = True
+
+            # 非暴跌集群的普通买入
+            elif is_accum and pp is not None and pp <= 25:
+                if sp is not None and sp >= 50:
+                    action = "BUY"
+                    reason = f"低位吸筹: pp{pp:.0f}+sp{sp:.0f}"
+                elif tp is not None and tp <= 10:
+                    action = "BUY"
+                    reason = f"极冷吸筹: pp{pp:.0f}+成交额{tp:.0f}分位"
+
+            # 反弹确认 (距上次卖出跌超7%)
+            elif (is_accum and last_sell_price is not None
+                  and close < last_sell_price * 0.93
+                  and pp is not None and pp <= 30):
+                action = "BUY"
+                reason = f"反弹确认: 跌超7%后企稳 pp{pp:.0f}"
+
+        # ---- Phase 2: 右侧确认 (暴跌集群结束后) ----
+        if position == 0 and waiting_for_reversal:
+            crash_count = _count_crash_accum(rows, i, 10)
+            # 集群结束: ACCUMULATE密度下降 或 连续2天无ACCUMULATE
+            no_recent_accum = (td != "ACCUMULATE"
+                               and rows[i-1].get("trade_direction") != "ACCUMULATE" if i > 0 else True)
+            cluster_ended = crash_count < 2 or no_recent_accum
+            pp_ok = pp is not None and pp <= 35
+
+            prev_chg = rows[i - 1].get("change_pct") or 0 if i > 0 else 0
+            prev_vr = rows[i - 1].get("volume_ratio") or 0 if i > 0 else 0
+
+            two_day_up = (cluster_ended and chg > 0 and prev_chg > 0
+                          and vr > 1.0 and pp_ok)
+            strong_bounce = (cluster_ended and chg > 2 and vr > 1.0 and pp_ok)
+
+            if two_day_up:
+                action = "BUY"
+                reason = f"右侧确认: 连涨2天+放量 pp{pp:.0f}"
+                waiting_for_reversal = False
+            elif strong_bounce:
+                action = "BUY"
+                reason = f"强反弹: 涨{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
+                waiting_for_reversal = False
+            elif pp is not None and pp > 50:
+                waiting_for_reversal = False  # 价格回升太多, 重置
+
+        # ---- 卖出 ----
         if position == 1:
             hold_days += 1
             is_dist = td == "DISTRIBUTE"
@@ -106,12 +146,14 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             hold_days = 0
             cooldown = 0
             dist_count = 0
+            waiting_for_reversal = False
             vol = row.get("volume") or 0
             prev_vols = [rows[j].get("volume") or 0
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
             avg_vol = sum(prev_vols) / len(prev_vols) if prev_vols else 1
             ratio = vol / avg_vol if avg_vol > 0 else 1.0
-            sell_threshold = max(2, math.ceil(2 + ratio * 0.55))
+            # 中证1000卖出确认基数更低 (买卖集中, 出货信号更可靠)
+            sell_threshold = max(2, math.ceil(1 + ratio * 0.55))
             trades.append({"date": d, "action": "BUY", "price": close,
                            "reason": f"{reason} [阈值{sell_threshold}]"})
         elif action == "SELL":
