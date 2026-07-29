@@ -101,3 +101,37 @@ BACKTEST_INIT_CAPITAL = 1_000_000  # 回测初始资金
 BACKTEST_COST_RATE = 0.0           # 单边交易成本(万分之三=0.0003)
 BACKTEST_RISK_FREE = 0.0           # 无风险利率(年化)
 TRADING_DAYS_PER_YEAR = 244        # A股年交易日
+
+# ========== V2 信号系统 ==========
+
+# 市场状态检测 (Layer 0)
+REGIME_MA_PERIOD = 200              # 长期均线周期
+REGIME_EMA_SMOOTH = 20              # 状态分数平滑窗口
+REGIME_BULL_THRESHOLD = 0.3         # 牛市判定阈值
+REGIME_BEAR_THRESHOLD = -0.3        # 熊市判定阈值
+
+# 异常度计算窗口 (Layer 1)
+ANOMALY_VOL_WINDOW = 120            # 量能分布回看窗口
+ANOMALY_SHARE_WINDOW = 60           # 份额分布回看窗口
+ANOMALY_VOLATILITY_WINDOW = 20      # 波动率计算窗口
+ANOMALY_BREADTH_WINDOW = 20         # 广度分布回看窗口
+VOL_Z_SCALE = 0.5                   # 量能 z-score 缩放因子
+
+# 特征向量 (Layer 2) — 5维: [量能, 价格, 份额, 广度, 背离]
+ACCUM_SIGNATURE = [0.7, -0.5, 0.4, -0.3, 0.8]   # 吸筹特征
+DIST_SIGNATURE  = [0.6,  0.5, -0.4, 0.3, -0.8]  # 出货特征
+
+# 贝叶斯推断 (Layer 3)
+SIGNATURE_LAMBDA = 2.0              # 似然比更新强度
+# 不同市场状态下的先验概率 [P(吸筹), P(出货)]
+PRIOR_BULL = [0.30, 0.10]           # 牛市中吸筹概率高于出货
+PRIOR_BEAR = [0.10, 0.30]           # 熊市中出货概率高于吸筹
+PRIOR_RANGE = [0.18, 0.18]          # 震荡市中两者等概率
+
+# 决策层 (Layer 4)
+SIGNAL_BUY_THRESHOLD = 0.7          # 买入信号强度阈值
+SIGNAL_SELL_THRESHOLD = 0.7         # 卖出信号强度阈值
+V2_POSITION_MAX = 3                 # 最大仓位份数
+V2_POSITION_STEP = 1                # 单次调仓份数
+V2_MIN_HOLD_DAYS = 5                # 最短持仓天数
+V2_COST_RATE = 0.0003               # 单边交易成本(万分之三)

@@ -156,3 +156,95 @@ def resonance_trades_kc():
     from analysis.strategy_kc import run_kc_strategy, KC_CODE
     etf_rows = list(reversed(get_by_code(KC_CODE)))
     return run_kc_strategy(etf_rows)
+
+
+# ========== V2 信号系统 ==========
+
+from analysis.signature import compute_signal_history, compute_signal_day
+from analysis.regime import detect_regime, regime_label
+from store.breadth_repo import get_breadth_series
+
+
+def _load_v2_data(code: str):
+    """加载 V2 计算所需的全部数据。"""
+    if code not in ETFS:
+        raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
+    etf_rows = list(reversed(get_by_code(code)))
+    etf_rows = [r for r in etf_rows if r.get("close_price") is not None]
+    breadth_rows = get_breadth_series()
+    return etf_rows, breadth_rows
+
+
+@router.get("/v2/signals/{code}")
+def resonance_v2_signals(code: str):
+    """V2 信号历史 + 最近信号。"""
+    etf_rows, breadth_rows = _load_v2_data(code)
+    result = compute_signal_history(etf_rows, breadth_rows if breadth_rows else None)
+    # 只返回最近 200 天的信号明细，减少响应体积
+    signals = result["signals"]
+    recent = signals[-200:] if len(signals) > 200 else signals
+    return {
+        "code": result["code"],
+        "regime": result["regime"],
+        "regime_label": regime_label(result["regime"]),
+        "latest": result["latest"],
+        "signal_count": len(signals),
+        "signals": recent,
+    }
+
+
+@router.get("/v2/signal")
+def resonance_v2_signal_day(code: str = "510300", date: str = ""):
+    """单日 V2 信号详情（含逐维度分解）。"""
+    if not date:
+        raise HTTPException(status_code=400, detail="缺少 date 参数")
+    etf_rows, breadth_rows = _load_v2_data(code)
+    # 找到目标日及之前的数据
+    target_idx = None
+    for i, r in enumerate(etf_rows):
+        if r["date"] == date:
+            target_idx = i
+            break
+    if target_idx is None:
+        raise HTTPException(status_code=404, detail=f"{code} 在 {date} 无数据")
+
+    etf_before = etf_rows[:target_idx]
+    breadth_before = None
+    breadth_row = None
+    if breadth_rows:
+        breadth_before = []
+        for br in breadth_rows:
+            if br["date"] < date:
+                breadth_before.append(br)
+            elif br["date"] == date:
+                breadth_row = br
+
+    return compute_signal_day(
+        etf_rows[target_idx], etf_before,
+        breadth_row, breadth_before if breadth_before else None,
+    )
+
+
+@router.get("/v2/regime")
+def resonance_v2_regime(code: str = "510300"):
+    """当前市场状态。"""
+    etf_rows, _ = _load_v2_data(code)
+    closes = [r.get("close_price") or 0.0 for r in etf_rows]
+    score = detect_regime(closes)
+    return {
+        "code": code,
+        "regime_score": score,
+        "regime_label": regime_label(score),
+        "data_points": len(closes),
+    }
+
+
+@router.get("/v2/backtest/{code}")
+def resonance_v2_backtest(code: str = "510300"):
+    """V2 信号回测。"""
+    from analysis.decision import run_backtest_v2
+    etf_rows, breadth_rows = _load_v2_data(code)
+    result = compute_signal_history(etf_rows, breadth_rows if breadth_rows else None)
+    signals = result["signals"]
+    closes = [s["close"] for s in signals]
+    return run_backtest_v2(signals, closes)

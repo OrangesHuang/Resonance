@@ -15,6 +15,7 @@ from fetch.realtime import fetch_realtime_quotes
 from fetch.shares import calc_share_delta
 from fetch.sentiment import fetch_market_turnover, fetch_margin_series
 from fetch.calendar import fetch_trade_dates
+from fetch.breadth import fetch_market_breadth
 from analysis.intraday import calc_intraday_signal, IntradaySignal
 from analysis.composite import analyze_single_etf
 from analysis.factors import calc_share_probability
@@ -27,6 +28,7 @@ from store.sentiment_repo import (
 from store.calendar_repo import (
     upsert_trade_dates, get_calendar_count, get_range, reload_cache,
 )
+from store.breadth_repo import upsert_breadth, get_latest_breadth_date
 from scheduler.time_guard import is_trading_time, trading_day_guard
 
 _kline_cache: dict[str, list[dict]] = {}
@@ -208,6 +210,18 @@ def task_sync_calendar() -> dict:
     return {"count": get_calendar_count(), "range": get_range()}
 
 
+def task_fetch_breadth() -> dict:
+    """采集当日涨跌家数 (收盘后运行)。"""
+    print("[SCHEDULER] fetching market breadth...")
+    row = fetch_market_breadth()
+    if row:
+        upsert_breadth(row)
+        print(f"[SCHEDULER] breadth upserted: {row['date']}")
+        return {"date": row["date"], "advance_pct": row.get("advance_pct")}
+    print("[SCHEDULER] breadth fetch returned empty")
+    return {}
+
+
 def start_scheduler() -> None:
     init_db()
     reload_cache()
@@ -254,6 +268,12 @@ def start_scheduler() -> None:
         trading_day_guard(task_fetch_sentiment),
         CronTrigger(hour=SENTIMENT_FETCH_HOUR, minute=SENTIMENT_FETCH_MIN, day_of_week="mon-fri"),
         id="fetch_sentiment",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        trading_day_guard(task_fetch_breadth),
+        CronTrigger(hour=16, minute=30, day_of_week="mon-fri"),
+        id="fetch_breadth",
         replace_existing=True,
     )
     scheduler.add_job(

@@ -91,6 +91,21 @@ def init_db() -> None:
                 date        TEXT PRIMARY KEY,
                 created_at  TEXT DEFAULT (datetime('now','localtime'))
             );
+
+            CREATE TABLE IF NOT EXISTS market_breadth (
+                date            TEXT PRIMARY KEY,
+                sh_advance      INTEGER,
+                sh_decline      INTEGER,
+                sz_advance      INTEGER,
+                sz_decline      INTEGER,
+                total_advance   INTEGER,
+                total_decline   INTEGER,
+                advance_pct     REAL,
+                limit_ups       INTEGER,
+                limit_downs     INTEGER,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                updated_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
         _migrate_add_direction_columns(conn)
         _migrate_drop_etf_kline(conn)

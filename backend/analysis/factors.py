@@ -111,6 +111,28 @@ def calc_share_probability(share_delta_pct: Optional[float]) -> Optional[float]:
         return max(0.0, 5 + (x + 5) / 5 * 5)
 
 
+def calc_share_probability_sigmoid(
+    share_delta_pct: Optional[float],
+    k: float = 0.5,
+    midpoint: float = 1.5,
+) -> Optional[float]:
+    """平滑 sigmoid 映射份额变动率 → 概率 (0-100)。
+
+    替代分段线性映射，消除边界不连续性。
+    参数校准使曲线与原分段函数近似:
+      k=0.5, midpoint=1.5
+      delta=0  → ~32 (原 30)
+      delta=1  → ~44 (原 45)
+      delta=3  → ~68 (原 65-80)
+      delta=5  → ~85 (原 80-95)
+      delta=-1 → ~18 (原 15-30)
+    """
+    if share_delta_pct is None:
+        return None
+    import math
+    return round(100.0 / (1.0 + math.exp(-k * (share_delta_pct - midpoint))), 1)
+
+
 def classify_signal(composite_prob: float) -> str:
     if composite_prob >= SIGNAL_HIGH:
         return "HIGH"
