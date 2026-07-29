@@ -7,7 +7,8 @@ import math
 
 from config import (
     SIGNAL_BUY_THRESHOLD, SIGNAL_SELL_THRESHOLD,
-    V2_POSITION_MAX, V2_POSITION_STEP, V2_MIN_HOLD_DAYS, V2_COST_RATE,
+    V2_POSITION_MAX, V2_POSITION_STEP, V2_MIN_HOLD_DAYS, V2_COOLDOWN_DAYS,
+    V2_COST_RATE,
     BACKTEST_INIT_CAPITAL, TRADING_DAYS_PER_YEAR,
 )
 
@@ -16,6 +17,7 @@ def decide_position(
     signal: float,
     current_level: int,
     hold_days: int = 0,
+    cooldown_days: int = 0,
 ) -> tuple[int, str, str]:
     """单日仓位决策。
 
@@ -23,10 +25,16 @@ def decide_position(
         signal: V2 信号强度 ∈ [-1, 1]
         current_level: 当前仓位份数 (0 ~ V2_POSITION_MAX)
         hold_days: 当前已持仓天数
+        cooldown_days: 距上一次交易的天数
 
     Returns:
         (new_level, action, reason)
     """
+    # 交易冷却期：防止信号扎堆导致连续多日重复交易
+    if cooldown_days < V2_COOLDOWN_DAYS:
+        return (current_level, "HOLD",
+                f"冷却期({cooldown_days}/{V2_COOLDOWN_DAYS}天)")
+
     if hold_days < V2_MIN_HOLD_DAYS and current_level > 0:
         if signal > SIGNAL_BUY_THRESHOLD and current_level < V2_POSITION_MAX:
             return (current_level + V2_POSITION_STEP, "BUY",
@@ -64,18 +72,22 @@ def run_backtest_v2(
 
     level = 0
     hold_days = 0
+    cooldown = V2_COOLDOWN_DAYS  # 初始无冷却
     trades = []
     targets = []
 
     for i in range(n):
         sig = signals[i]
         new_level, action, reason = decide_position(
-            sig["signal"], level, hold_days)
+            sig["signal"], level, hold_days, cooldown)
 
         if action == "BUY" or action == "SELL":
             hold_days = 0
-        elif level > 0:
-            hold_days += 1
+            cooldown = 0
+        else:
+            if level > 0:
+                hold_days += 1
+            cooldown += 1
 
         if action != "HOLD":
             trades.append({

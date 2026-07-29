@@ -122,16 +122,17 @@ ACCUM_SIGNATURE = [0.7, -0.5, 0.4, -0.3, 0.8]   # 吸筹特征
 DIST_SIGNATURE  = [0.6,  0.5, -0.4, 0.3, -0.8]  # 出货特征
 
 # 贝叶斯推断 (Layer 3)
-SIGNATURE_LAMBDA = 2.0              # 似然比更新强度
+SIGNATURE_LAMBDA = 5.0              # 似然比更新强度
 # 不同市场状态下的先验概率 [P(吸筹), P(出货)]
 PRIOR_BULL = [0.30, 0.10]           # 牛市中吸筹概率高于出货
 PRIOR_BEAR = [0.10, 0.30]           # 熊市中出货概率高于吸筹
 PRIOR_RANGE = [0.18, 0.18]          # 震荡市中两者等概率
 
 # 决策层 (Layer 4)
-SIGNAL_BUY_THRESHOLD = 0.7          # 买入信号强度阈值
-SIGNAL_SELL_THRESHOLD = 0.7         # 卖出信号强度阈值
+SIGNAL_BUY_THRESHOLD = 0.75         # 买入信号强度阈值
+SIGNAL_SELL_THRESHOLD = 0.75        # 卖出信号强度阈值
 V2_POSITION_MAX = 3                 # 最大仓位份数
 V2_POSITION_STEP = 1                # 单次调仓份数
-V2_MIN_HOLD_DAYS = 5                # 最短持仓天数
+V2_MIN_HOLD_DAYS = 15               # 最短持仓天数
+V2_COOLDOWN_DAYS = 5                # 交易冷却期(防止信号扎堆)
 V2_COST_RATE = 0.0003               # 单边交易成本(万分之三)
