@@ -10,12 +10,12 @@ import math
 
 ZZ_CODE = "512100"
 
-BUY_PP_MAX = 40
+BUY_PP_MAX = 35           # 比510300更严, 中证1000波动大
 SELL_PP_MIN = 75
 SELL_VR_MIN = 1.4
 
 MIN_HOLD = 5
-COOLDOWN = 3
+COOLDOWN = 1            # 中证1000节奏快, 极短冷却期
 VOL_LOOKBACK = 20
 TRADE_START = "2024-01-01"
 
@@ -54,25 +54,29 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         action = None
         reason = ""
 
-        # ---- 买入 (与510300同构 + 恐慌路径) ----
+        # ---- 买入 (五路径) ----
         if position == 0 and cooldown >= COOLDOWN:
             is_accum = td == "ACCUMULATE"
             pp_low = pp is not None and pp <= BUY_PP_MAX
-            pp_extreme = pp is not None and pp <= 10
-            sp_ok = sp is not None and sp >= 60
+            pp_extreme = pp is not None and pp <= 15
+            sp_ok = sp is not None and sp >= 50
             cp_ok = cp is not None and cp >= 60
             tp_cold = tp is not None and tp <= 10
 
-            if is_accum and pp_low and sp_ok:
+            # 买入: 只在跌日买入 (中证1000 ACCUMULATE集群中第一个往往不是底)
+            buying = False
+            if is_accum and chg <= -5:
+                action = "BUY"
+                reason = f"暴跌抄底: 跌{chg:.1f}%+pp{pp:.0f}"
+            elif is_accum and pp_extreme:
+                action = "BUY"
+                reason = f"极端低位: pp{pp:.0f}"
+            elif is_accum and pp_low and sp_ok and chg <= -2.5:
                 action = "BUY"
                 reason = f"低位吸筹: pp{pp:.0f}+sp{sp:.0f}"
             elif is_accum and pp_low and tp_cold:
                 action = "BUY"
                 reason = f"极冷吸筹: pp{pp:.0f}+成交额{tp:.0f}分位"
-            elif is_accum and pp_extreme and cp_ok:
-                action = "BUY"
-                reason = f"极端低位: pp{pp:.0f}+cp{cp:.0f}%"
-            # 恐慌暴跌 (中证1000波动大)
             elif chg <= -3 and vr >= 1.5 and pp is not None and pp <= 35:
                 action = "BUY"
                 reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
