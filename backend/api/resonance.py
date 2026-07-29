@@ -41,6 +41,25 @@ def resonance_day(code: str = DEFAULT_RESONANCE_CODE, date: str = ""):
 def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
     if code not in ETFS:
         raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
+
+    from analysis.strategy_kc import run_kc_strategy, KC_CODE
+    if code == KC_CODE:
+        etf_rows = list(reversed(get_by_code(code)))
+        result = run_kc_strategy(etf_rows)
+        return {"code": code, "trades": result["trades"]}
+
+    from analysis.strategy_zz import run_zz_strategy, ZZ_CODE
+    if code == ZZ_CODE:
+        etf_rows = list(reversed(get_by_code(code)))
+        result = run_zz_strategy(etf_rows)
+        return {"code": code, "trades": result["trades"]}
+
+    from analysis.strategy_div import run_div_strategy, DIV_CODE
+    if code == DIV_CODE:
+        etf_rows = list(reversed(get_by_code(code)))
+        result = run_div_strategy(etf_rows)
+        return {"code": code, "trades": result["trades"]}
+
     etf_rows = list(reversed(get_by_code(code)))
     turnover = enrich_turnover(get_turnover_series())
     margin = get_margin_series()
@@ -130,3 +149,10 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
             trades.append({"date": d, "action": action, "price": close, "reason": reason})
 
     return {"code": code, "trades": trades}
+
+
+@router.get("/trades_kc")
+def resonance_trades_kc():
+    from analysis.strategy_kc import run_kc_strategy, KC_CODE
+    etf_rows = list(reversed(get_by_code(KC_CODE)))
+    return run_kc_strategy(etf_rows)
