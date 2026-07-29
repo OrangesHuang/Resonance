@@ -49,6 +49,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     dist_count = 0
     waiting_for_reversal = False
     last_sell_price = None
+    entry_shares = None      # 买入时份额
+    peak_net_inflow = 0.0    # 累计净流入峰值
 
     for i in range(n):
         row = rows[i]
@@ -60,6 +62,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         tp = row.get("_tp")
         vr = row.get("volume_ratio") or 0
         chg = row.get("change_pct") or 0
+        sd_yi = row.get("shares_delta_yi") or 0
 
         if d < TRADE_START:
             continue
@@ -126,20 +129,39 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             elif pp is not None and pp > 50:
                 waiting_for_reversal = False  # 价格回升太多, 重置
 
-        # ---- 卖出 ----
+        # ---- 卖出 (份额驱动) ----
         if position == 1:
             hold_days += 1
+            cur_shares = row.get("shares_yi")
+
+            # 跟踪累计净流入
+            if cur_shares is not None and entry_shares is not None:
+                net_flow = cur_shares - entry_shares
+                peak_net_inflow = max(peak_net_inflow, net_flow)
+
+            # 卖出条件1: 单日巨量流出 (≥5亿) + 累计净流入已回撤>50%
+            massive_outflow = (sd_yi is not None and sd_yi <= -5
+                               and peak_net_inflow > 0
+                               and cur_shares is not None
+                               and entry_shares is not None
+                               and (cur_shares - entry_shares) < peak_net_inflow * 0.5)
+
+            # 卖出条件2: DISTRIBUTE + 份额净流出 (经典确认)
             is_dist = td == "DISTRIBUTE"
             pp_high = pp is not None and pp >= SELL_PP_MIN
             vr_ok = vr >= SELL_VR_MIN
-
-            if is_dist and pp_high and vr_ok:
+            if is_dist and pp_high and vr_ok and sd_yi < 0:
                 dist_count += 1
 
-            if hold_days >= MIN_HOLD and is_dist and dist_count >= sell_threshold:
-                reason = (f"出货确认({dist_count}/{sell_threshold})"
-                          f"+pp{pp:.0f}+vr{vr:.1f}")
-                action = "SELL"
+            if hold_days >= MIN_HOLD:
+                if massive_outflow:
+                    action = "SELL"
+                    reason = (f"巨量流出: {sd_yi:.0f}亿+净流入回撤"
+                              f"+pp{pp:.0f}")
+                elif is_dist and dist_count >= sell_threshold:
+                    reason = (f"出货确认({dist_count}/{sell_threshold})"
+                              f"+pp{pp:.0f}+vr{vr:.1f}")
+                    action = "SELL"
 
         if action == "BUY":
             position = 1.0
@@ -147,6 +169,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             cooldown = 0
             dist_count = 0
             waiting_for_reversal = False
+            entry_shares = row.get("shares_yi")
+            peak_net_inflow = 0.0
             vol = row.get("volume") or 0
             prev_vols = [rows[j].get("volume") or 0
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
