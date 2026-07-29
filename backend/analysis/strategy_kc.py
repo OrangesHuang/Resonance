@@ -61,7 +61,7 @@ def _is_quasi_accum(row: dict) -> bool:
             return True
 
     # 恐慌暴跌 (-4.5%对科创综指已经是极端事件)
-    if chg <= -4.5 and vr >= 0.8 and pp <= 70:
+    if chg <= -4.5 and vr >= 0.8 and pp <= 40:
         return True
     if chg <= PANIC_DROP and vr >= 1.5 and pp <= PANIC_PP_MAX:
         return True
@@ -82,6 +82,7 @@ def run_kc_strategy(rows: list[dict]) -> dict:
     cooldown = COOLDOWN
     sell_threshold = 1
     dist_count = 0
+    last_known_shares = None  # 最近一次已知份额, 用于判断DISTRIBUTE真假
 
     for i in range(n):
         row = rows[i]
@@ -130,8 +131,8 @@ def run_kc_strategy(rows: list[dict]) -> dict:
                 action = "BUY"
                 reason = f"极低位吸筹: pp{pp:.0f}(卖压耗尽)"
 
-            # 路径5: 恐慌暴跌买入 (暴跌+放量, 不要求pp够低)
-            elif chg <= -4.5 and vr >= 1.5 and pp is not None and pp <= 70:
+            # 路径5: 恐慌暴跌买入 (pp≤40, 只在中低位置接, 不在半山腰接飞刀)
+            elif chg <= -4.5 and vr >= 1.5 and pp is not None and pp <= 40:
                 action = "BUY"
                 reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
 
@@ -142,7 +143,17 @@ def run_kc_strategy(rows: list[dict]) -> dict:
             pp_high = pp is not None and pp >= SELL_PP_MIN
             vr_high = vr >= SELL_VR_MIN
 
-            if is_dist and pp_high and vr_high:
+            # 份额验证: 如果份额在扩张(较上次已知值+5%), 跳过DISTRIBUTE
+            # 机构还在买, DISTRIBUTE信号是假阳性
+            cur_shares = row.get("shares_yi")
+            share_expanding = False
+            if (last_known_shares is not None and cur_shares is not None
+                    and last_known_shares > 0):
+                share_expanding = (cur_shares - last_known_shares) / last_known_shares >= 0.05
+            if cur_shares is not None:
+                last_known_shares = cur_shares
+
+            if is_dist and pp_high and vr_high and not share_expanding:
                 dist_count += 1
 
             if hold_days >= MIN_HOLD and is_dist and dist_count >= sell_threshold:
@@ -155,6 +166,7 @@ def run_kc_strategy(rows: list[dict]) -> dict:
             hold_days = 0
             cooldown = 0
             dist_count = 0
+            last_known_shares = row.get("shares_yi")
             # 量价记忆: 买入量比 → 卖出阈值
             vol = row.get("volume") or 0
             prev_vols = [rows[j].get("volume") or 0
