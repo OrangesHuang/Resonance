@@ -51,6 +51,20 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
     from analysis.strategy_zz import run_zz_strategy, ZZ_CODE
     if code == ZZ_CODE:
         etf_rows = list(reversed(get_by_code(code)))
+        # 注入成交额分位 (_tp) 和融资分位 (_mp)
+        turnover = enrich_turnover(get_turnover_series())
+        margin = get_margin_series()
+        t_pct = percentile_series(
+            [r.get("date") for r in turnover],
+            [turnover_value(r) for r in turnover],
+            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+        m_pct = percentile_series(
+            [r.get("date") for r in margin],
+            [r.get("fin_balance_yi") for r in margin],
+            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+        for r in etf_rows:
+            r["_tp"] = t_pct.get(r["date"], {}).get("percentile")
+            r["_mp"] = m_pct.get(r["date"], {}).get("percentile")
         result = run_zz_strategy(etf_rows)
         return {"code": code, "trades": result["trades"]}
 
