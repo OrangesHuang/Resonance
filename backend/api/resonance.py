@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException
 
 from config import ETFS, DEFAULT_RESONANCE_CODE, SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS
@@ -81,17 +79,12 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
     MIN_HOLD = 10
     VOL_LOOKBACK = 20
     TRADE_START = "2024-10-08"
-    # V1.1: 份额回撤辅助确认出货，买入份额扩张提高卖出门槛
-    SHARE_REVERSAL_RATIO = 0.5   # 份额从峰值回撤超过50%→等效1次出货确认
 
     trades = []
     position = 0.0
     hold_days = 0
     sell_threshold = 1
     dist_count = 0
-    entry_shares: Optional[float] = None
-    peak_shares: float = 0.0
-    share_confirmed = False      # 份额回撤已计过确认
 
     for i, row in enumerate(etf_rows):
         d = row["date"]
@@ -106,8 +99,6 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
         cp = row.get("composite_prob")
         tp = t_pct.get(d, {}).get("percentile")
         mp = m_pct.get(d, {}).get("percentile")
-        cur_shares = row.get("shares_yi")
-        sd_pct = row.get("shares_delta_pct")
 
         action = None
         reason = ""
@@ -128,53 +119,30 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
 
         if position == 1:
             hold_days += 1
-            if cur_shares is not None:
-                peak_shares = max(peak_shares, cur_shares)
-
-            # 出货确认路径1: 经典 V1 条件
             if td == "DISTRIBUTE" and pp is not None and pp >= SELL_PP \
                     and mp is not None and mp >= SELL_MP:
                 dist_count += 1
 
-            # 出货确认路径2(V1.1新增): 份额从峰值回撤超过50%
-            if (not share_confirmed and entry_shares is not None
-                    and cur_shares is not None and peak_shares > entry_shares
-                    and cur_shares < peak_shares):
-                expansion = peak_shares - entry_shares
-                reversal = peak_shares - cur_shares
-                if expansion > 0 and reversal / expansion >= SHARE_REVERSAL_RATIO:
-                    dist_count += 1
-                    share_confirmed = True
-
             if hold_days >= MIN_HOLD and td == "DISTRIBUTE" \
                     and dist_count >= sell_threshold:
-                reason = (f"出货共振(第{dist_count}/{sell_threshold}次确认)"
+                reason = (f"出货共振(第{dist_count}/{sell_threshold}次出货确认)"
                           f"+价格{pp:.0f}%+融资{mp:.0f}%分位")
-                if share_confirmed:
-                    reason += "+份额回撤"
                 action = "SELL"
 
         if action == "BUY":
             position = 1.0
             hold_days = 0
             dist_count = 0
-            share_confirmed = False
-            entry_shares = cur_shares
-            peak_shares = cur_shares or 0.0
             vol = row.get("volume") or 0
             prev_vols = [etf_rows[j].get("volume") or 0
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
             avg_vol = sum(prev_vols) / len(prev_vols) if prev_vols else 1
             ratio = vol / avg_vol if avg_vol > 0 else 1.0
             tp_cold = tp is not None and tp <= 10
-            # V1.1: sell_threshold 加入份额扩张因子
-            share_bonus = 0.0
-            if sd_pct is not None and sd_pct > 2:
-                share_bonus = min(3.0, (sd_pct - 2) * 0.5)  # 份额每增1%加0.5, 上限3
             if tp_cold:
                 sell_threshold = 1
             else:
-                sell_threshold = max(2, math.ceil(2 + ratio * 0.55 + share_bonus))
+                sell_threshold = max(2, math.ceil(2 + ratio * 0.55))
             trades.append({"date": d, "action": action, "price": close, "reason": reason})
         elif action == "SELL":
             position = 0.0
