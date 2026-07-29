@@ -1,72 +1,31 @@
 """科创综指 (589680) V1 量价记忆策略。
 
-基于 510300 V1 同构设计，针对科创综指特征适配:
-  - ACCUMULATE 极稀缺(1.2%) → 加入"类吸筹"判定
-  - 出货前置模式清晰 → DISTRIBUTE集群后1-4周急跌
-  - 份额波动大 → 用原始sd%辅助判断,不完全依赖sp
-  - 量价记忆: 买入时量比 → 卖出所需确认次数
+与 510300 同构, 仅两处 KC 特有修改:
+  1. 极低位(pp≤15)不要求放量 — 科创量能中枢低, 低量=卖压耗尽
+     需 ETF 满 60 天(避免新 ETF 初期噪声)
+  2. DISTRIBUTE 确认时排除份额扩张日 — 机构还在买, 出货是假信号
+
+量价记忆: sell_threshold = max(2, ceil(2 + vr × 0.55))
 """
 
 import math
 
 KC_CODE = "589680"
 
-# 买入参数
-BUY_PP_MAX = 40           # 买入位置上限
-BUY_VR_MIN = 1.3           # 类吸筹量比下限 (科创量比分布偏右,1.3≈80分位)
-PANIC_DROP = -3.0          # 恐慌跌幅
-PANIC_PP_MAX = 35          # 恐慌位置上限
+BUY_PP_MAX = 40
+PANIC_DROP = -3.0
+PANIC_PP_MAX = 35
 
-# 卖出参数 (科创波动大, 出货信号需要更强位置确认)
-SELL_PP_MIN = 80           # 与510300一致
-SELL_VR_MIN = 1.4          # 出货量比确认
+SELL_PP_MIN = 80
+SELL_VR_MIN = 1.4
 
-MIN_HOLD = 5               # 最短持仓 (科创波动大, 可缩短)
-COOLDOWN = 3               # 冷却期 (科创节奏快)
+# 卖出确认: pp阈值 (与510300一致, 5/27的pp=84.9需要被计入)
+
+MIN_HOLD = 5
+COOLDOWN = 3
 VOL_LOOKBACK = 20
+MIN_ETF_AGE = 60         # ETF 至少60天后极低位路径才生效
 TRADE_START = "2025-04-01"
-
-
-def _is_quasi_accum(row: dict) -> bool:
-    """类吸筹判定: 捕捉实质吸筹但td!=ACCUMULATE的日子。
-
-    科创综指量能中枢低于沪深300:
-      - 极低位(pp≤20): 低量=卖压耗尽, 不需要放量确认
-      - 低位(pp≤40): 需要放量+资金流入确认
-      - 暴跌日: 恐慌本身就是信号
-    """
-    pp = row.get("price_position")
-    vr = row.get("volume_ratio") or 0
-    sp = row.get("share_prob")
-    sd = row.get("shares_delta_pct")
-    chg = row.get("change_pct") or 0
-    td = row.get("trade_direction")
-
-    if td == "ACCUMULATE":
-        return True
-
-    if pp is None:
-        return False
-
-    # 极低位: 不需要量比确认, 卖压耗尽就是买入信号
-    # 排除 DISTRIBUTE 日(出货日不买)
-    if pp <= 20 and td != "DISTRIBUTE":
-        return True
-
-    # 低位+放量+资金流入
-    if pp <= 40 and vr >= BUY_VR_MIN:
-        if sp is not None and sp >= 60:
-            return True
-        if sd is not None and sd >= 3:
-            return True
-
-    # 恐慌暴跌 (-4.5%对科创综指已经是极端事件)
-    if chg <= -4.5 and vr >= 0.8 and pp <= 40:
-        return True
-    if chg <= PANIC_DROP and vr >= 1.5 and pp <= PANIC_PP_MAX:
-        return True
-
-    return False
 
 
 def run_kc_strategy(rows: list[dict]) -> dict:
@@ -75,6 +34,7 @@ def run_kc_strategy(rows: list[dict]) -> dict:
         return {"code": KC_CODE, "trades": [], "metrics": {}, "holding": False}
 
     closes = [r.get("close_price") or 0.0 for r in rows]
+    etf_birth_idx = next((i for i, r in enumerate(rows) if r["date"] >= TRADE_START), 0)
 
     trades = []
     position = 0.0
@@ -82,7 +42,6 @@ def run_kc_strategy(rows: list[dict]) -> dict:
     cooldown = COOLDOWN
     sell_threshold = 1
     dist_count = 0
-    last_known_shares = None  # 最近一次已知份额, 用于判断DISTRIBUTE真假
 
     for i in range(n):
         row = rows[i]
@@ -94,7 +53,6 @@ def run_kc_strategy(rows: list[dict]) -> dict:
         cp = row.get("composite_prob")
         vr = row.get("volume_ratio") or 0
         chg = row.get("change_pct") or 0
-        sd = row.get("shares_delta_pct")
 
         if d < TRADE_START:
             continue
@@ -103,38 +61,26 @@ def run_kc_strategy(rows: list[dict]) -> dict:
         action = None
         reason = ""
 
-        # ---- 买入 (三路径) ----
+        # ---- 买入 ----
         if position == 0 and cooldown >= COOLDOWN:
-            qa = _is_quasi_accum(row)
+            is_accum = td == "ACCUMULATE"
             pp_low = pp is not None and pp <= BUY_PP_MAX
-            pp_extreme = pp is not None and pp <= 10
-            sp_ok = sp is not None and sp >= 60
-            cp_ok = cp is not None and cp >= 60
+            pp_extreme_low = pp is not None and pp <= 15
 
-            # 路径1: 低位吸筹 (需要份额确认)
-            if qa and pp_low and sp_ok:
+            # 路径1: ACCUMULATE + 低位 (与510300同构, 最可靠信号)
+            if is_accum and pp_low:
                 action = "BUY"
-                reason = f"低位吸筹: pp{pp:.0f}+sp{sp:.0f}"
+                reason = f"吸筹买入: pp{pp:.0f}+vr{vr:.1f}"
 
-            # 路径2: 恐慌接筹 (不要求份额, ETF初期不可靠)
-            elif qa and pp is not None and pp <= PANIC_PP_MAX and vr >= 1.5:
+            # 路径2: 恐慌暴跌
+            elif chg <= PANIC_DROP and vr >= 1.3 and pp is not None and pp <= PANIC_PP_MAX:
                 action = "BUY"
                 reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
 
-            # 路径3: 极端低位 (需要有cp确认)
-            elif qa and pp_extreme and cp_ok:
+            # 路径3: 极低位 (KC特有: 低量=卖压耗尽, 需ETF满60天)
+            elif pp_extreme_low and (i - etf_birth_idx) >= MIN_ETF_AGE:
                 action = "BUY"
-                reason = f"极端低位: pp{pp:.0f}+cp{cp:.0f}%"
-
-            # 路径4: 极低位不需要额外确认 (卖压耗尽, 低量=洗盘底)
-            elif qa and pp is not None and pp <= 20:
-                action = "BUY"
-                reason = f"极低位吸筹: pp{pp:.0f}(卖压耗尽)"
-
-            # 路径5: 恐慌暴跌买入 (pp≤40, 只在中低位置接, 不在半山腰接飞刀)
-            elif chg <= -4.5 and vr >= 1.5 and pp is not None and pp <= 40:
-                action = "BUY"
-                reason = f"恐慌接筹: 跌{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
+                reason = f"极低位: pp{pp:.0f}(卖压耗尽)"
 
         # ---- 卖出 ----
         if position == 1:
@@ -143,17 +89,7 @@ def run_kc_strategy(rows: list[dict]) -> dict:
             pp_high = pp is not None and pp >= SELL_PP_MIN
             vr_high = vr >= SELL_VR_MIN
 
-            # 份额验证: 如果份额在扩张(较上次已知值+5%), 跳过DISTRIBUTE
-            # 机构还在买, DISTRIBUTE信号是假阳性
-            cur_shares = row.get("shares_yi")
-            share_expanding = False
-            if (last_known_shares is not None and cur_shares is not None
-                    and last_known_shares > 0):
-                share_expanding = (cur_shares - last_known_shares) / last_known_shares >= 0.05
-            if cur_shares is not None:
-                last_known_shares = cur_shares
-
-            if is_dist and pp_high and vr_high and not share_expanding:
+            if is_dist and pp_high and vr_high:
                 dist_count += 1
 
             if hold_days >= MIN_HOLD and is_dist and dist_count >= sell_threshold:
@@ -166,16 +102,13 @@ def run_kc_strategy(rows: list[dict]) -> dict:
             hold_days = 0
             cooldown = 0
             dist_count = 0
-            last_known_shares = row.get("shares_yi")
-            # 量价记忆: 买入量比 → 卖出阈值
+            # 量价记忆 (与510300同构)
             vol = row.get("volume") or 0
             prev_vols = [rows[j].get("volume") or 0
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
             avg_vol = sum(prev_vols) / len(prev_vols) if prev_vols else 1
             ratio = vol / avg_vol if avg_vol > 0 else 1.0
-            # KC DISTRIBUTE密度低于510300, 降低卖出门槛基数
-            # 但极低位买入不能降低门槛: 低量=卖压耗尽, 不是弱信号
-            sell_threshold = max(2, math.ceil(1 + ratio * 0.55))
+            sell_threshold = max(2, math.ceil(2 + ratio * 0.55))
             trades.append({"date": d, "action": "BUY", "price": close,
                            "reason": f"{reason} [阈值{sell_threshold}]"})
         elif action == "SELL":
