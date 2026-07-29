@@ -86,3 +86,23 @@ export function fetchDataJobs(): Promise<JobState[]> {
 export function startDataJob(req: StartJobRequest): Promise<StartJobResponse> {
   return post('/data/jobs', req)
 }
+
+// ========== V2 信号系统 ==========
+
+import type { V2SignalsResponse, V2SignalDayDetail, V2RegimeResponse, V2BacktestResponse } from './types'
+
+export function fetchResonanceV2Signals(code = '510300'): Promise<V2SignalsResponse> {
+  return get(`/resonance/v2/signals/${code}`)
+}
+
+export function fetchResonanceV2Signal(code: string, date: string): Promise<V2SignalDayDetail> {
+  return get(`/resonance/v2/signal?code=${code}&date=${date}`)
+}
+
+export function fetchResonanceV2Regime(code = '510300'): Promise<V2RegimeResponse> {
+  return get(`/resonance/v2/regime?code=${code}`)
+}
+
+export function fetchResonanceV2Backtest(code = '510300'): Promise<V2BacktestResponse> {
+  return get(`/resonance/v2/backtest/${code}`)
+}

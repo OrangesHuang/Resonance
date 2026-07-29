@@ -335,3 +335,92 @@ export interface StartJobRequest {
 export interface StartJobResponse {
   job_id: string
 }
+
+// ========== V2 信号系统 ==========
+
+export interface V2AnomalyVector {
+  vol: number
+  price: number
+  share: number
+  breadth: number
+  divergence: number
+}
+
+export interface V2SignalPoint {
+  date: string
+  close: number
+  anomaly: V2AnomalyVector
+  p_accum: number
+  p_dist: number
+  p_neutral: number
+  signal: number
+  match_accum: number
+  match_dist: number
+  regime: number
+  regime_label: 'bull' | 'bear' | 'range'
+}
+
+export interface V2SignalsResponse {
+  code: string
+  regime: number
+  regime_label: string
+  latest: V2SignalPoint | null
+  signal_count: number
+  signals: V2SignalPoint[]
+}
+
+export interface V2DimensionDetail {
+  key: string
+  name: string
+  score: number
+  detail: string
+}
+
+export interface V2SignalDayDetail {
+  date: string
+  anomaly: V2AnomalyVector
+  dimensions: V2DimensionDetail[]
+  p_accum: number
+  p_dist: number
+  p_neutral: number
+  signal: number
+  match_accum: number
+  match_dist: number
+  regime: number
+  regime_label: string
+}
+
+export interface V2RegimeResponse {
+  code: string
+  regime_score: number
+  regime_label: string
+  data_points: number
+}
+
+export interface V2BacktestMetrics {
+  total_return: number
+  annual_return: number
+  annual_vol: number
+  sharpe: number
+  max_drawdown: number
+  days: number
+  exposure_pct: number
+  trade_count: number
+}
+
+export interface V2BacktestTrade {
+  date: string
+  action: 'BUY' | 'SELL'
+  from_pos: number
+  to_pos: number
+  signal: number
+  price: number
+  reason: string
+}
+
+export interface V2BacktestResponse {
+  metrics: V2BacktestMetrics
+  benchmark: V2BacktestMetrics
+  trades: V2BacktestTrade[]
+  equity_curve: { date: string; equity: number; position: number }[]
+}

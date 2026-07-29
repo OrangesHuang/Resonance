@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { useResonance } from '../hooks/useResonance'
+import { useResonance, useResonanceV2 } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
 import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
 import ResonanceLights from '../components/ResonanceLights'
+import ResonanceV2Panel from '../components/ResonanceV2Panel'
 import ResonanceKline from '../components/ResonanceKline'
 import ResonanceChart from '../components/ResonanceChart'
 import ResonanceHeatmap from '../components/ResonanceHeatmap'
@@ -116,10 +117,12 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
 
 export default function Resonance() {
   const [code, setCode] = useState('510300')
+  const [version, setVersion] = useState<'v1' | 'v2'>('v1')
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
 
   const { data, isLoading, error } = useResonance(code)
+  const { data: v2Data, isLoading: v2Loading } = useResonanceV2(code)
   const { data: etfList } = useQuery({
     queryKey: ['etfList'],
     queryFn: fetchEtfList,
@@ -139,6 +142,7 @@ export default function Resonance() {
 
   const tradeDates = history?.kline.map(k => k.date) ?? []
   const klineStart = tradeDates[0] ?? null
+  const isV1 = version === 'v1'
   const displayDate = selected?.date ?? data?.date ?? tradeDates[tradeDates.length - 1] ?? ''
   const curIdx = displayDate ? tradeDates.indexOf(displayDate) : -1
   const canPrev = curIdx === -1 ? tradeDates.length > 1 : curIdx > 0
@@ -172,15 +176,15 @@ export default function Resonance() {
     return () => window.removeEventListener('keydown', onKey)
   }, [stepDay])
 
-  if (error) {
+  if (error && version === 'v1') {
     return <div className="text-red-400 text-center py-20">共振数据加载失败，请确认服务已启动</div>
   }
-  if (isLoading || !data) {
+  if (version === 'v1' && (isLoading || !data)) {
     return <div className="text-gray-400 text-center py-20">共振数据加载中...</div>
   }
 
   const selectLight = (key: string) => {
-    if (data.date) setSelected({ date: data.date, indicator: key })
+    if (data?.date) setSelected({ date: data.date, indicator: key })
   }
   const selectDate = (date: string) => setSelected({ date, indicator: null })
   const selectCell = (date: string, indicator: string) => setSelected({ date, indicator })
@@ -189,7 +193,7 @@ export default function Resonance() {
     setDateWindow(prev => (prev && prev.start === w.start && prev.end === w.end ? prev : w))
   }
 
-  const resonanceHistory = klineStart ? data.history.filter(h => h.date >= klineStart) : data.history
+  const resonanceHistory = klineStart && data ? data.history.filter(h => h.date >= klineStart) : (data?.history ?? [])
 
   return (
     <div className="space-y-4">
@@ -197,13 +201,26 @@ export default function Resonance() {
         <div>
           <h2 className="text-lg font-bold text-white">多指标共振</h2>
           <p className="text-xs text-gray-500 mt-1">
-            {data.name}（{data.code}）× 市场情绪 · 红灯=出货/过热风险，绿灯=吸筹/冷清机会
+            {data?.name ?? code}（{code}）× 市场情绪 · 红灯=出货/过热，绿灯=吸筹/冷清
           </p>
         </div>
+
+        {/* V1/V2 切换 */}
+        <div className="ml-auto flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+          <button
+            onClick={() => setVersion('v1')}
+            className={`px-3 py-1 text-xs rounded transition-colors ${isV1 ? 'bg-sky-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+          >V1 共振</button>
+          <button
+            onClick={() => setVersion('v2')}
+            className={`px-3 py-1 text-xs rounded transition-colors ${!isV1 ? 'bg-sky-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+          >V2 贝叶斯</button>
+        </div>
+
         <select
           value={code}
           onChange={e => setCode(e.target.value)}
-          className="ml-auto bg-gray-800 border border-gray-700 text-sm text-gray-200 rounded px-3 py-1.5 focus:outline-none focus:border-gray-500"
+          className="bg-gray-800 border border-gray-700 text-sm text-gray-200 rounded px-3 py-1.5 focus:outline-none focus:border-gray-500"
         >
           {(etfList ?? []).map(etf => (
             <option key={etf.code} value={etf.code}>
@@ -232,11 +249,19 @@ export default function Resonance() {
         <span className="ml-auto text-[11px] text-gray-600">逐日回放练盘感（键盘 ← → 亦可）· 点选/缩放任意图表，全部联动</span>
       </div>
 
-      <ResonanceLights
-        data={data}
-        selectedKey={selected?.date === data.date ? selected?.indicator ?? null : null}
-        onSelect={selectLight}
-      />
+      {/* V1: 红绿灯面板 / V2: 贝叶斯信号面板 */}
+      {isV1 && data ? (
+        <ResonanceLights
+          data={data}
+          selectedKey={selected?.date === data.date ? selected?.indicator ?? null : null}
+          onSelect={selectLight}
+        />
+      ) : null}
+      {!isV1 && v2Data ? (
+        <ResonanceV2Panel data={v2Data} />
+      ) : !isV1 && v2Loading ? (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center text-gray-500">V2 信号加载中...</div>
+      ) : null}
 
       <MarketSentimentSection
         selectedDate={selected?.date ?? null}
@@ -269,34 +294,38 @@ export default function Resonance() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-2">红绿灯走势（点击柱查看当日依据）</h3>
-          <ResonanceChart
-            history={resonanceHistory}
-            selectedDate={selected?.date ?? null}
-            onSelectDate={selectDate}
-            dateWindow={dateWindow}
-            onZoomChange={handleZoom}
-          />
+      {isV1 && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-300 mb-2">红绿灯走势（点击柱查看当日依据）</h3>
+            <ResonanceChart
+              history={resonanceHistory}
+              selectedDate={selected?.date ?? null}
+              onSelectDate={selectDate}
+              dateWindow={dateWindow}
+              onZoomChange={handleZoom}
+            />
+          </div>
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-300 mb-2">指标状态热力图（点击单元格查看依据）</h3>
+            <ResonanceHeatmap
+              data={{ ...data!, history: resonanceHistory }}
+              selectedDate={selected?.date ?? null}
+              onSelect={selectCell}
+              dateWindow={dateWindow}
+              onZoomChange={handleZoom}
+            />
+          </div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-2">指标状态热力图（点击单元格查看依据）</h3>
-          <ResonanceHeatmap
-            data={{ ...data, history: resonanceHistory }}
-            selectedDate={selected?.date ?? null}
-            onSelect={selectCell}
-            dateWindow={dateWindow}
-            onZoomChange={handleZoom}
-          />
-        </div>
-      </div>
+      )}
 
-      <ResonanceEvidencePanel
-        code={code}
-        selection={selected}
-        onClose={() => setSelected(null)}
-      />
+      {isV1 && (
+        <ResonanceEvidencePanel
+          code={code}
+          selection={selected}
+          onClose={() => setSelected(null)}
+        />
+      )}
 
       <ResonanceMethodNote />
     </div>
