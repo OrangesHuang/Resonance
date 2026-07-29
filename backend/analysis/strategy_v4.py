@@ -16,7 +16,7 @@
   - 大资金衰减: 天量买入180天后自动退出(资金影响消退)
 
 仓位管理:
-  - 基础1份，天量资金+1份，极端低位+1份，最多3份
+  - 满仓/空仓二元切换，不存在分批次加仓
 """
 
 from typing import Optional
@@ -100,8 +100,8 @@ def run_v4_strategy(rows: list[dict]) -> dict:
         action: Optional[str] = None
         reason = ""
 
-        # ====== 买入逻辑 ======
-        if position < 3 and buy_cooldown >= COOLDOWN_BUY:
+        # ====== 买入逻辑（仅空仓时） ======
+        if position == 0 and buy_cooldown >= COOLDOWN_BUY:
             is_accum = td == "ACCUMULATE"
 
             # 1. 恐慌接筹
@@ -120,37 +120,25 @@ def run_v4_strategy(rows: list[dict]) -> dict:
                      and vr >= VALUE_VR_MIN)
 
             if panic:
-                units = 1
-                if sd is not None and sd >= WHALE_SHARE_THRESHOLD:
-                    units += 1  # 天量资金加码
-                    whale_shadow_end = i + WHALE_SHADOW_DAYS
-                if pp is not None and pp < 10:
-                    units += 1  # 极端低位加码
-                units = min(units, 3 - position)
                 action = "BUY"
                 reason = (f"恐慌接筹: 跌{chg:.1f}%+量比{vr:.1f}"
-                          f"+份额{sp:.0f}+位置{pp:.0f} ×{units}份")
+                          f"+份额{sp:.0f}+位置{pp:.0f}")
+                if sd is not None and sd >= WHALE_SHARE_THRESHOLD:
+                    whale_shadow_end = i + WHALE_SHADOW_DAYS
 
             elif dip:
-                units = 1
-                if sd is not None and sd >= WHALE_SHARE_THRESHOLD:
-                    units += 1
-                    whale_shadow_end = i + WHALE_SHADOW_DAYS
-                units = min(units, 3 - position)
                 action = "BUY"
                 reason = (f"回调吸筹: 位置{pp:.0f}+份额{sp:.0f}"
-                          f"+量比{vr:.1f} ×{units}份")
+                          f"+量比{vr:.1f}")
+                if sd is not None and sd >= WHALE_SHARE_THRESHOLD:
+                    whale_shadow_end = i + WHALE_SHADOW_DAYS
 
             elif value:
-                units = 1
-                if pp is not None and pp < 10:
-                    units += 1
-                units = min(units, 3 - position)
                 action = "BUY"
-                reason = f"极端价值: 位置{pp:.0f}+量比{vr:.1f} ×{units}份"
+                reason = f"极端价值: 位置{pp:.0f}+量比{vr:.1f}"
 
-        # ====== 卖出逻辑 ======
-        if position > 0 and sell_cooldown >= COOLDOWN_SELL:
+        # ====== 卖出逻辑（仅持仓时） ======
+        if position == 1 and sell_cooldown >= COOLDOWN_SELL:
             hold_days += 1
             is_dist = td == "DISTRIBUTE"
             pp_high = pp is not None and pp >= EXIT_PP_MIN
@@ -199,8 +187,7 @@ def run_v4_strategy(rows: list[dict]) -> dict:
             # 公理3: 持有>交易，没有明确离场证据就不动
 
         if action == "BUY":
-            units = int(reason.split("×")[-1].replace("份", "")) if "×" in reason else 1
-            position += units
+            position = 1.0
             hold_days = 0
             buy_cooldown = 0
             sell_cooldown = 0
@@ -208,20 +195,18 @@ def run_v4_strategy(rows: list[dict]) -> dict:
             share_contract_streak = 0
             trades.append({
                 "date": d, "action": "BUY", "price": close,
-                "units": units, "position": position,
                 "reason": reason,
             })
         elif action == "SELL":
-            trades.append({
-                "date": d, "action": "SELL", "price": close,
-                "position_before": position,
-                "reason": reason,
-            })
             position = 0.0
             sell_cooldown = 0
             whale_shadow_end = 0
             distrib_streak = 0
             share_contract_streak = 0
+            trades.append({
+                "date": d, "action": "SELL", "price": close,
+                "reason": reason,
+            })
 
     metrics = _calc_metrics(trades, closes[-1] if closes else 0, position)
     return {"code": code, "trades": trades, "metrics": metrics,
@@ -233,37 +218,24 @@ def _calc_metrics(trades: list[dict], last_close: float,
     rounds = []
     buy_price = None
     buy_date = None
-    buy_units = 0
     for t in trades:
         if t["action"] == "BUY":
-            if buy_price is None:
-                buy_price = t["price"]
-                buy_date = t["date"]
-                buy_units = t.get("units", 1)
-            else:
-                # 加权平均成本
-                new_units = t.get("units", 1)
-                total_units = buy_units + new_units
-                buy_price = (buy_price * buy_units + t["price"] * new_units) / total_units
-                buy_units = total_units
-                buy_date = t["date"]  # 以最后一次加仓为准
+            buy_price = t["price"]
+            buy_date = t["date"]
         elif t["action"] == "SELL" and buy_price is not None:
             ret = (t["price"] - buy_price) / buy_price * 100
             rounds.append({
                 "buy_date": buy_date, "sell_date": t["date"],
-                "buy_price": round(buy_price, 4),
-                "sell_price": t["price"],
+                "buy_price": buy_price, "sell_price": t["price"],
                 "return_pct": round(ret, 2),
             })
             buy_price = None
-            buy_units = 0
 
     if position > 0 and buy_price is not None:
         ret = (last_close - buy_price) / buy_price * 100
         rounds.append({
             "buy_date": buy_date, "sell_date": None,
-            "buy_price": round(buy_price, 4),
-            "sell_price": last_close,
+            "buy_price": buy_price, "sell_price": last_close,
             "return_pct": round(ret, 2),
         })
 

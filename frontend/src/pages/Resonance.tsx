@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useResonance } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
-import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, fetchResonanceV4Trades } from '../api/client'
+import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, fetchResonanceV5Trades } from '../api/client'
 import ResonanceLights from '../components/ResonanceLights'
 import ResonanceKline from '../components/ResonanceKline'
 import ResonanceChart from '../components/ResonanceChart'
@@ -116,14 +116,14 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
 
 export default function Resonance() {
   const [code, setCode] = useState('510300')
-  const [version, setVersion] = useState<'v1' | 'v4'>('v1')
+  const [version, setVersion] = useState<'v1' | 'v5'>('v1')
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
 
   const { data, isLoading, error } = useResonance(code)
-  const { data: v4Data } = useQuery({
-    queryKey: ['resonanceV4', code],
-    queryFn: () => fetchResonanceV4Trades(code),
+  const { data: v5Data } = useQuery({
+    queryKey: ['resonanceV5', code],
+    queryFn: () => fetchResonanceV5Trades(code),
     placeholderData: keepPreviousData,
     staleTime: 10 * 60 * 1000,
   })
@@ -209,16 +209,16 @@ export default function Resonance() {
           </p>
         </div>
 
-        {/* V1/V4 切换 */}
+        {/* V1/ 切换 */}
         <div className="ml-auto flex items-center gap-1 bg-gray-800 rounded-lg p-1">
           <button
             onClick={() => setVersion('v1')}
             className={`px-3 py-1 text-xs rounded transition-colors ${isV1 ? 'bg-sky-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
           >V1 共振</button>
           <button
-            onClick={() => setVersion('v4')}
+            onClick={() => setVersion('v5')}
             className={`px-3 py-1 text-xs rounded transition-colors ${!isV1 ? 'bg-sky-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
-          >V4 政策市</button>
+          >V5 周期</button>
         </div>
 
         <select
@@ -253,7 +253,7 @@ export default function Resonance() {
         <span className="ml-auto text-[11px] text-gray-600">逐日回放练盘感（键盘 ← → 亦可）· 点选/缩放任意图表，全部联动</span>
       </div>
 
-      {/* V1: 红绿灯面板 / V4: 政策市策略 */}
+      {/* V1: 红绿灯面板 / : 政策市策略 */}
       {isV1 && data ? (
         <ResonanceLights
           data={data}
@@ -261,22 +261,22 @@ export default function Resonance() {
           onSelect={selectLight}
         />
       ) : null}
-      {!isV1 && v4Data ? (
+      {!isV1 && v5Data ? (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
           <div className="flex items-center gap-3">
-            <h3 className="text-base font-bold text-white">V4 政策市策略 · 924后逻辑</h3>
+            <h3 className="text-base font-bold text-white">V5 周期策略 · 吸筹出货锚定</h3>
             <span className="text-xs text-gray-500">
-              总收益 <span className={v4Data.metrics.total_return_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
-                {v4Data.metrics.total_return_pct >= 0 ? '+' : ''}{v4Data.metrics.total_return_pct}%
+              总收益 <span className={v5Data.metrics.total_return_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                {v5Data.metrics.total_return_pct >= 0 ? '+' : ''}{v5Data.metrics.total_return_pct}%
               </span>
-              {' '}| 胜率 {v4Data.metrics.win_rate}%
-              {' '}| {v4Data.metrics.trade_count}笔交易
-              {' '}| {v4Data.holding ? '当前持仓中' : '当前空仓'}
+              {' '}| 胜率 {v5Data.metrics.win_rate}%
+              {' '}| {v5Data.metrics.trade_count}笔交易
+              {' '}| {v5Data.holding ? '当前持仓中' : '当前空仓'}
             </span>
           </div>
           <p className="text-[11px] text-gray-600 mt-1">
-            买入: 恐慌接筹 · 回调吸筹 · 极端价值（分仓1~3份）
-            {' | '}卖出: 主力离场(份额收缩) · 系统性出货(连续DIST) · 天量衰减(180天)
+            买入: ACCUMULATE+低位+量能确认
+            {' | '}卖出: 量能对比验证(出货量≥吸筹量×0.8) · 份额连降辅助确认
           </p>
         </div>
       ) : null}
@@ -295,7 +295,7 @@ export default function Resonance() {
           <span className="text-[11px] text-gray-600">
             {isV1
               ? '淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（70%红/50%橙分界） · 最底彩条=交易方向（绿=吸筹/红=出货/灰=中性）'
-              : 'B=恐慌接筹/低位吸筹/极端低位买入 · S=高位出货/止盈/止损卖出 · V4政策市策略'}
+              : 'B=恐慌接筹/低位吸筹/极端低位买入 · S=高位出货/止盈/止损卖出 · V5周期策略'}
           </span>
         </div>
         {history ? (
@@ -303,7 +303,7 @@ export default function Resonance() {
             kline={history.kline}
             history={resonanceHistory}
             signals={history.daily_signals}
-            trades={isV1 ? (tradesData?.trades ?? []) : (v4Data?.trades ?? [])}
+            trades={isV1 ? (tradesData?.trades ?? []) : (v5Data?.trades ?? [])}
             selectedDate={selected?.date ?? null}
             onSelectDate={selectDate}
             dateWindow={dateWindow}

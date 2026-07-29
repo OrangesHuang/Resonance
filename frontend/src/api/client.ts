@@ -116,3 +116,7 @@ export function fetchResonanceV3Trades(code = '510300'): Promise<V3TradesRespons
 export function fetchResonanceV4Trades(code = '510300'): Promise<V3TradesResponse> {
   return get(`/resonance/v4/trades/${code}`)
 }
+
+export function fetchResonanceV5Trades(code = '510300'): Promise<V3TradesResponse> {
+  return get(`/resonance/v5/trades/${code}`)
+}

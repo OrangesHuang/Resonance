@@ -264,6 +264,20 @@ def resonance_v3_trades(code: str = "510300"):
             "metrics": result["metrics"], "holding": result["holding"]}
 
 
+# ========== V5 吸筹/出货周期策略 ==========
+
+@router.get("/v5/trades/{code}")
+def resonance_v5_trades(code: str = "510300"):
+    """V5 策略买卖点 — 锚定ACCUMULATE/DISTRIBUTE信号，量能周期对比。"""
+    if code not in ETFS:
+        raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
+    from analysis.strategy_v5 import run_v5_strategy
+    etf_rows = list(reversed(get_by_code(code)))
+    result = run_v5_strategy(etf_rows)
+    return {"code": code, "trades": result["trades"],
+            "metrics": result["metrics"], "holding": result["holding"]}
+
+
 # ========== V4 政策市策略 ==========
 
 @router.get("/v4/trades/{code}")
