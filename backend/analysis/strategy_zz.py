@@ -95,10 +95,12 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                     action = "BUY"
                     reason = f"极冷吸筹: pp{pp:.0f}+成交额{tp:.0f}分位"
 
-            # 反弹确认 (距上次卖出跌超7%)
+            # 反弹确认 (跌超7% + 当日回升 + 不在暴跌集群中)
             elif (is_accum and last_sell_price is not None
                   and close < last_sell_price * 0.93
-                  and pp is not None and pp <= 30):
+                  and chg > 0                      # 当日企稳回升, 非继续下跌
+                  and pp is not None and pp <= 30
+                  and crash_count < 2):
                 action = "BUY"
                 reason = f"反弹确认: 跌超7%后企稳 pp{pp:.0f}"
 
