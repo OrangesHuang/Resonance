@@ -43,8 +43,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-log "启动后端 http://localhost:$BACKEND_PORT （首次启动会自动回填情绪数据并预加载K线，约 1-2 分钟）"
-(cd "$BACKEND_DIR" && exec "$VENV_DIR/bin/python" -m uvicorn main:app --port "$BACKEND_PORT") &
+# 清理 Python 缓存，确保修改后的代码生效
+find "$BACKEND_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+log "启动后端 http://localhost:$BACKEND_PORT （--reload 自动重载代码修改）"
+(cd "$BACKEND_DIR" && exec "$VENV_DIR/bin/python" -m uvicorn main:app --port "$BACKEND_PORT" --reload) &
 PIDS+=($!)
 
 log "启动前端 http://localhost:$FRONTEND_PORT"
