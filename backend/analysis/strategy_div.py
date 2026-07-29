@@ -137,11 +137,9 @@ def run_div_strategy(rows: list[dict]) -> dict:
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
             avg_vol = sum(prev_vols) / len(prev_vols) if prev_vols else 1
             ratio = vol / avg_vol if avg_vol > 0 else 1.0
-            tp_cold = tp is not None and tp <= 10
-            if tp_cold:
-                sell_threshold = 1
-            else:
-                sell_threshold = max(2, math.ceil(2 + ratio * 0.55))
+            # 中证红利: 极冷市=价值低估, 不应降低卖出门槛
+            # 被市场冷落恰恰说明还有上涨空间, 需要更多出货确认
+            sell_threshold = max(2, math.ceil(2 + ratio * 0.55))
             trades.append({"date": d, "action": "BUY", "price": close,
                            "reason": f"{reason} [阈值{sell_threshold}]"})
         elif action == "SELL":
