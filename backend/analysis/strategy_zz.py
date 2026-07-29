@@ -139,12 +139,14 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 net_flow = cur_shares - entry_shares
                 peak_net_inflow = max(peak_net_inflow, net_flow)
 
-            # 卖出条件1: 单日巨量流出≥5亿 + 近期无大额流入 + 净流入回撤>50%
+            # 卖出条件1: DISTRIBUTE集群中不触发巨量流出 (让集群完整)
+            in_dist_cluster = dist_count >= 1
             recent_big_inflow = any(
                 (rows[j].get("shares_delta_yi") or 0) >= 5
                 for j in range(max(0, i - 3), i)
             )
-            massive_outflow = (not recent_big_inflow
+            massive_outflow = (not in_dist_cluster  # 不在DISTRIBUTE集群中
+                               and not recent_big_inflow
                                and sd_yi <= -5
                                and peak_net_inflow > 0
                                and cur_shares is not None
@@ -181,8 +183,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
             avg_vol = sum(prev_vols) / len(prev_vols) if prev_vols else 1
             ratio = vol / avg_vol if avg_vol > 0 else 1.0
-            # 中证1000卖出确认基数更低 (买卖集中, 出货信号更可靠)
-            sell_threshold = max(2, math.ceil(1 + ratio * 0.55))
+            sell_threshold = max(2, math.ceil(2 + ratio * 0.55))
             trades.append({"date": d, "action": "BUY", "price": close,
                            "reason": f"{reason} [阈值{sell_threshold}]"})
         elif action == "SELL":
