@@ -48,15 +48,37 @@ def get_last_update() -> Optional[str]:
     return _last_update
 
 
+def _load_kline_from_db(code: str, limit: int = 60) -> list[dict]:
+    """从本地数据库加载K线缓存，避免每次启动调腾讯API被封禁。"""
+    from store.daily_repo import get_by_code
+    rows = get_by_code(code)
+    if not rows:
+        return []
+    # get_by_code 返回 date DESC，取最近 limit 条后反转为升序
+    recent = rows[:limit][::-1]
+    result = []
+    for r in recent:
+        close = r.get("close_price") or 0.0
+        result.append({
+            "date": r["date"],
+            "open": close,
+            "close": close,
+            "high": close,
+            "low": close,
+            "volume": r.get("volume") or 0.0,
+        })
+    return result
+
+
 def task_preload_kline() -> None:
     global _kline_cache, _idx_kline_cache
-    print("[SCHEDULER] preloading kline data...")
-    _idx_kline_cache = fetch_index_kline()
+    print("[SCHEDULER] loading kline from local db...")
+    _idx_kline_cache = []  # 指数K线仅daily_analysis使用，preload时跳过
     for code in ETFS:
-        data = fetch_kline(code)
+        data = _load_kline_from_db(code)
         if data:
             _kline_cache[code] = data
-    print(f"[SCHEDULER] loaded kline for {len(_kline_cache)} ETFs")
+    print(f"[SCHEDULER] loaded kline for {len(_kline_cache)} ETFs from local db")
 
 
 def task_realtime_poll() -> None:
