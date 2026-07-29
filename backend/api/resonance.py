@@ -262,3 +262,17 @@ def resonance_v3_trades(code: str = "510300"):
     result = run_v3_strategy(etf_rows)
     return {"code": code, "trades": result["trades"],
             "metrics": result["metrics"], "holding": result["holding"]}
+
+
+# ========== V4 政策市策略 ==========
+
+@router.get("/v4/trades/{code}")
+def resonance_v4_trades(code: str = "510300"):
+    """V4 策略买卖点 — 基于924后政策市逻辑推导。"""
+    if code not in ETFS:
+        raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
+    from analysis.strategy_v4 import run_v4_strategy
+    etf_rows = list(reversed(get_by_code(code)))
+    result = run_v4_strategy(etf_rows)
+    return {"code": code, "trades": result["trades"],
+            "metrics": result["metrics"], "holding": result["holding"]}
