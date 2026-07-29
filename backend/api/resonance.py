@@ -57,6 +57,14 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
     from analysis.strategy_div import run_div_strategy, DIV_CODE
     if code == DIV_CODE:
         etf_rows = list(reversed(get_by_code(code)))
+        # 注入成交额分位数据 (_tp)
+        turnover = enrich_turnover(get_turnover_series())
+        t_pct = percentile_series(
+            [r.get("date") for r in turnover],
+            [turnover_value(r) for r in turnover],
+            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+        for r in etf_rows:
+            r["_tp"] = t_pct.get(r["date"], {}).get("percentile")
         result = run_div_strategy(etf_rows)
         return {"code": code, "trades": result["trades"]}
 
