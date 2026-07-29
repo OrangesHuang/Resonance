@@ -111,7 +111,7 @@ REGIME_BULL_THRESHOLD = 0.3         # 牛市判定阈值
 REGIME_BEAR_THRESHOLD = -0.3        # 熊市判定阈值
 
 # 异常度计算窗口 (Layer 1)
-ANOMALY_VOL_WINDOW = 120            # 量能分布回看窗口
+ANOMALY_VOL_WINDOW = 40             # 量能分布回看窗口（缩短以提高敏感度）
 ANOMALY_SHARE_WINDOW = 60           # 份额分布回看窗口
 ANOMALY_VOLATILITY_WINDOW = 20      # 波动率计算窗口
 ANOMALY_BREADTH_WINDOW = 20         # 广度分布回看窗口

@@ -155,26 +155,47 @@ def breadth_anomaly(
 def divergence_score(
     price_change: Optional[float],
     vol_anomaly: float,
+    price_position: Optional[float] = None,
 ) -> float:
-    """量价背离度。
+    """量价方向度（含价格位置修正）。
 
-    捕捉"价跌量增"或"价涨量缩"等背离行为。
-    价格下跌 + 放量 → 正分数 (恐慌吸筹特征)
-    价格上涨 + 放量 → 负分数 (追涨出货特征)
-    缩量时 → 接近 0 (量价没有背离)
+    核心逻辑：
+    - 价跌+放量 → 正分数 (恐慌吸筹特征)，无论位置
+    - 价涨+放量+低位 → 正分数 (底部启动吸筹)
+    - 价涨+放量+高位 → 负分数 (高位出货)
+    - 价涨+放量+中位 → 弱负分数
 
     Args:
         price_change: 当日涨跌幅 (%)
-        vol_anomaly: 量能异常度 (来自 volume_anomaly)
+        vol_anomaly: 量能异常度
+        price_position: 60日价格位置 (0-100)，None 则使用原始逻辑
     """
-    if price_change is None:
+    if price_change is None or price_change == 0:
         return 0.0
-    if price_change == 0:
-        return 0.0
-    # -sign(涨跌幅) × |量能异常度|
-    # 价格下跌时 sign 为负, -sign 为正, 放量则得正分数
-    sign = 1.0 if price_change > 0 else -1.0
-    return round(-sign * abs(vol_anomaly), 4)
+    if abs(vol_anomaly) < 0.1:
+        return 0.0  # 缩量时不判方向
+
+    vol_strength = abs(vol_anomaly)
+    price_down = price_change < 0
+
+    if price_down:
+        # 价格下跌+放量 → 恐慌/吸筹特征 → 正分数
+        return round(vol_strength, 4)
+
+    # 价格上涨+放量 → 需要看位置
+    if price_position is None:
+        # 无位置信息时，默认偏负（保守）
+        return round(-vol_strength * 0.5, 4)
+
+    if price_position <= 40:
+        # 低位+放量上涨 → 底部启动，吸筹信号 → 正分数
+        return round(vol_strength * 0.8, 4)
+    elif price_position >= 75:
+        # 高位+放量上涨 → 出货 → 负分数
+        return round(-vol_strength, 4)
+    else:
+        # 中位+放量上涨 → 中性偏负
+        return round(-vol_strength * 0.3, 4)
 
 
 def compute_volatility(
@@ -224,12 +245,13 @@ def compute_anomaly_vector(
     vol = row.get("volume")
     chg = row.get("change_pct")
     delta = row.get("shares_delta_pct")
+    pp = row.get("price_position")
 
     v_anom = volume_anomaly(vol, vol_history)
     p_anom = price_anomaly(chg, volatility)
     s_anom = share_anomaly(delta, delta_history)
     b_anom = breadth_anomaly(breadth_ratio, breadth_history)
-    d_score = divergence_score(chg, v_anom)
+    d_score = divergence_score(chg, v_anom, pp)
 
     return {
         "vol": v_anom,
