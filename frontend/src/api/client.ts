@@ -106,3 +106,9 @@ export function fetchResonanceV2Regime(code = '510300'): Promise<V2RegimeRespons
 export function fetchResonanceV2Backtest(code = '510300'): Promise<V2BacktestResponse> {
   return get(`/resonance/v2/backtest/${code}`)
 }
+
+import type { V3TradesResponse } from './types'
+
+export function fetchResonanceV3Trades(code = '510300'): Promise<V3TradesResponse> {
+  return get(`/resonance/v3/trades/${code}`)
+}

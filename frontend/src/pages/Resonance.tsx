@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { useResonance, useResonanceV2, useResonanceV2Backtest } from '../hooks/useResonance'
+import { useResonance } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
-import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
+import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, fetchResonanceV3Trades } from '../api/client'
 import ResonanceLights from '../components/ResonanceLights'
-import ResonanceV2Panel from '../components/ResonanceV2Panel'
 import ResonanceKline from '../components/ResonanceKline'
 import ResonanceChart from '../components/ResonanceChart'
 import ResonanceHeatmap from '../components/ResonanceHeatmap'
@@ -117,13 +116,17 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
 
 export default function Resonance() {
   const [code, setCode] = useState('510300')
-  const [version, setVersion] = useState<'v1' | 'v2'>('v1')
+  const [version, setVersion] = useState<'v1' | 'v3'>('v1')
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
 
   const { data, isLoading, error } = useResonance(code)
-  const { data: v2Data, isLoading: v2Loading } = useResonanceV2(code)
-  const { data: v2Backtest } = useResonanceV2Backtest(code)
+  const { data: v3Data } = useQuery({
+    queryKey: ['resonanceV3', code],
+    queryFn: () => fetchResonanceV3Trades(code),
+    placeholderData: keepPreviousData,
+    staleTime: 10 * 60 * 1000,
+  })
   const { data: etfList } = useQuery({
     queryKey: ['etfList'],
     queryFn: fetchEtfList,
@@ -206,16 +209,16 @@ export default function Resonance() {
           </p>
         </div>
 
-        {/* V1/V2 切换 */}
+        {/* V1/V3 切换 */}
         <div className="ml-auto flex items-center gap-1 bg-gray-800 rounded-lg p-1">
           <button
             onClick={() => setVersion('v1')}
             className={`px-3 py-1 text-xs rounded transition-colors ${isV1 ? 'bg-sky-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
           >V1 共振</button>
           <button
-            onClick={() => setVersion('v2')}
+            onClick={() => setVersion('v3')}
             className={`px-3 py-1 text-xs rounded transition-colors ${!isV1 ? 'bg-sky-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
-          >V2 贝叶斯</button>
+          >V3 主力</button>
         </div>
 
         <select
@@ -250,7 +253,7 @@ export default function Resonance() {
         <span className="ml-auto text-[11px] text-gray-600">逐日回放练盘感（键盘 ← → 亦可）· 点选/缩放任意图表，全部联动</span>
       </div>
 
-      {/* V1: 红绿灯面板 / V2: 贝叶斯信号面板 */}
+      {/* V1: 红绿灯面板 / V3: 信号精简提示 */}
       {isV1 && data ? (
         <ResonanceLights
           data={data}
@@ -258,10 +261,24 @@ export default function Resonance() {
           onSelect={selectLight}
         />
       ) : null}
-      {!isV1 && v2Data ? (
-        <ResonanceV2Panel data={v2Data} />
-      ) : !isV1 && v2Loading ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center text-gray-500">V2 信号加载中...</div>
+      {!isV1 && v3Data ? (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-bold text-white">V3 主力资金节奏策略</h3>
+            <span className="text-xs text-gray-500">
+              总收益 <span className={v3Data.metrics.total_return_pct >= 0 ? 'text-green-400' : 'text-red-400'}>
+                {v3Data.metrics.total_return_pct >= 0 ? '+' : ''}{v3Data.metrics.total_return_pct}%
+              </span>
+              {' '}| 胜率 {v3Data.metrics.win_rate}%
+              {' '}| {v3Data.metrics.trade_count}笔交易
+              {' '}| {v3Data.holding ? '当前持仓中' : '当前空仓'}
+            </span>
+          </div>
+          <p className="text-[11px] text-gray-600 mt-1">
+            买入: 恐慌放量(跌2%+量比2x+份额65+) · 低位吸筹(位置35+份额65+量比1.8x) · 极端低位(位置20+量比1.5x)
+            {' | '}卖出: 高位出货 · 止盈15% · 追踪止损8% · 硬止损-8%
+          </p>
+        </div>
       ) : null}
 
       <MarketSentimentSection
@@ -278,7 +295,7 @@ export default function Resonance() {
           <span className="text-[11px] text-gray-600">
             {isV1
               ? '淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（70%红/50%橙分界） · 最底彩条=交易方向（绿=吸筹/红=出货/灰=中性）'
-              : '蓝色虚线=当前选中日 · B/S标记=V2贝叶斯买卖信号 · 副图绿柱=净申购/红柱=净赎回'}
+              : 'B=恐慌接筹/低位吸筹/极端低位买入 · S=高位出货/止盈/止损卖出 · V3主力资金节奏策略'}
           </span>
         </div>
         {history ? (
@@ -286,7 +303,7 @@ export default function Resonance() {
             kline={history.kline}
             history={resonanceHistory}
             signals={history.daily_signals}
-            trades={isV1 ? (tradesData?.trades ?? []) : (v2Backtest?.trades ?? [])}
+            trades={isV1 ? (tradesData?.trades ?? []) : (v3Data?.trades ?? [])}
             selectedDate={selected?.date ?? null}
             onSelectDate={selectDate}
             dateWindow={dateWindow}

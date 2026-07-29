@@ -246,6 +246,19 @@ export interface TradesResponse {
   trades: TradePoint[]
 }
 
+export interface V3TradesResponse {
+  code: string
+  trades: TradePoint[]
+  metrics: {
+    total_return_pct: number
+    round_count: number
+    win_count: number
+    win_rate: number
+    trade_count: number
+  }
+  holding: boolean
+}
+
 export interface EtfRefreshResult {
   status: string
   count: number

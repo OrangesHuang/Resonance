@@ -248,3 +248,17 @@ def resonance_v2_backtest(code: str = "510300"):
     signals = result["signals"]
     closes = [s["close"] for s in signals]
     return run_backtest_v2(signals, closes)
+
+
+# ========== V3 主力资金节奏策略 ==========
+
+@router.get("/v3/trades/{code}")
+def resonance_v3_trades(code: str = "510300"):
+    """V3 策略买卖点 — 基于国家队行为特征匹配。"""
+    if code not in ETFS:
+        raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
+    from analysis.strategy_v3 import run_v3_strategy
+    etf_rows = list(reversed(get_by_code(code)))
+    result = run_v3_strategy(etf_rows)
+    return {"code": code, "trades": result["trades"],
+            "metrics": result["metrics"], "holding": result["holding"]}
