@@ -1,9 +1,14 @@
-"""中证红利 (515080) V1 量价记忆策略。
+"""中证红利 (515080) 右侧量价记忆策略。
 
-与 510300 同构，针对中证红利特征适配:
-  - 低波动(1.17-1.65, 区间42%) → 卖出不需要融资门槛, pp+vr确认即可
-  - 红利=价值锚定 → pp≤20 即价值底部, 不需要额外份额/成交额确认
-  - 量价记忆: sell_threshold = max(2, ceil(2 + vr × 0.55))
+核心差异 vs 510300/589680:
+  中证红利是均值回归型资产, 不适合左侧抄底。
+  被成长板块虹吸时跌幅可以很深很久, pp=20买入可能继续跌到pp=2。
+
+算法:
+  Phase 1 — 超卖检测(不买入): 最近10天≥2个ACCUMULATE + pp≤25
+  Phase 2 — 右侧确认(触发买入): 连续2天涨+放量, 或单日强反转
+  Phase 3 — 系统性危机(左侧买入): 跌≥5%+pp≤25+ACCUMULATE
+  Phase 4 — 卖出: DISTRIBUTE集群确认 + 量价记忆
 """
 
 import math
@@ -19,6 +24,15 @@ VOL_LOOKBACK = 20
 TRADE_START = "2024-01-01"
 
 
+def _count_recent_accum(rows: list[dict], idx: int, window: int = 10) -> int:
+    """统计最近 window 天内 ACCUMULATE 信号数量。"""
+    count = 0
+    for j in range(max(0, idx - window + 1), idx + 1):
+        if rows[j].get("trade_direction") == "ACCUMULATE":
+            count += 1
+    return count
+
+
 def run_div_strategy(rows: list[dict]) -> dict:
     n = len(rows)
     if n < 30:
@@ -31,6 +45,7 @@ def run_div_strategy(rows: list[dict]) -> dict:
     hold_days = 0
     sell_threshold = 1
     dist_count = 0
+    waiting_for_reversal = False   # 超卖后等待右侧确认
 
     for i in range(n):
         row = rows[i]
@@ -39,9 +54,9 @@ def run_div_strategy(rows: list[dict]) -> dict:
         pp = row.get("price_position")
         td = row.get("trade_direction")
         sp = row.get("share_prob")
-        cp = row.get("composite_prob")
-        tp = row.get("_tp")  # 成交额分位 (需外部注入)
+        tp = row.get("_tp")
         vr = row.get("volume_ratio") or 0
+        chg = row.get("change_pct") or 0
 
         if d < TRADE_START:
             continue
@@ -49,28 +64,55 @@ def run_div_strategy(rows: list[dict]) -> dict:
         action = None
         reason = ""
 
-        # ---- 买入 (与510300同构 + 价值底部路径) ----
-        if position == 0:
+        # ---- Phase 1: 超卖检测 ----
+        if position == 0 and not waiting_for_reversal:
             is_accum = td == "ACCUMULATE"
             pp_low = pp is not None and pp <= BUY_PP_MAX
-            pp_value = pp is not None and pp <= 20
+            pp_oversold = pp is not None and pp <= 25
+            accum_count = _count_recent_accum(rows, i, 10)
 
-            # 路径1: ACCUMULATE + 低位 + 份额确认
-            if is_accum and pp_low and sp is not None and sp >= 60:
+            # 系统性危机: 跌≥3.5%+低位+ACCUMULATE → 直接左侧买入
+            # 中证红利波动小, -3.5%已是极端事件
+            if is_accum and pp_oversold and chg <= -3.5:
                 action = "BUY"
-                reason = f"低位吸筹: pp{pp:.0f}+sp{sp:.0f}"
+                reason = f"危机左侧: 跌{chg:.1f}%+pp{pp:.0f}(系统性)"
 
-            # 路径2: ACCUMULATE + 低位 + 极冷市
+            # 超卖集群: ≥2个ACCUMULATE+pp≤25 → 进入等待确认
+            elif accum_count >= 2 and pp_oversold:
+                waiting_for_reversal = True
+
+            # 极冷市吸筹 (成交额极低, 中证红利被市场遗忘=买点)
             elif is_accum and pp_low and tp is not None and tp <= 10:
                 action = "BUY"
                 reason = f"极冷吸筹: pp{pp:.0f}+成交额{tp:.0f}分位"
 
-            # 路径3: ACCUMULATE + 价值底部 (中证红利特有: 低估值=买点)
-            elif is_accum and pp_value:
-                action = "BUY"
-                reason = f"价值底部: pp{pp:.0f}(红利低估)"
+        # ---- Phase 2: 右侧确认 ----
+        if position == 0 and waiting_for_reversal:
+            prev_chg = rows[i - 1].get("change_pct") or 0 if i > 0 else 0
+            prev_vr = rows[i - 1].get("volume_ratio") or 0 if i > 0 else 0
+            pp_ok = pp is not None and pp <= 40
 
-        # ---- 卖出 (DISTRIBUTE + pp + vr, 不需要融资门槛) ----
+            # 连续2天涨+放量(第二天需vr>1.0确认)
+            two_day_reversal = (chg > 0 and prev_chg > 0
+                                and vr > 1.0 and prev_vr > 0.8
+                                and pp_ok)
+
+            # 单日强反转
+            strong_reversal = chg > 2 and vr > 1.2 and pp_ok
+
+            if two_day_reversal:
+                action = "BUY"
+                reason = f"右侧确认: 连涨2天+放量 pp{pp:.0f}"
+                waiting_for_reversal = False
+            elif strong_reversal:
+                action = "BUY"
+                reason = f"强反转: 涨{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
+                waiting_for_reversal = False
+            elif pp is not None and pp > 40:
+                # 价格回升太多, 错失确认窗口, 重置
+                waiting_for_reversal = False
+
+        # ---- Phase 4: 卖出 (与 V1 同构) ----
         if position == 1:
             hold_days += 1
             is_dist = td == "DISTRIBUTE"
@@ -89,6 +131,7 @@ def run_div_strategy(rows: list[dict]) -> dict:
             position = 1.0
             hold_days = 0
             dist_count = 0
+            waiting_for_reversal = False
             vol = row.get("volume") or 0
             prev_vols = [rows[j].get("volume") or 0
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
