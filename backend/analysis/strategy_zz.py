@@ -161,14 +161,24 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 dist_count += 1
 
             if hold_days >= MIN_HOLD:
+                # 惯性检查: DISTRIBUTE集群活跃+量能高位→延迟卖出
+                recent_dist = sum(1 for j in range(max(0, i-5), i+1)
+                                  if rows[j].get("trade_direction") == "DISTRIBUTE")
+                cluster_active = recent_dist >= 3
+                momentum_high = vr > 1.2
+                force_sell = dist_count >= sell_threshold * 2  # 超2倍阈值强制卖
+
                 if massive_outflow:
                     action = "SELL"
                     reason = (f"巨量流出: {sd_yi:.0f}亿+净流入回撤"
                               f"+pp{pp:.0f}")
-                elif is_dist and dist_count >= sell_threshold:
-                    reason = (f"出货确认({dist_count}/{sell_threshold})"
-                              f"+pp{pp:.0f}+vr{vr:.1f}")
-                    action = "SELL"
+                elif dist_count >= sell_threshold:
+                    if is_dist and cluster_active and momentum_high and not force_sell:
+                        pass  # 惯性还在, 延迟卖出
+                    elif (is_dist or not cluster_active) and pp_high:
+                        reason = (f"出货确认({dist_count}/{sell_threshold})"
+                                  f"+pp{pp:.0f}+vr{vr:.1f}")
+                        action = "SELL"
 
         if action == "BUY":
             position = 1.0
