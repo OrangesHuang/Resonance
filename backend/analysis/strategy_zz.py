@@ -157,7 +157,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             is_dist = td == "DISTRIBUTE"
             pp_high = pp is not None and pp >= SELL_PP_MIN
             vr_ok = vr >= SELL_VR_MIN
-            if is_dist and pp_high and vr_ok and sd_yi < 0:
+            if is_dist and pp_high and vr_ok:
                 dist_count += 1
 
             if hold_days >= MIN_HOLD:
