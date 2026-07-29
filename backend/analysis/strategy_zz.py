@@ -139,8 +139,13 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 net_flow = cur_shares - entry_shares
                 peak_net_inflow = max(peak_net_inflow, net_flow)
 
-            # 卖出条件1: 单日巨量流出 (≥5亿) + 累计净流入已回撤>50%
-            massive_outflow = (sd_yi is not None and sd_yi <= -5
+            # 卖出条件1: 单日巨量流出≥5亿 + 近期无大额流入 + 净流入回撤>50%
+            recent_big_inflow = any(
+                (rows[j].get("shares_delta_yi") or 0) >= 5
+                for j in range(max(0, i - 3), i)
+            )
+            massive_outflow = (not recent_big_inflow
+                               and sd_yi <= -5
                                and peak_net_inflow > 0
                                and cur_shares is not None
                                and entry_shares is not None
