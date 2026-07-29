@@ -92,7 +92,14 @@ def run_kc_strategy(rows: list[dict]) -> dict:
             if is_dist and pp_high and vr_high:
                 dist_count += 1
 
-            if hold_days >= MIN_HOLD and is_dist and dist_count >= sell_threshold:
+            # 卖出触发: 需要当日份额收缩确认 (sd%<0)
+            # 避免在机构还在增持的\"假DISTRIBUTE\"日卖出
+            sd_pct = row.get("shares_delta_pct")
+            share_contracting = sd_pct is not None and sd_pct < 0
+
+            if (hold_days >= MIN_HOLD and is_dist
+                    and dist_count >= sell_threshold
+                    and share_contracting):
                 reason = (f"出货确认({dist_count}/{sell_threshold})"
                           f"+pp{pp:.0f}+vr{vr:.1f}")
                 action = "SELL"
