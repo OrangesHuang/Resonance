@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { useResonance, useResonanceV2 } from '../hooks/useResonance'
+import { useResonance, useResonanceV2, useResonanceV2Backtest } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
 import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
 import ResonanceLights from '../components/ResonanceLights'
@@ -123,6 +123,7 @@ export default function Resonance() {
 
   const { data, isLoading, error } = useResonance(code)
   const { data: v2Data, isLoading: v2Loading } = useResonanceV2(code)
+  const { data: v2Backtest } = useResonanceV2Backtest(code)
   const { data: etfList } = useQuery({
     queryKey: ['etfList'],
     queryFn: fetchEtfList,
@@ -275,7 +276,9 @@ export default function Resonance() {
         <div className="flex items-center gap-3 mb-2 flex-wrap">
           <h3 className="text-sm font-medium text-gray-300">K线走势（点击K线查看当日依据）</h3>
           <span className="text-[11px] text-gray-600">
-            淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（70%红/50%橙分界） · 最底彩条=交易方向（绿=吸筹/红=出货/灰=中性）
+            {isV1
+              ? '淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（70%红/50%橙分界） · 最底彩条=交易方向（绿=吸筹/红=出货/灰=中性）'
+              : '蓝色虚线=当前选中日 · B/S标记=V2贝叶斯买卖信号 · 副图绿柱=净申购/红柱=净赎回'}
           </span>
         </div>
         {history ? (
@@ -283,7 +286,7 @@ export default function Resonance() {
             kline={history.kline}
             history={resonanceHistory}
             signals={history.daily_signals}
-            trades={tradesData?.trades ?? []}
+            trades={isV1 ? (tradesData?.trades ?? []) : (v2Backtest?.trades ?? [])}
             selectedDate={selected?.date ?? null}
             onSelectDate={selectDate}
             dateWindow={dateWindow}
