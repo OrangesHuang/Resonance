@@ -135,6 +135,38 @@ def task_realtime_poll() -> None:
         insert_snapshots(signals)
 
 
+def task_intraday_update() -> dict:
+    """每15分钟将盘中信号写入 etf_daily，供K线图展示当日数据。"""
+    global _latest_signals, _last_update
+    now = datetime.now()
+    if not is_trading_time(now):
+        return {"status": "not_trading"}
+    if not _latest_signals:
+        return {"status": "no_signals"}
+
+    today = now.strftime("%Y-%m-%d")
+    count = 0
+    for sig in _latest_signals:
+        data = {
+            "close": sig.get("price"),
+            "change_pct": sig.get("change_pct"),
+            "volume": sig.get("volume_hand"),
+            "volume_ratio": sig.get("volume_ratio"),
+            "vol_prob": sig.get("vol_prob"),
+            "dir_prob": sig.get("dir_prob"),
+            "share_prob": sig.get("share_prob"),
+            "composite_prob": sig.get("composite_prob"),
+            "signal_level": sig.get("signal_level"),
+            "price_position": sig.get("price_position"),
+            "trade_direction": sig.get("trade_direction"),
+        }
+        upsert_daily(today, sig["code"], data)
+        count += 1
+
+    print(f"[SCHEDULER] intraday update: {count} ETFs → {today}")
+    return {"status": "ok", "date": today, "count": count}
+
+
 def task_daily_analysis() -> dict:
     global _kline_cache, _idx_kline_cache
     print("[SCHEDULER] running daily analysis...")
@@ -260,6 +292,12 @@ def start_scheduler() -> None:
         task_realtime_poll,
         IntervalTrigger(seconds=REALTIME_INTERVAL_SEC),
         id="realtime_poll",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        trading_day_guard(task_intraday_update),
+        IntervalTrigger(minutes=15),
+        id="intraday_update",
         replace_existing=True,
     )
     scheduler.add_job(
