@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 ./start.sh                           # one-click: creates .venv, installs deps, starts both servers
 # Or manually:
-cd backend && python3 -m uvicorn main:app --port 8000   # API at :8000
-cd frontend && npm run dev                               # UI at :5173
+cd backend && python3 -m uvicorn main:app --port 8001   # API at :8001
+cd frontend && npm run dev                               # UI at :5174
 ```
 
 Database lives at `~/.etf-monitor/etf_monitor.db` (override with `ETF_MONITOR_HOME` env var).

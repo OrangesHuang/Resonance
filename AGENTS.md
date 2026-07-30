@@ -41,7 +41,7 @@
 
 ```bash
 # 后端
-cd backend && python3 -m uvicorn main:app --port 8000
+cd backend && python3 -m uvicorn main:app --port 8001
 
 # 前端
 cd frontend && npm run dev

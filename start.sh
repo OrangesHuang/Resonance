@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 一键启动脚本：从 fresh clone 直接拉起前后端。
-# 自动创建虚拟环境、安装依赖（仅缺失时），然后同时启动后端(:8000)与前端(:5173)。
+# 自动创建虚拟环境、安装依赖（仅缺失时），然后同时启动后端(:8001)与前端(:5174)。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,8 +9,8 @@ cd "$ROOT"
 BACKEND_DIR="$ROOT/backend"
 FRONTEND_DIR="$ROOT/frontend"
 VENV_DIR="$ROOT/.venv"
-BACKEND_PORT=8000
-FRONTEND_PORT=5173
+BACKEND_PORT=8001
+FRONTEND_PORT=5174
 
 log() { printf '\033[0;36m[start]\033[0m %s\n' "$*"; }
 die() { printf '\033[0;31m[start]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -18,9 +18,18 @@ die() { printf '\033[0;31m[start]\033[0m %s\n' "$*" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || die "未找到 python3，请先安装 Python 3.9+。"
 command -v npm     >/dev/null 2>&1 || die "未找到 npm，请先安装 Node.js。"
 
+# --- 0. 杀掉旧进程 + 清理缓存（确保每次启动都用最新代码）---
+log "释放端口 $BACKEND_PORT $FRONTEND_PORT ..."
+lsof -ti ":$BACKEND_PORT" | xargs kill -9 2>/dev/null || true
+lsof -ti ":$FRONTEND_PORT" | xargs kill -9 2>/dev/null || true
+find "$BACKEND_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find "$BACKEND_DIR" -name "*.pyc" -delete 2>/dev/null || true
+sleep 1
+
 # --- 1. Python 虚拟环境 + 后端依赖 ---
-if [ ! -d "$VENV_DIR" ]; then
-  log "创建虚拟环境 .venv ..."
+if ! "$VENV_DIR/bin/pip" --version >/dev/null 2>&1; then
+  log "(重新)创建虚拟环境 .venv ..."
+  rm -rf "$VENV_DIR"
   python3 -m venv "$VENV_DIR"
 fi
 log "安装/校验后端依赖 ..."
@@ -42,9 +51,6 @@ cleanup() {
   done
 }
 trap cleanup EXIT INT TERM
-
-# 清理 Python 缓存，确保修改后的代码生效
-find "$BACKEND_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 log "启动后端 http://localhost:$BACKEND_PORT （--reload 自动重载代码修改）"
 (cd "$BACKEND_DIR" && exec "$VENV_DIR/bin/python" -m uvicorn main:app --port "$BACKEND_PORT" --reload) &

@@ -5,10 +5,6 @@ from typing import Callable, Optional
 from config import MARGIN_USE_SSE_FALLBACK, TURNOVER_FETCH_SLEEP_SEC
 
 
-_TURNOVER_CACHE: dict[str, list[dict]] = {}
-_MARGIN_CACHE: dict[str, list[dict]] = {}
-
-
 def _date_to_ak(d: str) -> str:
     return d.replace("-", "")
 
@@ -64,10 +60,6 @@ def _turnover_row(cur: datetime) -> Optional[dict]:
 
 def fetch_market_turnover(start_date: str, end_date: str,
                           on_progress: Optional[Callable[[int, int, str], None]] = None) -> list[dict]:
-    key = f"{start_date}_{end_date}"
-    if key in _TURNOVER_CACHE:
-        return _TURNOVER_CACHE[key]
-
     days = _weekday_dates(start_date, end_date)
     rows = []
     try:
@@ -78,7 +70,6 @@ def fetch_market_turnover(start_date: str, end_date: str,
             if row:
                 rows.append(row)
             time.sleep(TURNOVER_FETCH_SLEEP_SEC)
-        _TURNOVER_CACHE[key] = rows
         return rows
     except Exception as e:
         print(f"[FETCH] market turnover failed: {e}")
@@ -134,17 +125,12 @@ def _fetch_margin_sse(start_date: str, end_date: str) -> list[dict]:
 
 
 def fetch_margin_series(start_date: str, end_date: str) -> list[dict]:
-    key = "sse" if MARGIN_USE_SSE_FALLBACK else "combined"
-    if key in _MARGIN_CACHE:
-        return _MARGIN_CACHE[key]
-
     try:
         if MARGIN_USE_SSE_FALLBACK:
             rows = _fetch_margin_sse(start_date, end_date)
         else:
             rows = _fetch_margin_combined()
             rows = [r for r in rows if start_date <= r["date"] <= end_date]
-        _MARGIN_CACHE[key] = rows
         return rows
     except Exception as e:
         print(f"[FETCH] margin series failed: {e}")
