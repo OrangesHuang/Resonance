@@ -285,6 +285,16 @@ def start_scheduler() -> None:
     task_preload_kline()
     task_fetch_shares()
 
+    # 盘中启动时立即拉取当日数据
+    from scheduler.time_guard import is_trading_time
+    if is_trading_time(datetime.now()):
+        print("[SCHEDULER] trading hours detected, fetching today's data...")
+        try:
+            task_realtime_poll()
+            task_intraday_update()
+        except Exception as e:
+            print(f"[SCHEDULER] initial fetch failed (non-critical): {e}")
+
     if get_turnover_count() == 0 or get_margin_count() == 0:
         task_fetch_sentiment(backfill=True)
 
