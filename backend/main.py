@@ -11,6 +11,7 @@ from api.sentiment import router as sentiment_router
 from api.calendar import router as calendar_router
 from api.resonance import router as resonance_router
 from api.data import router as data_router
+from api.portfolio import router as portfolio_router
 
 
 @asynccontextmanager
@@ -43,6 +44,7 @@ app.include_router(sentiment_router)
 app.include_router(calendar_router)
 app.include_router(resonance_router)
 app.include_router(data_router)
+app.include_router(portfolio_router)
 
 
 @app.get("/api/health")

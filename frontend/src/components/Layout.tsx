@@ -3,6 +3,8 @@ import { NavLink, Outlet } from 'react-router-dom'
 const NAV_ITEMS = [
   { to: '/resonance', label: '多指标共振', end: false },
   { to: '/', label: 'ETF 国家队监控', end: true },
+  { to: '/compare', label: 'K线对比', end: false },
+  { to: '/portfolio', label: '组合回测', end: false },
   { to: '/sentiment', label: '市场情绪', end: false },
   { to: '/calendar', label: '交易日历', end: false },
   { to: '/data', label: '数据管理', end: false },

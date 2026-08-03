@@ -439,3 +439,45 @@ export interface V2BacktestResponse {
   trades: V2BacktestTrade[]
   equity_curve: { date: string; equity: number; position: number }[]
 }
+
+// ========== 组合回测 ==========
+
+export interface PortfolioCurvePoint {
+  date: string
+  nav: number
+  nav_per_share: number
+  position_pct: number
+}
+
+export interface PortfolioTrade {
+  date: string
+  signal_date: string
+  code: string
+  name: string
+  kind: 'BUY' | 'TOPUP' | 'REDUCE' | 'SELL'
+  kind_label: string
+  units: number
+  price: number
+  amount: number
+}
+
+export interface PortfolioOpenPosition {
+  code: string
+  name: string
+  units: number
+  buy_date: string
+}
+
+export interface PortfolioBacktestResponse {
+  initial_capital: number
+  initial_nav_per_share: number
+  total_return_pct: number
+  max_drawdown_pct: number
+  avg_position_pct: number
+  final_nav: number
+  final_nav_per_share: number
+  signal_count: number
+  curve: PortfolioCurvePoint[]
+  trades: PortfolioTrade[]
+  open_positions: PortfolioOpenPosition[]
+}
