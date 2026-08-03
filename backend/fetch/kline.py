@@ -1,8 +1,35 @@
 import json
+import time
 import urllib.request
 from typing import Optional
 
-from config import KLINE_URL, HTTP_TIMEOUT, KLINE_LIMIT, ETFS, INDEX_CODE
+from config import (
+    KLINE_URL, HTTP_TIMEOUT, KLINE_LIMIT, ETFS, INDEX_CODE,
+    KLINE_CACHE_TTL_SEC, KLINE_FAIL_COOLDOWN_SEC,
+)
+
+_CACHE: dict[tuple[str, int], tuple[float, Optional[list[dict]]]] = {}
+
+
+def _cached(code: str, limit: int):
+    """内存 TTL 缓存: 有效期内直接返回, 失败也冷却缓存避免重试风暴。"""
+    key = (code, limit)
+    now = time.time()
+    hit = _CACHE.get(key)
+    if hit is None:
+        return None
+    ts, data = hit
+    if data is None:
+        if now - ts < KLINE_FAIL_COOLDOWN_SEC:
+            return data
+    elif now - ts < KLINE_CACHE_TTL_SEC:
+        return data
+    _CACHE.pop(key, None)
+    return None
+
+
+def _store(code: str, limit: int, data: Optional[list[dict]]) -> None:
+    _CACHE[(code, limit)] = (time.time(), data)
 
 
 def _market_prefix(code: str) -> str:
@@ -17,6 +44,10 @@ def _market_prefix(code: str) -> str:
 
 
 def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
+    cached = _cached(code, limit)
+    if cached is not None:
+        return cached
+
     prefix, num_code = _market_prefix(code)
     symbol = f"{prefix}{num_code}"
     url = KLINE_URL.format(symbol=symbol, limit=limit)
@@ -27,6 +58,7 @@ def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         print(f"[FETCH] kline {code} failed: {e}")
+        _store(code, limit, None)
         return []
 
     node = data.get("data", {}).get(symbol, {})
@@ -44,6 +76,10 @@ def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
             "low": float(r[4]),
             "volume": float(r[5]),
         })
+    if not result:
+        _store(code, limit, None)
+        return []
+    _store(code, limit, result)
     return result
 
 

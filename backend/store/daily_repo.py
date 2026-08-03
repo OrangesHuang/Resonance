@@ -20,9 +20,10 @@ def upsert_daily(date: str, code: str, data: dict) -> None:
                 volume=excluded.volume,
                 volume_ma20=excluded.volume_ma20,
                 volume_ratio=excluded.volume_ratio,
-                shares_yi=excluded.shares_yi,
-                shares_delta_yi=excluded.shares_delta_yi,
-                shares_delta_pct=excluded.shares_delta_pct,
+                shares_yi=COALESCE(excluded.shares_yi, etf_daily.shares_yi),
+                shares_delta_yi=COALESCE(excluded.shares_delta_yi, etf_daily.shares_delta_yi),
+                shares_delta_pct=COALESCE(excluded.shares_delta_pct, etf_daily.shares_delta_pct),
+                share_prob=COALESCE(excluded.share_prob, etf_daily.share_prob),
                 vol_prob=excluded.vol_prob,
                 dir_prob=excluded.dir_prob,
                 share_prob=excluded.share_prob,
@@ -60,6 +61,39 @@ def update_share_data(date: str, code: str, shares_yi: float,
         conn.commit()
     finally:
         conn.close()
+
+
+def get_latest_date_for(code: str) -> Optional[str]:
+    """单只 ETF 在库中的最新日期 (无数据返回 None)。"""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT MAX(date) AS d FROM etf_daily WHERE code=? AND close_price IS NOT NULL",
+            (code,),
+        ).fetchone()
+        return row["d"] if row else None
+    finally:
+        conn.close()
+
+
+def get_shares_by_date(date: str) -> dict[str, dict]:
+    """某交易日各 ETF 的份额数据: {code: {shares_yi, delta_yi, delta_pct}}。"""
+    result: dict[str, dict] = {}
+    for r in get_by_date(date):
+        if r.get("shares_yi") is None:
+            continue
+        result[r["code"]] = {
+            "shares_yi": r["shares_yi"],
+            "delta_yi": r.get("shares_delta_yi"),
+            "delta_pct": r.get("shares_delta_pct"),
+        }
+    return result
+
+
+def shares_complete_for(date: str) -> bool:
+    """某交易日全部监控 ETF 是否都已有份额数据 (避免重复拉取份额接口)。"""
+    rows = get_shares_by_date(date)
+    return all(c in rows for c in ETFS)
 
 
 def get_trading_dates(start: Optional[str] = None, end: Optional[str] = None) -> list[str]:

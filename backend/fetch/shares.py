@@ -1,7 +1,8 @@
+import time
 from typing import Optional
 from datetime import datetime, timedelta
 
-from config import ETFS, AKSHARE_TIMEOUT, MAX_RETRY
+from config import ETFS, AKSHARE_TIMEOUT, MAX_RETRY, SHARES_RETRY, SHARES_RETRY_BACKOFF_SEC
 
 
 _SSE_CACHE: dict[str, dict[str, float]] = {}
@@ -80,31 +81,48 @@ def fetch_shares_szse(date_str: str) -> dict[str, float]:
 
 
 def fetch_shares_for_date(date_str: str) -> dict[str, float]:
-    sse = fetch_shares_sse(date_str)
-    szse = fetch_shares_szse(date_str)
-    merged = {**sse, **szse}
-    return {code: merged[code] for code in ETFS if code in merged}
+    """拉取某日全部监控 ETF 份额; 整日空结果时重试(限流容错)。"""
+    for attempt in range(SHARES_RETRY + 1):
+        sse = fetch_shares_sse(date_str)
+        szse = fetch_shares_szse(date_str)
+        merged = {**sse, **szse}
+        result = {code: merged[code] for code in ETFS if code in merged}
+        if result:
+            return result
+        if attempt < SHARES_RETRY:
+            wait = SHARES_RETRY_BACKOFF_SEC * (attempt + 1)
+            print(f"[FETCH] shares {date_str} 空结果, {wait}s 后重试 ({attempt + 1}/{SHARES_RETRY})")
+            time.sleep(wait)
+    return {}
+
+
+def _recent_weekdays(date_str: str, max_lookback: int) -> list[str]:
+    """date_str 往前回溯的工作日序列(跳过周末, 含最多 max_lookback+1 天)。"""
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    out: list[str] = []
+    cur = dt
+    while len(out) <= max_lookback:
+        if cur.weekday() < 5:
+            out.append(cur.strftime("%Y-%m-%d"))
+        cur -= timedelta(days=1)
+    return out
 
 
 def fetch_latest_shares(date_str: str, max_lookback: int = 5) -> dict[str, dict]:
-    """返回 {code: {"shares_yi": float, "date": str}} 使用最近可用数据"""
-    dt = datetime.strptime(date_str, "%Y-%m-%d")
-    for offset in range(max_lookback + 1):
-        check_date = (dt - timedelta(days=offset)).strftime("%Y-%m-%d")
-        shares = fetch_shares_for_date(check_date)
+    """返回 {code: {"shares_yi": float, "date": str}} 使用最近可用数据(跳过周末)"""
+    for check in _recent_weekdays(date_str, max_lookback):
+        shares = fetch_shares_for_date(check)
         if shares:
-            return {code: {"shares_yi": v, "date": check_date} for code, v in shares.items()}
+            return {code: {"shares_yi": v, "date": check} for code, v in shares.items()}
     return {}
 
 
 def calc_share_delta(date_str: str, max_lookback: int = 7) -> dict[str, dict]:
     """计算份额日变化: {code: {"shares_yi", "delta_yi", "delta_pct", "date"}}"""
-    dt = datetime.strptime(date_str, "%Y-%m-%d")
     today_shares = None
     today_date = None
 
-    for offset in range(max_lookback + 1):
-        check = (dt - timedelta(days=offset)).strftime("%Y-%m-%d")
+    for check in _recent_weekdays(date_str, max_lookback):
         shares = fetch_shares_for_date(check)
         if shares:
             today_shares = shares
@@ -115,9 +133,7 @@ def calc_share_delta(date_str: str, max_lookback: int = 7) -> dict[str, dict]:
         return {}
 
     prev_shares = None
-    prev_dt = datetime.strptime(today_date, "%Y-%m-%d")
-    for offset in range(1, max_lookback + 1):
-        check = (prev_dt - timedelta(days=offset)).strftime("%Y-%m-%d")
+    for check in _recent_weekdays(today_date, max_lookback)[1:]:
         shares = fetch_shares_for_date(check)
         if shares:
             prev_shares = shares

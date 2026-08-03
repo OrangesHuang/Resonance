@@ -16,15 +16,18 @@ JOB_DEFS: dict[str, dict] = {
     },
     "backfill_etf_daily": {
         "label": "回填ETF日度数据", "exclusive": False,
-        "defaults": {"days": DEFAULT_ETF_SEED_DAYS},
+        "defaults": {"days": DEFAULT_ETF_SEED_DAYS, "force": False,
+                     "start_date": None, "end_date": None},
     },
     "backfill_shares": {
         "label": "回填份额数据", "exclusive": False,
-        "defaults": {"days": DEFAULT_SHARES_BACKFILL_DAYS, "force": False},
+        "defaults": {"days": DEFAULT_SHARES_BACKFILL_DAYS, "force": False,
+                     "start_date": None, "end_date": None},
     },
     "fetch_sentiment": {
         "label": "拉取市场情绪", "exclusive": False,
-        "defaults": {"days": SENTIMENT_BACKFILL_DAYS, "force": False},
+        "defaults": {"days": SENTIMENT_BACKFILL_DAYS, "force": False,
+                     "start_date": None, "end_date": None},
     },
     "fetch_etf_latest": {
         "label": "刷新最新ETF数据", "exclusive": False, "defaults": {},
@@ -36,6 +39,7 @@ JOB_DEFS: dict[str, dict] = {
             "shares_days": DEFAULT_SHARES_BACKFILL_DAYS,
             "sentiment_days": SENTIMENT_BACKFILL_DAYS,
             "force": False,
+            "start_date": None, "end_date": None,
         },
     },
 }

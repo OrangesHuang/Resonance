@@ -59,16 +59,25 @@ def _turnover_row(cur: datetime) -> Optional[dict]:
 
 
 def fetch_market_turnover(start_date: str, end_date: str,
-                          on_progress: Optional[Callable[[int, int, str], None]] = None) -> list[dict]:
+                          on_progress: Optional[Callable[[int, int, str], None]] = None,
+                          skip_dates: Optional[set[str]] = None,
+                          on_row: Optional[Callable[[dict], None]] = None) -> list[dict]:
+    """逐日拉取成交额; on_row 每次拉到一天立即回调(便于边拉边写库)。"""
     days = _weekday_dates(start_date, end_date)
+    skip_dates = skip_dates or set()
     rows = []
     try:
         for i, cur in enumerate(days, 1):
+            ds = cur.strftime("%Y-%m-%d")
             if on_progress:
-                on_progress(i, len(days), cur.strftime("%Y-%m-%d"))
+                on_progress(i, len(days), ds)
+            if ds in skip_dates:
+                continue
             row = _turnover_row(cur)
             if row:
                 rows.append(row)
+                if on_row:
+                    on_row(row)
             time.sleep(TURNOVER_FETCH_SLEEP_SEC)
         return rows
     except Exception as e:

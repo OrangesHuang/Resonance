@@ -6,7 +6,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import (
-    ETFS, REALTIME_INTERVAL_SEC,
+    ETFS, REALTIME_INTERVAL_SEC, REFRESH_MIN_INTERVAL_SEC,
     SENTIMENT_BACKFILL_DAYS, SENTIMENT_FETCH_HOUR, SENTIMENT_FETCH_MIN,
     CALENDAR_SYNC_HOUR, CALENDAR_SYNC_MIN, CALENDAR_SYNC_DOW,
 )
@@ -20,13 +20,14 @@ from analysis.intraday import calc_intraday_signal, IntradaySignal
 from analysis.composite import analyze_single_etf
 from analysis.factors import calc_share_probability
 from store.database import init_db
-from store.daily_repo import upsert_daily, update_share_data
+from store.daily_repo import upsert_daily, update_share_data, get_shares_by_date, shares_complete_for
 from store.realtime_repo import insert_snapshots, cleanup_old_snapshots
 from store.sentiment_repo import (
     upsert_turnover, upsert_margin, get_turnover_count, get_margin_count,
+    get_turnover_series,
 )
 from store.calendar_repo import (
-    upsert_trade_dates, get_calendar_count, get_range, reload_cache,
+    upsert_trade_dates, get_calendar_count, get_range, get_last_trading_day, reload_cache,
 )
 from store.breadth_repo import upsert_breadth, get_latest_breadth_date
 from scheduler.time_guard import is_trading_time, trading_day_guard
@@ -36,6 +37,7 @@ _idx_kline_cache: list[dict] = []
 _share_delta_cache: dict[str, dict] = {}
 _latest_signals: list[dict] = []
 _last_update: Optional[str] = None
+_last_manual_refresh: Optional[datetime] = None
 
 scheduler = AsyncIOScheduler()
 
@@ -198,6 +200,13 @@ def task_daily_analysis() -> dict:
 
 
 def task_manual_refresh() -> dict:
+    """手动刷新限速: 距上次刷新过近直接返回, 不触网(防被封)。"""
+    global _last_manual_refresh
+    now = datetime.now()
+    if _last_manual_refresh and (now - _last_manual_refresh).total_seconds() < REFRESH_MIN_INTERVAL_SEC:
+        return {"status": "skipped",
+                "reason": f"距上次刷新不足 {REFRESH_MIN_INTERVAL_SEC}s, 已跳过"}
+    _last_manual_refresh = now
     task_fetch_shares()
     return task_daily_analysis()
 
@@ -205,6 +214,12 @@ def task_manual_refresh() -> dict:
 def task_fetch_shares() -> None:
     global _share_delta_cache
     print("[SCHEDULER] fetching share data...")
+    target = get_last_trading_day(datetime.now().strftime("%Y-%m-%d"))
+    if shares_complete_for(target):
+        _share_delta_cache = {code: {"date": target, **info}
+                              for code, info in get_shares_by_date(target).items()}
+        print(f"[SCHEDULER] shares already fresh for {target}, skipped network")
+        return
     today = datetime.now().strftime("%Y-%m-%d")
     deltas = calc_share_delta(today)
     if deltas:
@@ -236,9 +251,12 @@ def task_fetch_sentiment(backfill: bool = False) -> dict:
     end = now.strftime("%Y-%m-%d")
     print(f"[SCHEDULER] fetching sentiment ({start} ~ {end}, backfill={backfill})...")
 
-    turnover = fetch_market_turnover(start, end)
+    # 缓存判断: 已入库日期跳过远端逐日拉取
+    skip_dates = set(r["date"] for r in get_turnover_series()) if not backfill else set()
+    # 边拉边写: 每拉到一天立即入库
+    turnover = fetch_market_turnover(start, end, skip_dates=skip_dates,
+                                     on_row=lambda row: upsert_turnover([row]))
     if turnover:
-        upsert_turnover(turnover)
         print(f"[SCHEDULER] turnover upserted: {len(turnover)} days")
 
     margin = fetch_margin_series(start, end)

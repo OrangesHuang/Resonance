@@ -1,9 +1,20 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from store.database import get_connection
 
 _trade_dates: Optional[set[str]] = None
+
+
+def get_last_trading_day(date: str) -> str:
+    """date 及之前最后一个交易日(日历缺失时按周末回退)。"""
+    days = get_trade_days(None, date)
+    if days:
+        return days[-1]
+    d = datetime.strptime(date, "%Y-%m-%d")
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
 
 
 def upsert_trade_dates(dates: list[str]) -> None:

@@ -11,6 +11,8 @@ router = APIRouter(prefix="/api/etf", tags=["etf"])
 @router.post("/refresh")
 def etf_refresh():
     result = task_manual_refresh()
+    if result.get("status") == "skipped":
+        return result
     return {
         "status": "ok",
         "count": result["count"],

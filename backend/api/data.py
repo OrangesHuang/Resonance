@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from functools import partial
 from typing import Optional
 
@@ -76,6 +77,19 @@ def _validate_params(params: dict) -> Optional[str]:
         if k.endswith("days"):
             if not isinstance(v, int) or isinstance(v, bool) or not (1 <= v <= JOB_DAYS_MAX):
                 return f"参数 {k} 必须为 1~{JOB_DAYS_MAX} 的整数"
+        elif k in ("start_date", "end_date") and v is not None:
+            if not isinstance(v, str):
+                return f"参数 {k} 必须为 YYYY-MM-DD 字符串"
+            try:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError:
+                return f"参数 {k} 格式必须为 YYYY-MM-DD"
+    start, end = params.get("start_date"), params.get("end_date")
+    today = datetime.now().strftime("%Y-%m-%d")
+    if start and start > today:
+        return "开始日期不能晚于今天"
+    if start and end and start > end:
+        return "开始日期不能晚于结束日期"
     return None
 
 
