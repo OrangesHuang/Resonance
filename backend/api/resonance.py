@@ -82,6 +82,13 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
         result = run_div_strategy(etf_rows)
         return {"code": code, "trades": result["trades"]}
 
+    from analysis.strategy_sh50 import run_sh50_strategy, SH50_CODE
+    if code == SH50_CODE:
+        etf_rows = list(reversed(get_by_code(code)))
+        result = run_sh50_strategy(etf_rows)
+        return {"code": code, "trades": result["trades"],
+                "metrics": result["metrics"], "holding": result["holding"]}
+
     from analysis.strategy_sc50 import run_sc50_strategy, SC50_CODE
     if code == SC50_CODE:
         etf_rows = list(reversed(get_by_code(code)))

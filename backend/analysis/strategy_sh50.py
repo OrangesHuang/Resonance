@@ -1,62 +1,68 @@
-"""科创50 (588000) K线摆动匹配策略。
+"""上证50 (510050) K线摆动匹配策略。
 
 核心认知:
-  科创50高波动成长资产, 份额信号极强(单日±10~76亿)但经常"边拉边出":
-  08-22 (-38.75亿) 之后还涨 +22%, 04-30 (-29.31亿) 之后还涨 +42%
-  → 巨额赎回不是卖出理由, 顶几乎全是 NEUTRAL 无信号
-  → 卖出必须用持仓期最高收盘回落止盈
+  上证50是国家队份额主战场, 权重蓝筹慢牛, 波动中等。
   K线主观买卖点(大波段):
-    B1 2024-02-02 雪球底@0.707   → S1 2024-06-21 顶@0.795
-    B2 2024-09-24 924反弹@0.699  → S2 2024-10-08 924顶@1.14
-    B4 2025-04-07 关税底@0.97    → S4 2025-10-09 顶@1.618
-    B5 2025-11-21 深底@1.351     → S6 2026-06-30 大顶@2.344
+    B1 2024-01-17 雪球崩盘底 → S1 2024-05-20 年内高点
+    B2 2024-09-13 924前深底   → S2 2024-10-08 924顶
+    B3 2025-04-07 关税暴跌底  → S3 2026-01-06 2026初顶
+    B4 2026-03-23 回调底      → S4 2026-05-13 5月顶
+    B5 2026-07-17 回调底      → 持有
+  关键认知: 上证50的顶大多是 NEUTRAL(无DISTRIBUTE信号, 如2024-05/2026-01),
+  "出货计数"类卖出永远匹配不上 → 卖出必须用趋势止盈(持仓最高收盘回落5%)
+  + 巨额赎回日(≥10亿)快速离场。
   历史教训:
-  1. 2024-08-05 距高点仅10天(急跌初期)买入会继续跌 → 距30日高点≥15天
-  2. 2024-06-20 (pp34) 高位吸筹买入@0.791 后跌到 07-04 @0.723(-8.6%)
-     → pp≤30 拦掉高位吸筹
-  3. 2026-07-17 距高点13天 且 当日+27.78亿申购, 买入后跌到 08-03 @1.64
-     (-9.2%) → 距高点门槛15天不放宽, 急跌初期即使大额申购也等右侧
-  4. 2025-05-28 5%止盈被浅回调(-5.4%)骗出@1.023, 之后涨到 10-09 @1.618
-     → 止盈放宽到8%
-  5. 2026-06-01 深回调-12.2%触发止盈但当日 sd +6.48亿(国家队抄底),
-     豁免后 06-02 卖 @1.781 且 06-08 后涨到 06-30 @2.344
-     → 止盈触发日份额申购≥5亿豁免(情绪更直接的确认信号)
-  6. 2025-09-04 深回调-10.5%触发止盈, 当日 sd -0.45(回调中是流出-8.5亿),
-     豁免无效 → 卖 @1.282, 之后 10-09 @1.618 新高 — 深回调假顶固有代价
-  7. 与双创50同源的"缩量见底→放量启动"规律: 科创50的底部启动几乎都带
-     ACCUMULATE信号(P1/P2已覆盖), 无需双创式P4放量启动路径
+  1. 2024-01-22 雪球崩盘 ACCUMULATE+国家队长枪(单日+15.56亿)是绝佳买点,
+     距高点仅11天 → P2 允许 单日申购≥10亿 豁免距高点要求
+  2. 2024-08-05 距高点11天(07-19刚创近高即急跌)买入会-4.25%止损出局
+     → 距高点用30日窗口+12天门槛(60日窗口会把急跌初期误判为下跌末期)
+  3. 2025-06-10 份额-5.3亿 是小幅换手, 若卖出会错过 2025 慢牛
+     → 巨额赎回门槛 10亿, 2025全年不触发
+  4. 2026-01-15 单日 -28.47亿 巨额赎回 + pp69 → 立即卖出@3.18
+     (主观 S3 顶 01-06 @3.235, 差1.7%)
+  5. 2026-05-11 单日 -11.36亿 + pp81 → 卖出@3.116 (主观 S4 顶 05-13
+     @3.123, 差2天0.2%)
+  6. 卖出差价的诚实说明: S1(主观05-20@2.43 vs 止盈06-25@2.30)、
+     S2(主观10-08@2.84 vs 止盈10-11@2.66) — 无信号顶只能靠回落确认,
+     卖不到最高点是趋势止盈的固有代价
 
 算法:
-  买入(2路径, 02-05 类底部由 P2 覆盖):
-    P1 单日恐慌: 跌≥6%+ACCUMULATE+pp≤30+sd>0 → 2025-04-07 @0.97
-    P2 低位吸筹: ACCUMULATE+pp≤30+sd>0+距30日高点≥15天
-       → 2024-02-02 @0.707 / 2024-09-24 / 2025-11-21 / 2026-03-23
-       (2026-07-17 距13天被拦, 2024-06-20 pp34被拦)
-  卖出(1规则):
-    T1 止盈: 持仓≥10天 + 收盘 < 持仓期最高收盘×0.92 → 卖
-       (触发日份额申购≥5亿则豁免, 2026-06-01 豁免案例)
-       (2024-10-15 @0.946 / 2025-09-04 @1.282 / 2026-02-05 @1.508
-        / 2026-06-02 @1.781)
+  买入(4路径):
+    P1 单日恐慌: 跌≥5%+ACCUMULATE+pp≤30+非集群+sd>0 → 2025-04-07 @2.491
+    P2 低位吸筹: ACCUMULATE+pp≤40+非集群+sd>0
+       + (距30日高点≥12天 或 当日申购≥10亿豁免)
+       → 2024-01-22 / 2024-09-20 / 2026-03-23 / 2026-07-17
+    极低位: pp≤10+跌≥2%+距高点≥12+sd>0 (备用)
+    P3 集群右侧: 10天≥2个ACCUMULATE → 等反弹确认 (备用)
+  卖出(2规则):
+    T1 止盈: 持仓≥10天 + 收盘 < 持仓期最高收盘×0.95 → 卖
+       (2024-06-25 S1 / 2024-10-11 S2)
+    T2 巨额赎回: 持仓≥10天 + 当日份额流出≥10亿 + pp≥60 → 立即卖
+       (2026-01-15 @3.18 / 2026-05-08 @3.075, 2025年小幅赎回不触发)
 """
 
 import math
 
-KC50_CODE = "588000"
+SH50_CODE = "510050"
 
-BUY_PP_MAX = 30
-PANIC_DROP = -6.0
+BUY_PP_MAX = 40
+PANIC_DROP = -5.0
 PANIC_PP_MAX = 30
+EXTREME_PP = 10
+EXTREME_CHG = -2.0
+BIG_BUY_YI = 10.0     # 单日申购≥此值豁免距高点要求(国家队长枪)
 
-CLUSTER_ACCUM = 3
+CLUSTER_ACCUM = 2
 CLUSTER_WINDOW = 10
-HIGH_LOOKBACK = 30
-DROP_EARLY_DAYS = 15
+HIGH_LOOKBACK = 30      # 用30日高点判下跌末期(60日窗口会把8月急跌误判为末期)
+DROP_EARLY_DAYS = 12
 BOUNCE_CHG = 2.0
 BOUNCE_VR = 1.2
 BOUNCE_PP_MAX = 45
 
-TRAIL_PCT = 0.08       # 持仓期最高收盘回落8%止盈(5%会被2025-05浅回调骗出)
-TRAIL_SD_EXEMPT = 5.0  # 止盈触发日份额申购≥5亿则豁免(国家队抄底的假回调)
+TRAIL_PCT = 0.05       # 持仓期最高收盘回落5%止盈
+REDEEM_YI = -10.0      # 单日赎回≥10亿触发快速卖出
+REDEEM_PP_MIN = 60     # 巨额赎回卖出需价格仍在高位区
 
 MIN_HOLD = 10
 COOLDOWN = 3
@@ -69,7 +75,7 @@ def _count_accum(rows: list[dict], idx: int, window: int = CLUSTER_WINDOW) -> in
                if rows[j].get("trade_direction") == "ACCUMULATE")
 
 
-def _days_since_30d_high(rows: list[dict], idx: int) -> int:
+def _days_since_60d_high(rows: list[dict], idx: int) -> int:
     lo = max(0, idx - HIGH_LOOKBACK + 1)
     high_close = max((rows[j].get("close_price") or 0) for j in range(lo, idx + 1))
     for j in range(idx, lo - 1, -1):
@@ -78,10 +84,10 @@ def _days_since_30d_high(rows: list[dict], idx: int) -> int:
     return HIGH_LOOKBACK
 
 
-def run_kc50_strategy(rows: list[dict]) -> dict:
+def run_sh50_strategy(rows: list[dict]) -> dict:
     n = len(rows)
     if n < 30:
-        return {"code": KC50_CODE, "trades": [], "metrics": {}, "holding": False}
+        return {"code": SH50_CODE, "trades": [], "metrics": {}, "holding": False}
 
     closes = [r.get("close_price") or 0.0 for r in rows]
 
@@ -91,7 +97,7 @@ def run_kc50_strategy(rows: list[dict]) -> dict:
     cooldown = COOLDOWN
     waiting_reversal = False
     wait_low = None
-    peak_close = 0.0
+    peak_close = 0.0   # 持仓期最高收盘
 
     for i in range(n):
         row = rows[i]
@@ -114,7 +120,7 @@ def run_kc50_strategy(rows: list[dict]) -> dict:
         if position == 0 and cooldown >= COOLDOWN:
             is_accum = td == "ACCUMULATE"
             accum_count = _count_accum(rows, i)
-            days_high = _days_since_30d_high(rows, i)
+            days_high = _days_since_60d_high(rows, i)
             money_ok = sd is None or sd > 0
 
             # P1: 单日恐慌 (非集群中, 左侧)
@@ -124,12 +130,20 @@ def run_kc50_strategy(rows: list[dict]) -> dict:
                 action = "BUY"
                 reason = f"恐慌抄底: 跌{chg:.1f}%+pp{pp:.0f}+份额{sd:.1f}亿"
 
-            # P2: 低位吸筹 (下跌末期; pp≤30 拦掉高位吸筹如2024-06-20)
+            # P2: 低位吸筹 (下跌末期 或 国家队大额申购豁免)
             elif (is_accum and pp is not None and pp <= BUY_PP_MAX
                   and accum_count < CLUSTER_ACCUM and money_ok
-                  and days_high >= DROP_EARLY_DAYS):
+                  and (days_high >= DROP_EARLY_DAYS
+                       or (sd is not None and sd >= BIG_BUY_YI))):
                 action = "BUY"
                 reason = f"低位吸筹: pp{pp:.0f}+距高点{days_high}天"
+
+            # 极低位: 放量恐慌日的极端低位
+            elif (pp is not None and pp <= EXTREME_PP and chg <= EXTREME_CHG
+                  and days_high >= DROP_EARLY_DAYS
+                  and accum_count < CLUSTER_ACCUM and money_ok):
+                action = "BUY"
+                reason = f"极低位: pp{pp:.0f}+跌{chg:.1f}%"
 
             # P3: 暴跌集群 → 等待右侧确认
             elif accum_count >= CLUSTER_ACCUM:
@@ -165,15 +179,23 @@ def run_kc50_strategy(rows: list[dict]) -> dict:
                     waiting_reversal = False  # 价格回升太多, 重置
                     wait_low = None
 
-        # ---- 卖出: 止盈(份额巨额申购日豁免) ----
+        # ---- 卖出 ----
         if position == 1:
             hold_days += 1
             peak_close = max(peak_close, close)
-            exempt = sd is not None and sd >= TRAIL_SD_EXEMPT
+
+            # T2: 巨额赎回日快速离场 (份额大幅流出+价格仍在高位区)
             if (hold_days >= MIN_HOLD
-                    and close < peak_close * (1 - TRAIL_PCT)
-                    and not exempt):
-                reason = f"止盈: 高点{peak_close:.3f}回落至{close:.3f}"
+                    and sd is not None and sd <= REDEEM_YI
+                    and pp is not None and pp >= REDEEM_PP_MIN):
+                reason = (f"巨额赎回: {sd:.1f}亿+pp{pp:.0f}")
+                action = "SELL"
+
+            # T1: 持仓期最高收盘回落5%止盈
+            elif (hold_days >= MIN_HOLD
+                    and peak_close > 0
+                    and close < peak_close * (1 - TRAIL_PCT)):
+                reason = (f"止盈: 高点{peak_close:.3f}回落至{close:.3f}")
                 action = "SELL"
 
         if action == "BUY":
@@ -193,7 +215,7 @@ def run_kc50_strategy(rows: list[dict]) -> dict:
                            "reason": reason})
 
     metrics = _calc_metrics(trades, closes[-1] if closes else 0, position)
-    return {"code": KC50_CODE, "trades": trades, "metrics": metrics,
+    return {"code": SH50_CODE, "trades": trades, "metrics": metrics,
             "holding": position > 0}
 
 

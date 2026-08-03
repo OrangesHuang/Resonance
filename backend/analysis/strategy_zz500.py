@@ -7,7 +7,12 @@
      7-13~7-20连续4天ACCUMULATE继续跌到7.43(-8.8%), 应等右侧反弹
   2. 卖太早: 2025-12-26首波DISTRIBUTE就卖@7.37, 当天份额仍+3.11亿流入
      真正资金流出在1-15(-8.34亿), 期间价格涨到8.57(+16%)
-  3. 假反弹: 2026-07-21涨4.93%但份额-0.32亿流出(无资金支持),
+  3. 卖太早(S1): 2025-08-18 首个DISTRIBUTE就卖@6.537, 实际是慢牛换手
+     之后放量上涨(vr1.64/+1.4%)创新高, 10-09 真顶@7.438(+13.8%)
+     → S1 触发后进入3日观察: 放量上涨日(涨≥1%+vr≥1.2)判为换手继续持有
+       (08-20 换手 → 持有到 08-26 出货确认 @6.837 +34.88%)
+       缩量走弱则卖出 (2025-03-14 触发 → 3日缩量 → 03-19 卖@5.891, 正确)
+  4. 假反弹: 2026-07-21涨4.93%但份额-0.32亿流出(无资金支持),
      随后7-30跌破7-20前低7.426 → 反弹必须份额净流入+不破前低
 
 算法:
@@ -19,8 +24,9 @@
        反弹需: 涨≥2%+vr≥1.2+份额净流入(sd>0), 跌破前低则作废
        (2026-07-31, 避免集群中段入场和假反弹)
   卖出(2规则):
-    S1 首个出货冲顶: DISTRIBUTE+pp≥95+近5天无DISTRIBUTE → 立即卖
-       (2025-03-14 / 2025-08-18 / 2026-01-09, 首日冲顶即逃)
+    S1 首个出货冲顶: DISTRIBUTE+pp≥95+近5天无DISTRIBUTE → 3日观察
+       观察期内放量上涨日(涨≥1%+vr≥1.2)=换手, 取消卖出并清零出货计数;
+       否则缩量走弱确认后卖出 (2025-03-14正确 / 2025-08-18换手)
     S2 集群出货确认: DISTRIBUTE累计≥阈值+当日份额净流出 → 卖
        (需量价记忆+份额流出双确认, 避免机构还在买时卖出)
 """
@@ -38,6 +44,10 @@ DROP_EARLY_DAYS = 15
 SELL_PP_EXTREME = 95
 SELL_PP_MIN = 85
 SELL_VR_MIN = 1.5
+# S1 冲顶观察: 触发后3日内出现放量上涨日 → 判定换手(假顶), 取消卖出
+S1_WATCH_DAYS = 3
+S1_WATCH_VR = 1.2
+S1_WATCH_CHG = 1.0
 BOUNCE_CHG = 2.0
 BOUNCE_VR = 1.2
 BOUNCE_PP_MAX = 45
@@ -84,6 +94,7 @@ def run_zz500_strategy(rows: list[dict]) -> dict:
     dist_count = 0
     waiting_reversal = False
     wait_low = None
+    s1_watch = 0   # S1 冲顶观察剩余天数(0=未在观察)
 
     for i in range(n):
         row = rows[i]
@@ -162,14 +173,24 @@ def run_zz500_strategy(rows: list[dict]) -> dict:
             pp_high = pp is not None and pp >= SELL_PP_MIN
             vr_ok = vr >= SELL_VR_MIN
 
-            # S1: 首个出货冲顶 (近5天无DISTRIBUTE + pp≥95)
-            if (is_dist and pp is not None and pp >= SELL_PP_EXTREME
-                    and not _recent_dist(rows, i)):
-                reason = f"冲顶出货: pp{pp:.0f}+vr{vr:.1f}(首日)"
-                action = "SELL"
+            # S1 冲顶观察: 触发后3日内出现放量上涨日 → 换手(假顶), 取消卖出
+            if s1_watch > 0:
+                s1_watch -= 1
+                if vr >= S1_WATCH_VR and chg >= S1_WATCH_CHG:
+                    reason = f"冲顶观察: 放量上涨(vr{vr:.1f}) → 换手, 继续持有"
+                    s1_watch = 0
+                    dist_count = 0  # 假顶集群作废, 重新计数
+                elif s1_watch == 0:
+                    reason = f"冲顶出货: pp{pp:.0f}+vr{vr:.1f}(缩量走弱确认)"
+                    action = "SELL"
+
+            # S1: 首个出货冲顶 (近5天无DISTRIBUTE + pp≥95) → 进入观察
+            if s1_watch == 0 and action is None and (is_dist and pp is not None
+                    and pp >= SELL_PP_EXTREME and not _recent_dist(rows, i)):
+                s1_watch = S1_WATCH_DAYS
 
             # S2: 集群确认 + 份额净流出 (双确认)
-            elif is_dist and pp_high and vr_ok:
+            if s1_watch == 0 and action is None and is_dist and pp_high and vr_ok:
                 dist_count += 1
                 if (hold_days >= MIN_HOLD and dist_count >= sell_threshold
                         and sd is not None and sd < 0):
@@ -183,6 +204,7 @@ def run_zz500_strategy(rows: list[dict]) -> dict:
             cooldown = 0
             dist_count = 0
             waiting_reversal = False
+            s1_watch = 0
             vol = row.get("volume") or 0
             prev_vols = [rows[j].get("volume") or 0
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
@@ -194,6 +216,7 @@ def run_zz500_strategy(rows: list[dict]) -> dict:
         elif action == "SELL":
             position = 0.0
             cooldown = 0
+            s1_watch = 0
             trades.append({"date": d, "action": "SELL", "price": close,
                            "reason": reason})
 

@@ -6,9 +6,6 @@ DB_PATH = WORKSPACE / "etf_monitor.db"
 
 ETFS = {
     "510300": {"name": "华泰柏瑞沪深300ETF", "idx": "沪深300", "market": "sh"},
-    "510310": {"name": "易方达沪深300ETF", "idx": "沪深300", "market": "sh"},
-    "510330": {"name": "华夏沪深300ETF", "idx": "沪深300", "market": "sh"},
-    "159919": {"name": "嘉实沪深300ETF", "idx": "沪深300", "market": "sz"},
     "510050": {"name": "华夏上证50ETF", "idx": "上证50", "market": "sh"},
     "510500": {"name": "华泰柏瑞中证500ETF", "idx": "中证500", "market": "sh"},
     "512100": {"name": "南方中证1000ETF", "idx": "中证1000", "market": "sh"},
