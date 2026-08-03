@@ -15,6 +15,31 @@ FRONTEND_PORT=5174
 log() { printf '\033[0;36m[start]\033[0m %s\n' "$*"; }
 die() { printf '\033[0;31m[start]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# 镜像自动探测: 依次试 阿里云 → 清华 → pypi, 取首个可达者(3s 连接超时)
+PIP_MIRRORS=(
+  "https://mirrors.aliyun.com/pypi/simple/"
+  "https://pypi.tuna.tsinghua.edu.cn/simple/"
+  "https://pypi.org/simple/"
+)
+pick_pip_mirror() {
+  for m in "${PIP_MIRRORS[@]}"; do
+    if curl -sS -o /dev/null --connect-timeout 3 --max-time 6 "$m/pip/" 2>/dev/null; then
+      echo "$m"
+      return 0
+    fi
+    log "镜像不可达: $m" >&2
+  done
+  return 1
+}
+
+if [ -z "${PIP_INDEX_URL:-}" ]; then
+  MIRROR="$(pick_pip_mirror || true)"
+  if [ -n "$MIRROR" ]; then
+    export PIP_INDEX_URL="$MIRROR"
+    log "使用镜像: $MIRROR"
+  fi
+fi
+
 command -v python3 >/dev/null 2>&1 || die "未找到 python3，请先安装 Python 3.9+。"
 command -v npm     >/dev/null 2>&1 || die "未找到 npm，请先安装 Node.js。"
 
@@ -33,8 +58,8 @@ if ! "$VENV_DIR/bin/pip" --version >/dev/null 2>&1; then
   python3 -m venv "$VENV_DIR"
 fi
 log "安装/校验后端依赖 ..."
-"$VENV_DIR/bin/pip" install --quiet --upgrade pip
-"$VENV_DIR/bin/pip" install --quiet -r "$BACKEND_DIR/requirements.txt"
+"$VENV_DIR/bin/pip" install --quiet --timeout 30 --upgrade pip 2>/dev/null || log "pip 升级跳过(网络不可用, 不影响)"
+"$VENV_DIR/bin/pip" install --quiet --timeout 30 -r "$BACKEND_DIR/requirements.txt" || die "依赖安装失败, 请检查网络后重试"
 
 # --- 2. 前端依赖 ---
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
