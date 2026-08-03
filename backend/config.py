@@ -14,6 +14,7 @@ ETFS = {
     "512100": {"name": "南方中证1000ETF", "idx": "中证1000", "market": "sh"},
     "588000": {"name": "华夏科创50ETF", "idx": "科创50", "market": "sh"},
     "589680": {"name": "鹏华科创综指ETF", "idx": "科创综指", "market": "sh"},
+    "159780": {"name": "华宝中证双创50ETF", "idx": "双创50", "market": "sz"},
     "515080": {"name": "招商中证红利ETF", "idx": "中证红利", "market": "sh"},
 }
 
@@ -53,6 +54,16 @@ MAX_RETRY = 2
 
 KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,{limit},qfq"
 REALTIME_URL = "http://qt.gtimg.cn/q={symbols}"
+
+# 拉取限流: 防止频繁请求被远端封禁
+KLINE_CACHE_TTL_SEC = 60      # K线内存缓存有效期(秒)
+KLINE_FAIL_COOLDOWN_SEC = 30  # K线拉取失败后的冷却(秒, 冷却期内直接返回空)
+FETCH_SLEEP_SEC = 0.3         # 相邻 ETF 拉取间隔(秒)
+REFRESH_MIN_INTERVAL_SEC = 120  # 手动刷新接口最小间隔(秒)
+SHARES_RETRY = 2              # 份额单日拉取失败重试次数
+SHARES_RETRY_BACKOFF_SEC = 5  # 份额重试递进间隔基数(秒, 每次×递增)
+SHARES_FAIL_PAUSE_AFTER = 3   # 连续失败达到此数后暂停
+SHARES_FAIL_PAUSE_SEC = 60    # 连续失败暂停时长(秒, 给远端喘息)
 
 # 市场情绪模块
 SENTIMENT_MA_WINDOW = 5          # 成交额均线窗口

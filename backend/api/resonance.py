@@ -82,6 +82,27 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
         result = run_div_strategy(etf_rows)
         return {"code": code, "trades": result["trades"]}
 
+    from analysis.strategy_sc50 import run_sc50_strategy, SC50_CODE
+    if code == SC50_CODE:
+        etf_rows = list(reversed(get_by_code(code)))
+        result = run_sc50_strategy(etf_rows)
+        return {"code": code, "trades": result["trades"],
+                "metrics": result["metrics"], "holding": result["holding"]}
+
+    from analysis.strategy_kc50 import run_kc50_strategy, KC50_CODE
+    if code == KC50_CODE:
+        etf_rows = list(reversed(get_by_code(code)))
+        result = run_kc50_strategy(etf_rows)
+        return {"code": code, "trades": result["trades"],
+                "metrics": result["metrics"], "holding": result["holding"]}
+
+    from analysis.strategy_zz500 import run_zz500_strategy, ZZ500_CODE
+    if code == ZZ500_CODE:
+        etf_rows = list(reversed(get_by_code(code)))
+        result = run_zz500_strategy(etf_rows)
+        return {"code": code, "trades": result["trades"],
+                "metrics": result["metrics"], "holding": result["holding"]}
+
     etf_rows = list(reversed(get_by_code(code)))
     turnover = enrich_turnover(get_turnover_series())
     margin = get_margin_series()

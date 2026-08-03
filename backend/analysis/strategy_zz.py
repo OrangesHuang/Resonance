@@ -19,6 +19,13 @@ ZZ_CODE = "512100"
 SELL_PP_MIN = 75
 SELL_VR_MIN = 1.3
 
+# 顶部观察(延迟卖出): 出货确认达标后不立即卖, 等破位
+EXTREME_CHG = 3.0         # 确认日涨幅≥此值 → 加速赶顶(924式)立即卖
+EXTREME_VR = 4.0          # 确认日量比≥此值 → 立即卖
+TRAIL_PCT = 0.04          # 从观察期最高收盘回落幅度触发
+WATCH_BREAK_DAYS = 5      # 跌破N日最低收盘触发
+WATCH_PP_EXIT = 60        # 观察期 pp 跌破此值立即卖
+
 MIN_HOLD = 5
 COOLDOWN = 3
 VOL_LOOKBACK = 20
@@ -51,6 +58,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     last_sell_price = None
     entry_shares = None      # 买入时份额
     peak_net_inflow = 0.0    # 累计净流入峰值
+    watch_mode = False       # 顶部观察模式(阈值达标后等破位)
+    watch_peak = 0.0         # 观察期最高收盘
 
     for i in range(n):
         row = rows[i]
@@ -167,10 +176,26 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                     action = "SELL"
                     reason = (f"巨量流出: {sd_yi:.0f}亿+净流入回撤"
                               f"+pp{pp:.0f}")
-                elif is_dist and dist_count >= sell_threshold:
-                    reason = (f"出货确认({dist_count}/{sell_threshold})"
-                              f"+pp{pp:.0f}+vr{vr:.1f}")
-                    action = "SELL"
+                elif is_dist and dist_count >= sell_threshold and not watch_mode:
+                    # 首次达标: 加速赶顶日(924式)立即卖, 否则进入顶部观察等破位
+                    if chg >= EXTREME_CHG or vr >= EXTREME_VR:
+                        reason = (f"出货确认+加速赶顶({dist_count}/{sell_threshold})"
+                                  f"+pp{pp:.0f}+vr{vr:.1f}")
+                        action = "SELL"
+                    else:
+                        watch_mode = True
+                        watch_peak = close
+                elif watch_mode:
+                    # 顶部观察: 跟踪最高收盘, 破位即卖
+                    watch_peak = max(watch_peak, close)
+                    low_n = min((rows[j].get("close_price") or 0)
+                                for j in range(max(0, i - WATCH_BREAK_DAYS), i))
+                    if (close < low_n
+                            or close < watch_peak * (1 - TRAIL_PCT)
+                            or (pp is not None and pp < WATCH_PP_EXIT)):
+                        reason = (f"顶部破位: 高点{watch_peak:.3f}"
+                                  f"+收盘{close:.3f}+pp{pp:.0f}")
+                        action = "SELL"
 
         if action == "BUY":
             position = 1.0
@@ -178,6 +203,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             cooldown = 0
             dist_count = 0
             waiting_for_reversal = False
+            watch_mode = False
+            watch_peak = 0.0
             entry_shares = row.get("shares_yi")
             peak_net_inflow = 0.0
             vol = row.get("volume") or 0
@@ -191,6 +218,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         elif action == "SELL":
             position = 0.0
             cooldown = 0
+            watch_mode = False
+            watch_peak = 0.0
             last_sell_price = close
             trades.append({"date": d, "action": "SELL", "price": close,
                            "reason": reason})

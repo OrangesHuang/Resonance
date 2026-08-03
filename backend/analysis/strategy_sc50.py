@@ -1,56 +1,52 @@
-"""科创综指 (589680) 右侧趋势策略 v2。
+"""双创50 (159780) 右侧趋势策略。
 
 核心认知:
-  科创综指是次新 ETF(2025-04 上市), 信号稀疏 — 16 个月仅 4 个 ACCUMULATE 日。
+  双创50是2024-10-08前即上市的高波动成长ETF, 与中证500同属趋势型,
+  但有两个截然不同的特征:
+  1. DISTRIBUTE 集群极长 — 2025年6月到8月几乎天天出货信号, 价格却一路涨
+     → 卖出不能用"数出货次数", 必须用趋势破位(MA30)
+  2. 份额信号历史缺失(2024~2025年无回填) → 份额仅作可选方向过滤
   历史教训:
-  1. 买太早: 2026-07-17 ACCUMULATE 日买入@1.516, 实际是暴跌集群开端
-     7-17~7-20 连续 2 个 ACCUMULATE, 之后继续跌到 7-30 @1.374(-9.4%)
-     → 集群中禁止左侧, 等右侧反弹确认
-  2. 份额数据极弱(单日 ±0.05~1.25亿), 方向可用但幅度无意义
-     → 右侧确认用 sd>0 做方向过滤, 但主证据是涨幅+量比+价格位置
-  3. 阴跌底部(2025-11-21 @1.189, pp15 vr0.78 无信号日)靠"极低位+低量"识别
-     → 保留极低位路径(卖压耗尽), 但必须非集群
+  1. 买太早: 2024-01-11 孤立ACCUMULATE日买入@0.462, 实际是暴跌集群开端,
+     继续跌到 02-05 @0.407(-12%) → 双创50不做P2低位孤立, 左侧只留给极端恐慌
+  2. 卖出太早: 5月/10月/11月三次深回调都是假破位(后续创更高),
+     2026-07 才是真趋势破坏 → 用 MA30+3% 深度破位过滤浅回调
+  3. 集群右侧: 2024-09-24 集群中第一个放量反弹日买入@0.423 → 吃到924行情
+     → 集群中禁止左侧, 等反弹确认(涨+量+低位)
 
 算法:
-  买入(4路径):
-    P1 单日极端恐慌: 跌≥10%+ACCUMULATE+pp≤40+非集群 → 左侧买 (2025-04-07 -12.24%)
-    P2 低位孤立吸筹: ACCUMULATE+pp≤35+非集群+距60日高点≥15天 → 左侧买
-       (下跌末期才左侧, 2026-07-17 距高点仅13天被拦截)
-    极低位: pp≤15+上市≥60天+非集群+vr<1.0 → 左侧买 (2025-11-21, 低量=卖压耗尽)
-    P3 暴跌集群右侧: 10天≥2个ACCUMULATE → 等反弹确认
-       反弹需: 涨≥2%+vr≥1.2+pp≤45+份额方向净流入, 跌破前低则作废
-       (2026-07 集群, 避免集群中段入场和假反弹)
-  卖出(1规则, 不用S1首日冲顶 — 5/20 pp100 冲顶后仍涨14%, 首日逃过早):
-    S2 集群出货确认: DISTRIBUTE累计≥阈值(量价记忆)+当日份额净流出 → 卖
-       (8/19, 6/22 两次成功, 需次数+资金流出双确认)
+  买入(2路径):
+    P1 单日极端恐慌: 跌≥9%+ACCUMULATE+pp≤20+非集群 → 左侧买
+       (2025-04-07 -10.85% @0.485; 2026-07-28 -7.74% 被拦截)
+    P3 暴跌集群右侧: 10天≥3个ACCUMULATE → 等反弹确认
+       反弹需: 涨≥2%+vr≥1.2+pp≤45+份额方向(有数据时sd>0), 跌破前低作废
+       (2024-02-05 集群末反弹买@0.418 / 2024-09-24 924反弹买@0.423)
+  卖出(1规则):
+    趋势破位: 持仓≥25天 + 收盘 < MA30×0.97 → 卖
+       (DISTRIBUTE集群是牛市噪音, 用MA30深度破位替代;
+        2025-11-18 深回调卖@0.876, 2026-07 崩盘在空仓中避开)
 """
 
 import math
 
-KC_CODE = "589680"
+SC50_CODE = "159780"
 
 BUY_PP_MAX = 35
-PANIC_DROP = -10.0
-PANIC_PP_MAX = 40
-EXTREME_PP = 15
-EXTREME_VR_MAX = 1.0
+PANIC_DROP = -9.0
+PANIC_PP_MAX = 20
 
-SELL_PP_MIN = 80
-SELL_VR_MIN = 1.4
-
-CLUSTER_ACCUM = 2
+CLUSTER_ACCUM = 3
 CLUSTER_WINDOW = 10
-HIGH_LOOKBACK = 60
-DROP_EARLY_DAYS = 15
 BOUNCE_CHG = 2.0
 BOUNCE_VR = 1.2
 BOUNCE_PP_MAX = 45
 
-MIN_HOLD = 5
+MA_WINDOW = 30
+MA_BREAK = 0.97
+MIN_HOLD = 25
 COOLDOWN = 3
 VOL_LOOKBACK = 20
-MIN_ETF_AGE = 60
-TRADE_START = "2025-04-01"
+TRADE_START = "2024-01-01"
 
 
 def _count_accum(rows: list[dict], idx: int, window: int = CLUSTER_WINDOW) -> int:
@@ -58,29 +54,23 @@ def _count_accum(rows: list[dict], idx: int, window: int = CLUSTER_WINDOW) -> in
                if rows[j].get("trade_direction") == "ACCUMULATE")
 
 
-def _days_since_60d_high(rows: list[dict], idx: int) -> int:
-    lo = max(0, idx - HIGH_LOOKBACK + 1)
-    high_close = max((rows[j].get("close_price") or 0) for j in range(lo, idx + 1))
-    for j in range(idx, lo - 1, -1):
-        if (rows[j].get("close_price") or 0) == high_close:
-            return idx - j
-    return HIGH_LOOKBACK
+def _ma(closes: list[float], idx: int, window: int = MA_WINDOW) -> float:
+    lo = max(0, idx - window + 1)
+    return sum(closes[lo:idx + 1]) / (idx - lo + 1)
 
 
-def run_kc_strategy(rows: list[dict]) -> dict:
+def run_sc50_strategy(rows: list[dict]) -> dict:
     n = len(rows)
     if n < 30:
-        return {"code": KC_CODE, "trades": [], "metrics": {}, "holding": False}
+        return {"code": SC50_CODE, "trades": [], "metrics": {}, "holding": False}
 
     closes = [r.get("close_price") or 0.0 for r in rows]
-    etf_birth_idx = next((i for i, r in enumerate(rows) if r["date"] >= TRADE_START), 0)
 
     trades = []
     position = 0.0
     hold_days = 0
     cooldown = COOLDOWN
     sell_threshold = 1
-    dist_count = 0
     waiting_reversal = False
     wait_low = None
 
@@ -105,8 +95,6 @@ def run_kc_strategy(rows: list[dict]) -> dict:
         if position == 0 and cooldown >= COOLDOWN:
             is_accum = td == "ACCUMULATE"
             accum_count = _count_accum(rows, i)
-            pp_low = pp is not None and pp <= BUY_PP_MAX
-            days_high = _days_since_60d_high(rows, i)
 
             # P1: 单日极端恐慌 (非集群中, 左侧)
             if (is_accum and chg <= PANIC_DROP
@@ -114,19 +102,6 @@ def run_kc_strategy(rows: list[dict]) -> dict:
                     and accum_count < CLUSTER_ACCUM):
                 action = "BUY"
                 reason = f"恐慌抄底: 跌{chg:.1f}%+pp{pp:.0f}"
-
-            # P2: 低位孤立吸筹 (下跌末期才左侧)
-            elif (is_accum and pp_low and accum_count < CLUSTER_ACCUM
-                  and days_high >= DROP_EARLY_DAYS):
-                action = "BUY"
-                reason = f"低位吸筹: pp{pp:.0f}+距高点{days_high}天"
-
-            # 极低位: 低量=卖压耗尽 (KC特有, 需上市满60天 + 非集群)
-            elif (pp is not None and pp <= EXTREME_PP and vr < EXTREME_VR_MAX
-                  and (i - etf_birth_idx) >= MIN_ETF_AGE
-                  and accum_count < CLUSTER_ACCUM):
-                action = "BUY"
-                reason = f"极低位: pp{pp:.0f}(卖压耗尽)"
 
             # P3: 暴跌集群 → 等待右侧确认
             elif accum_count >= CLUSTER_ACCUM:
@@ -145,7 +120,7 @@ def run_kc_strategy(rows: list[dict]) -> dict:
                 cluster_ended = accum_count < CLUSTER_ACCUM or td != "ACCUMULATE"
                 prev_chg = rows[i - 1].get("change_pct") or 0 if i > 0 else 0
                 pp_ok = pp is not None and pp <= BOUNCE_PP_MAX
-                money_ok = sd is not None and sd > 0  # 方向过滤: 份额净流入
+                money_ok = sd is None or sd > 0  # 份额无历史, 有数据时方向过滤
 
                 strong_bounce = (chg >= BOUNCE_CHG and vr >= BOUNCE_VR
                                  and pp_ok and money_ok)
@@ -154,38 +129,28 @@ def run_kc_strategy(rows: list[dict]) -> dict:
 
                 if strong_bounce or two_day_up:
                     action = "BUY"
-                    reason = (f"右侧反弹: 涨{chg:.1f}%+vr{vr:.1f}+份额{sd:.2f}亿"
+                    reason = (f"右侧反弹: 涨{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
                               if strong_bounce else
-                              f"右侧连涨: 2天+放量+份额{sd:.2f}亿")
+                              f"右侧连涨: 2天+放量+pp{pp:.0f}")
                     waiting_reversal = False
                     wait_low = None
                 elif pp is not None and pp > 55:
                     waiting_reversal = False  # 价格回升太多, 重置
                     wait_low = None
 
-        # ---- 卖出 ----
+        # ---- 卖出: 趋势破位 ----
         if position == 1:
             hold_days += 1
-            is_dist = td == "DISTRIBUTE"
-            pp_high = pp is not None and pp >= SELL_PP_MIN
-            vr_high = vr >= SELL_VR_MIN
-
-            if is_dist and pp_high and vr_high:
-                dist_count += 1
-
-            # S2: 次数(量价记忆)+份额净流出 双确认
-            if (hold_days >= MIN_HOLD and is_dist
-                    and dist_count >= sell_threshold
-                    and sd is not None and sd < 0):
-                reason = (f"出货确认({dist_count}/{sell_threshold})"
-                          f"+pp{pp:.0f}+份额{sd:.2f}亿流出")
+            if (hold_days >= MIN_HOLD
+                    and close < _ma(closes, i) * MA_BREAK):
+                reason = (f"趋势破位: 收盘{close:.3f}<MA{MA_WINDOW}×{MA_BREAK}"
+                          f"+持仓{hold_days}天")
                 action = "SELL"
 
         if action == "BUY":
             position = 1.0
             hold_days = 0
             cooldown = 0
-            dist_count = 0
             waiting_reversal = False
             wait_low = None
             vol = row.get("volume") or 0
@@ -203,7 +168,7 @@ def run_kc_strategy(rows: list[dict]) -> dict:
                            "reason": reason})
 
     metrics = _calc_metrics(trades, closes[-1] if closes else 0, position)
-    return {"code": KC_CODE, "trades": trades, "metrics": metrics,
+    return {"code": SC50_CODE, "trades": trades, "metrics": metrics,
             "holding": position > 0}
 
 
