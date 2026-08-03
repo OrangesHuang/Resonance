@@ -282,10 +282,12 @@ export interface CalendarRefreshResult {
 
 export type JobStatus = 'pending' | 'running' | 'success' | 'failed'
 
+export type JobParam = string | number | boolean
+
 export interface JobState {
   id: string
   task: string
-  params: Record<string, number | boolean>
+  params: Record<string, JobParam>
   status: JobStatus
   current: number
   total: number
@@ -342,7 +344,7 @@ export interface DataStatus {
 
 export interface StartJobRequest {
   task: string
-  params?: Record<string, number | boolean>
+  params?: Record<string, JobParam>
 }
 
 export interface StartJobResponse {

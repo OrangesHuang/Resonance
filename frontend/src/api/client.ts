@@ -2,9 +2,20 @@ import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, Stats
 
 const BASE = '/api'
 
+async function parseError(res: Response): Promise<Error> {
+  let msg = `API error: ${res.status}`
+  try {
+    const body = await res.json()
+    if (body && typeof body.detail === 'string') msg = body.detail
+  } catch {
+    /* 忽略非 JSON 响应 */
+  }
+  return new Error(msg)
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw await parseError(res)
   return res.json()
 }
 
@@ -15,7 +26,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
     body: hasBody ? JSON.stringify(body) : undefined,
   })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) throw await parseError(res)
   return res.json()
 }
 
