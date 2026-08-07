@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useResonance } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
-import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
+import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, refreshEtf } from '../api/client'
 import ResonanceLights from '../components/ResonanceLights'
 import ResonanceKline from '../components/ResonanceKline'
 import ResonanceChart from '../components/ResonanceChart'
@@ -118,6 +118,8 @@ export default function Resonance() {
   const [code, setCode] = useState('510300')
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useResonance(code)
   const { data: etfList } = useQuery({
@@ -189,6 +191,22 @@ export default function Resonance() {
     setDateWindow(prev => (prev && prev.start === w.start && prev.end === w.end ? prev : w))
   }
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await refreshEtf()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['resonance', code] }),
+        queryClient.invalidateQueries({ queryKey: ['etfHistory', code] }),
+        queryClient.invalidateQueries({ queryKey: ['resonanceTrades', code] }),
+      ])
+    } catch (e) {
+      console.error('手动拉取失败:', e)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const resonanceHistory = klineStart && data ? data.history.filter(h => h.date >= klineStart) : (data?.history ?? [])
 
   return (
@@ -214,6 +232,13 @@ export default function Resonance() {
             </option>
           ))}
         </select>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="px-3 py-1.5 rounded text-sm bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {refreshing ? '拉取中…' : '手动拉取'}
+        </button>
       </div>
 
       <div className="sticky top-0 z-20 bg-gray-950/95 backdrop-blur border border-gray-800 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">

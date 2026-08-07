@@ -118,7 +118,11 @@ def fetch_latest_shares(date_str: str, max_lookback: int = 5) -> dict[str, dict]
 
 
 def calc_share_delta(date_str: str, max_lookback: int = 7) -> dict[str, dict]:
-    """计算份额日变化: {code: {"shares_yi", "delta_yi", "delta_pct", "date"}}"""
+    """计算份额日变化: {code: {"shares_yi", "delta_yi", "delta_pct", "date"}}
+
+    份额 T+1 发布: 拉当日(未发布)会得到空结果, 自动回溯到最近已发布日。
+    返回空 dict 表示 max_lookback 内均无数据(远端异常或全部未发布)。
+    """
     today_shares = None
     today_date = None
 

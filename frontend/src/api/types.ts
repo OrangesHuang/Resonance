@@ -263,6 +263,10 @@ export interface EtfRefreshResult {
   status: string
   count: number
   date: string | null
+  shares?: {
+    status: string
+    shares_date: string | null
+  } | null
 }
 
 export interface CalendarDays {
@@ -480,4 +484,21 @@ export interface PortfolioBacktestResponse {
   curve: PortfolioCurvePoint[]
   trades: PortfolioTrade[]
   open_positions: PortfolioOpenPosition[]
+}
+
+// ========== 盘中两市成交额 ==========
+
+export interface IntradayTurnoverPoint {
+  timestamp: string
+  amount_yi: number
+  est_amount_yi: number
+}
+
+export interface RealtimeTurnoverResponse {
+  is_trading: boolean
+  latest: IntradayTurnoverPoint | null
+  percentile: number | null
+  hist_days: number
+  series: IntradayTurnoverPoint[]
+  fetched_at: string
 }

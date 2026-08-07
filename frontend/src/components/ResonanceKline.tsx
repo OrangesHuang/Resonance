@@ -3,6 +3,12 @@ import ReactECharts from 'echarts-for-react'
 import type { ECharts } from 'echarts'
 import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../api/types'
 import { windowToZoom, zoomToWindow, DEFAULT_VISIBLE_BARS, type DateWindow } from './chartZoom'
+import { buildTradeBands, sanitizeBands } from './tradeBands'
+import { computeRangeStats } from './rangeStats'
+import { useRangeSelect, RangeToolbar } from './rangeSelect'
+import RangeStatsPanel from './RangeStatsPanel'
+import { buildKlineTooltip } from './klineTooltip'
+import { buildMarks } from './klineMarks'
 
 const AXIS_LABEL = '#6b7280'
 const DANGER_BAND = 'rgba(239, 68, 68, 0.08)'
@@ -14,11 +20,6 @@ const DIR_COLORS: Record<string, string> = {
   ACCUMULATE: '#22c55e',
   DISTRIBUTE: '#ef4444',
   NEUTRAL: '#374151',
-}
-const DIR_LABELS: Record<string, string> = {
-  ACCUMULATE: '吸筹',
-  DISTRIBUTE: '出货',
-  NEUTRAL: '中性',
 }
 
 interface ClickParam {
@@ -33,8 +34,8 @@ interface ZoomEvent {
   batch?: Array<{ start?: number; end?: number }>
 }
 
-interface TooltipParam {
-  dataIndex?: number
+interface BrushEvent {
+  areas?: Array<{ coordRange?: [[number, number], [number, number]] | [number, number] }>
 }
 
 const ZOOM_SYNC_DEBOUNCE_MS = 250
@@ -57,6 +58,14 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   onSelectDateRef.current = onSelectDate
   onZoomChangeRef.current = onZoomChange
 
+  // 区间统计: 点击首日→末日, 计算区间涨跌/高低/策略收益/净申赎
+  const rangeSel = useRangeSelect()
+
+  const rangeStats = useMemo(() => {
+    if (!rangeSel.sel.start || !rangeSel.sel.end) return null
+    return computeRangeStats(kline, trades, rangeSel.sel.start, rangeSel.sel.end, signals)
+  }, [kline, trades, signals, rangeSel.sel])
+
   // 数据驱动的 option 用 useMemo 缓存: 拖动缩放只改 zoom, 不重建整个图表
   const option = useMemo(() => {
     if (kline.length === 0) return null
@@ -78,95 +87,55 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       return { value: 1, itemStyle: { color: DIR_COLORS[dir] ?? '#374151' } }
     })
 
-    const bands = history
-      .filter(h => h.red >= 3 || h.green >= 3)
-      .map(h => [
-        { xAxis: h.date, itemStyle: { color: h.red >= 3 ? DANGER_BAND : CHANCE_BAND } },
-        { xAxis: h.date },
-      ])
+    const bands = sanitizeBands(
+      history
+        .filter(h => h.red >= 3 || h.green >= 3)
+        .map(h => [
+          { xAxis: h.date, itemStyle: { color: h.red >= 3 ? DANGER_BAND : CHANCE_BAND } },
+          { xAxis: h.date },
+        ]),
+      dates,
+    )
 
-    const klineByDate = new Map(kline.map(k => [k.date, k]))
-    const tradeMarks = trades
-      .filter(t => klineByDate.has(t.date))
-      .map(t => {
-        const k = klineByDate.get(t.date)!
-        const isBuy = t.action === 'BUY'
-        return {
-          coord: [t.date, isBuy ? k.low * 0.995 : k.high * 1.005],
-          value: isBuy ? 'B' : 'S',
-          symbol: isBuy ? 'triangle' : 'pin',
-          symbolSize: isBuy ? 22 : 24,
-          symbolRotate: isBuy ? 0 : 180,
-          itemStyle: { color: isBuy ? '#15803d' : '#ef4444' },
-          label: { show: true, formatter: isBuy ? '买' : '卖', fontSize: 11, color: '#fff', offset: [0, isBuy ? 5 : -5] as [number, number] },
-          _reason: `${t.date} ${isBuy ? '买入' : '卖出'} @${t.price}\n${t.reason}`,
-        }
-      })
-    // 标记始终定义(数据可为空): merge 语义下 undefined 不清除旧标记
-    const markPoint = {
-      clip: false,
-      data: tradeMarks,
-      tooltip: {
-        formatter: (p: { data?: { _reason?: string } }) =>
-          (p.data?._reason ?? '').replace('\n', '<br/>'),
-      },
-    }
+    // 买卖点区间蒙布: 持仓段淡绿 / 空仓段淡红
+    const tradeBands = sanitizeBands(buildTradeBands(trades, dates[dates.length - 1]), dates)
+    // 区间统计蒙版: rangeSel.band 是 [首日, 末日] 二元组, 必须整体传入不可展开
+    const rangeBand = rangeSel.band.length ? sanitizeBands([rangeSel.band] as never[], dates) : []
 
-    const showMarkLine = selectedDate !== null && dates.includes(selectedDate)
-    const baseMarkLine = {
-      silent: true,
-      symbol: 'none',
-      lineStyle: { color: '#38bdf8', type: 'dashed' as const, width: 1 },
-      label: { show: false },
-    }
-    const markLine = showMarkLine
-      ? { ...baseMarkLine, data: [{ xAxis: selectedDate }] }
-      : { ...baseMarkLine, data: [] }
-    const markLineTop = showMarkLine
-      ? { ...markLine, label: { show: true, formatter: selectedDate ?? '', color: '#38bdf8', fontSize: 10, position: 'insideEndTop' as const } }
-      : markLine
-    const probMarkLine = {
-      silent: true,
-      symbol: 'none',
-      label: { fontSize: 9 },
-      data: [
-        { yAxis: 70, lineStyle: { color: '#ef4444', type: 'dashed' }, label: { formatter: 'HIGH 70%', color: '#ef4444' } },
-        { yAxis: 50, lineStyle: { color: '#f59e0b', type: 'dashed' }, label: { formatter: 'MID 50%', color: '#f59e0b' } },
-        ...(showMarkLine
-          ? [{ xAxis: selectedDate, lineStyle: { color: '#38bdf8', type: 'dashed' }, label: { show: false } }]
-          : []),
-      ],
-    }
+    // 区间统计激活: 禁用 inside 拖拽平移(拖拽=框选)
+    // 注意: ECharts merge 语义下未显式字段会残留旧值,
+    // 关闭时必须显式设回 moveOnMouseMove: true 否则拖移永久失效
+    const brushActive = rangeSel.mode
+    const insideZoom = brushActive
+      ? { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: false }
+      : { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: true }
+
+    const { markPoint, markLine, markLineTop, probMarkLine } =
+      buildMarks(trades, kline, dates, selectedDate)
 
     const tradeByDate = new Map(trades.map(t => [t.date, t]))
-    const tooltipFormatter = (params: TooltipParam[]) => {
-      const i = params[0]?.dataIndex
-      const k = i != null ? kline[i] : undefined
-      if (!k) return ''
-      const s = sigByDate.get(k.date)
-      const dir = s?.trade_direction ?? 'NEUTRAL'
-      const dirColor = DIR_COLORS[dir] ?? '#9ca3af'
-      const delta = s?.shares_delta_yi
-      const prob = s?.composite_prob
-      const trade = tradeByDate.get(k.date)
-      const tradeHtml = trade
-        ? `<br/><span style="color:${trade.action === 'BUY' ? '#22c55e' : '#ef4444'};font-weight:bold">` +
-          `◆ ${trade.action === 'BUY' ? '买入' : '卖出'} @${trade.price} — ${trade.reason}</span>`
-        : ''
-      return `<div style="font-size:11px;line-height:1.8">` +
-        `<b>${k.date}</b><br/>` +
-        `开 ${k.open} · 收 ${k.close} · 高 ${k.high} · 低 ${k.low}<br/>` +
-        `成交量：${k.volume.toLocaleString('zh-CN')}<br/>` +
-        `份额净申赎：${delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 亿份` : '-'}<br/>` +
-        `综合概率：${prob != null ? `${prob.toFixed(1)}%` : '-'}<br/>` +
-        `方向：<span style="color:${dirColor}"><b>${DIR_LABELS[dir] ?? dir}</b></span>` +
-        tradeHtml +
-        `</div>`
-    }
+    const tooltipFormatter = buildKlineTooltip(kline, sigByDate, tradeByDate, rangeStats)
 
     return {
       backgroundColor: 'transparent',
       animation: false,
+      // brushType 随 mode 动态化: 激活 rect / 关闭 false
+      // (写死 rect 会在关闭后的任何 setOption 时重新激活 brush 占用
+      //  globalPan 互斥锁, 导致 dataZoom 拖拽平移失效)
+      brush: {
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        brushType: brushActive ? 'rect' : false,
+        brushMode: 'single',
+        brushStyle: {
+          borderColor: '#0ea5e9',
+          color: 'rgba(56, 189, 248, 0.10)',
+          borderWidth: 1,
+        },
+        throttleType: 'debounce',
+        throttleDelay: 60,
+        removeOnClick: false,
+      },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'cross' },
@@ -221,7 +190,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
             borderColor: UP_COLOR,
             borderColor0: DOWN_COLOR,
           },
-          markArea: { silent: true, data: bands },
+          markArea: { silent: true, data: sanitizeBands([...bands, ...tradeBands, ...rangeBand] as never[], dates) },
           markLine: markLineTop,
           markPoint,
         },
@@ -265,7 +234,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
         },
       ],
       dataZoom: [
-        { type: 'inside', xAxisIndex: [0, 1, 2, 3, 4] },
+        insideZoom,
         {
           type: 'slider',
           xAxisIndex: [0, 1, 2, 3, 4],
@@ -279,7 +248,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
         },
       ],
     }
-  }, [kline, signals, history, trades, selectedDate])
+  }, [kline, signals, history, trades, selectedDate, rangeSel.sel, rangeSel.mode])
 
   // 外部缩放(键盘步进/切换标的)经 dispatchAction 同步, 不走 option 重建
   useEffect(() => {
@@ -289,14 +258,48 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     inst.dispatchAction({ type: 'dataZoom', start, end })
   }, [dateWindow, kline])
 
+  // 区间统计激活时自动启用 brush 光标(免去每次点 toolbox 按钮)
+  useEffect(() => {
+    const inst = chartRef.current
+    if (!inst) return
+    inst.dispatchAction({
+      type: 'takeGlobalCursor',
+      key: 'brush',
+      brushOption: rangeSel.mode ? { brushType: 'rect' } : { brushType: false },
+    })
+    if (!rangeSel.mode) {
+      inst.dispatchAction({ type: 'brush', command: 'clear', areas: [] })
+    }
+  }, [rangeSel.mode, rangeSel.sel])
+
   const onEvents = useMemo(() => ({
     click: (params: ClickParam) => {
-      if (params.componentType === 'markPoint' && params.data?.coord) {
-        onSelectDateRef.current(params.data.coord[0])
-        return
+      try {
+        if (params.componentType === 'markPoint' && params.data?.coord) {
+          onSelectDateRef.current(params.data.coord[0])
+          return
+        }
+        const d = params.dataIndex != null ? datesRef.current[params.dataIndex] : undefined
+        if (!d) return
+        // 区间统计激活时, 点击仅选中日期(框选由 brushEnd 负责)
+        onSelectDateRef.current(d)
+      } catch (e) {
+        // 忽略 ECharts 事件参数异常(部分版本 markPoint 事件 data 结构差异)
+        console.warn('[Kline] click handler ignored:', e)
       }
-      const d = params.dataIndex != null ? datesRef.current[params.dataIndex] : undefined
-      if (d) onSelectDateRef.current(d)
+    },
+    brushEnd: (e: BrushEvent) => {
+      const area = e.areas?.[0]
+      const cr = area?.coordRange as [[number, number], [number, number]] | [number, number] | undefined
+      if (!cr) return
+      // rect 的 coordRange 为 [[x0,x1],[y0,y1]] 嵌套数组(见 BrushTargetManager)
+      const xRange: [number, number] = typeof cr[0] === 'number'
+        ? (cr as [number, number])
+        : (cr[0] as unknown as [number, number])
+      const [a, b] = [Math.round(xRange[0]), Math.round(xRange[1])]
+      const dates = datesRef.current
+      if (a < 0 || b < 0 || a >= dates.length || b >= dates.length) return
+      rangeSel.setRange(dates[a], dates[b])
     },
     datazoom: (e: ZoomEvent) => {
       const z = e.batch ? e.batch[0] : e
@@ -317,12 +320,18 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   }
 
   return (
-    <ReactECharts
-      ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
-      option={option}
-      style={{ height: 620, cursor: 'pointer' }}
-      lazyUpdate
-      onEvents={onEvents}
-    />
+    <div>
+      <RangeToolbar hook={rangeSel} />
+      <ReactECharts
+        ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
+        option={option}
+        style={{ height: 620, cursor: 'pointer' }}
+        lazyUpdate
+        onEvents={onEvents}
+      />
+      {rangeStats && (
+        <RangeStatsPanel stats={rangeStats} onClear={rangeSel.clear} />
+      )}
+    </div>
   )
 }

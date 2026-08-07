@@ -6,22 +6,25 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import (
-    ETFS, REALTIME_INTERVAL_SEC, REFRESH_MIN_INTERVAL_SEC,
+    ETFS, REALTIME_INTERVAL_SEC, REFRESH_MIN_INTERVAL_SEC, TURNOVER_POLL_INTERVAL_SEC,
     SENTIMENT_BACKFILL_DAYS, SENTIMENT_FETCH_HOUR, SENTIMENT_FETCH_MIN,
+    SENTIMENT_FETCH_NIGHT_HOUR, SENTIMENT_FETCH_NIGHT_MIN,
     CALENDAR_SYNC_HOUR, CALENDAR_SYNC_MIN, CALENDAR_SYNC_DOW,
 )
 from fetch.kline import fetch_kline, fetch_index_kline
-from fetch.realtime import fetch_realtime_quotes
+from fetch.realtime import fetch_realtime_quotes, fetch_market_turnover_intraday
 from fetch.shares import calc_share_delta
 from fetch.sentiment import fetch_market_turnover, fetch_margin_series
 from fetch.calendar import fetch_trade_dates
 from fetch.breadth import fetch_market_breadth
-from analysis.intraday import calc_intraday_signal, IntradaySignal
+from analysis.intraday import calc_intraday_signal, IntradaySignal, estimate_full_day_turnover
 from analysis.composite import analyze_single_etf
 from analysis.factors import calc_share_probability
 from store.database import init_db
 from store.daily_repo import upsert_daily, update_share_data, get_shares_by_date, shares_complete_for
-from store.realtime_repo import insert_snapshots, cleanup_old_snapshots
+from store.realtime_repo import (
+    insert_snapshots, cleanup_old_snapshots, insert_intraday_turnover,
+)
 from store.sentiment_repo import (
     upsert_turnover, upsert_margin, get_turnover_count, get_margin_count,
     get_turnover_series,
@@ -118,6 +121,9 @@ def task_realtime_poll() -> None:
                 "name": signal.name,
                 "idx_name": signal.idx_name,
                 "price": signal.price,
+                "open": quote.open,
+                "high": quote.high,
+                "low": quote.low,
                 "change_pct": signal.change_pct,
                 "volume_hand": signal.volume_hand,
                 "volume_ratio": signal.volume_ratio,
@@ -150,6 +156,9 @@ def task_intraday_update() -> dict:
     count = 0
     for sig in _latest_signals:
         data = {
+            "open": sig.get("open"),
+            "high": sig.get("high"),
+            "low": sig.get("low"),
             "close": sig.get("price"),
             "change_pct": sig.get("change_pct"),
             "volume": sig.get("volume_hand"),
@@ -188,9 +197,12 @@ def task_daily_analysis() -> dict:
             shares_delta_pct=share_info.get("delta_pct"),
         )
         if result:
-            result["shares_yi"] = share_info.get("shares_yi")
-            result["shares_delta_yi"] = share_info.get("delta_yi")
-            result["shares_delta_pct"] = share_info.get("delta_pct")
+            # 份额必须与当日匹配才附加, 否则留空待份额回填补齐
+            # (份额 T+1 发布, 缓存可能是前一交易日的, 不能盖到今日行上)
+            if share_info.get("date") == result["date"]:
+                result["shares_yi"] = share_info.get("shares_yi")
+                result["shares_delta_yi"] = share_info.get("delta_yi")
+                result["shares_delta_pct"] = share_info.get("delta_pct")
             upsert_daily(result["date"], code, result)
             count += 1
             latest_date = result["date"]
@@ -207,11 +219,23 @@ def task_manual_refresh() -> dict:
         return {"status": "skipped",
                 "reason": f"距上次刷新不足 {REFRESH_MIN_INTERVAL_SEC}s, 已跳过"}
     _last_manual_refresh = now
-    task_fetch_shares()
-    return task_daily_analysis()
+    shares_result = task_fetch_shares()
+    result = task_daily_analysis()
+    result["shares"] = shares_result
+    try:
+        result["sentiment"] = task_fetch_sentiment()
+    except Exception as e:
+        print(f"[SCHEDULER] manual sentiment fetch failed: {e}")
+        result["sentiment"] = {"status": "error", "error": str(e)}
+    return result
 
 
-def task_fetch_shares() -> None:
+def task_fetch_shares() -> dict:
+    """拉取份额数据, 返回实际落库的份额日期。
+
+    份额 T+1 发布: 目标日未发布时自动回溯到最近已发布日, 返回的
+    shares_date 即实际数据日期; 与 target 不一致说明数据源尚未发布。
+    """
     global _share_delta_cache
     print("[SCHEDULER] fetching share data...")
     target = get_last_trading_day(datetime.now().strftime("%Y-%m-%d"))
@@ -219,10 +243,11 @@ def task_fetch_shares() -> None:
         _share_delta_cache = {code: {"date": target, **info}
                               for code, info in get_shares_by_date(target).items()}
         print(f"[SCHEDULER] shares already fresh for {target}, skipped network")
-        return
+        return {"status": "fresh", "shares_date": target}
     today = datetime.now().strftime("%Y-%m-%d")
     deltas = calc_share_delta(today)
     if deltas:
+        shares_date = next(iter(deltas.values()))["date"]
         _share_delta_cache = deltas
         for code, info in deltas.items():
             update_share_data(
@@ -230,9 +255,24 @@ def task_fetch_shares() -> None:
                 info.get("shares_yi"), info.get("delta_yi"), info.get("delta_pct"),
                 calc_share_probability(info.get("delta_pct")),
             )
-        print(f"[SCHEDULER] shares updated for {len(deltas)} ETFs")
-    else:
-        print("[SCHEDULER] no share data available (non-trading day?)")
+        print(f"[SCHEDULER] shares updated for {len(deltas)} ETFs (date {shares_date})")
+        return {"status": "updated", "shares_date": shares_date}
+    print(f"[SCHEDULER] shares fetch failed: no data within lookback for {today}")
+    return {"status": "empty", "shares_date": None}
+
+
+def task_turnover_poll() -> None:
+    """盘中两市成交额轮询(5分钟): 当日累计 + 全天预估, 收盘前分析用。"""
+    now = datetime.now()
+    if not is_trading_time(now):
+        return
+    data = fetch_market_turnover_intraday()
+    if not data:
+        return
+    est = estimate_full_day_turnover(data["amount_yi"], now)
+    insert_intraday_turnover(
+        now.strftime("%Y-%m-%d %H:%M:%S"), data["amount_yi"], est)
+    print(f"[SCHEDULER] intraday turnover: {data['amount_yi']}亿 (预估全天 {est}亿)")
 
 
 def task_cleanup() -> None:
@@ -347,6 +387,12 @@ def start_scheduler() -> None:
         replace_existing=True,
     )
     scheduler.add_job(
+        task_turnover_poll,
+        IntervalTrigger(seconds=TURNOVER_POLL_INTERVAL_SEC),
+        id="turnover_poll",
+        replace_existing=True,
+    )
+    scheduler.add_job(
         task_cleanup,
         CronTrigger(hour=2, minute=0),
         id="cleanup",
@@ -356,6 +402,13 @@ def start_scheduler() -> None:
         trading_day_guard(task_fetch_sentiment),
         CronTrigger(hour=SENTIMENT_FETCH_HOUR, minute=SENTIMENT_FETCH_MIN, day_of_week="mon-fri"),
         id="fetch_sentiment",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        trading_day_guard(task_fetch_sentiment),
+        CronTrigger(hour=SENTIMENT_FETCH_NIGHT_HOUR, minute=SENTIMENT_FETCH_NIGHT_MIN,
+                    day_of_week="mon-fri"),
+        id="fetch_sentiment_night",
         replace_existing=True,
     )
     scheduler.add_job(
