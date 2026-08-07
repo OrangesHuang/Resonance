@@ -13,6 +13,8 @@ ETFS = {
     "589680": {"name": "鹏华科创综指ETF", "idx": "科创综指", "market": "sh"},
     "159780": {"name": "华宝中证双创50ETF", "idx": "双创50", "market": "sz"},
     "515080": {"name": "招商中证红利ETF", "idx": "中证红利", "market": "sh"},
+    "159352": {"name": "南方中证A500ETF", "idx": "中证A500", "market": "sz"},
+    "563300": {"name": "华泰柏瑞中证2000ETF", "idx": "中证2000", "market": "sh"},
 }
 
 INDEX_CODE = "sh000300"
@@ -49,8 +51,15 @@ HTTP_TIMEOUT = 15
 AKSHARE_TIMEOUT = 30
 MAX_RETRY = 2
 
+# 盘中两市成交额轮询(收盘前分析用)
+MARKET_TURNOVER_SYMBOLS = "sh000001,sz399001"  # 上证指数+深证成指
+TURNOVER_POLL_INTERVAL_SEC = 300               # 5 分钟一次
+
 KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,{limit},qfq"
 REALTIME_URL = "http://qt.gtimg.cn/q={symbols}"
+SINA_KLINE_URL = ("https://quotes.sina.cn/cn/api/json_v2.php/"
+                  "CN_MarketDataService.getKLineData"
+                  "?symbol={symbol}&scale=240&ma=no&datalen={limit}")
 
 # 拉取限流: 防止频繁请求被远端封禁
 KLINE_CACHE_TTL_SEC = 60      # K线内存缓存有效期(秒)
@@ -65,8 +74,10 @@ SHARES_FAIL_PAUSE_SEC = 60    # 连续失败暂停时长(秒, 给远端喘息)
 # 市场情绪模块
 SENTIMENT_MA_WINDOW = 5          # 成交额均线窗口
 SENTIMENT_BACKFILL_DAYS = 190    # 启动回填交易日数(需覆盖K线窗口+分位数暖机)
-SENTIMENT_FETCH_HOUR = 16        # 每日采集时(收盘后)
+SENTIMENT_FETCH_HOUR = 16        # 每日采集时(收盘后, 先抓成交额)
 SENTIMENT_FETCH_MIN = 0
+SENTIMENT_FETCH_NIGHT_HOUR = 21  # 晚间二次采集(融资T+1晚间发布, 确保当日入库)
+SENTIMENT_FETCH_NIGHT_MIN = 0
 MARGIN_USE_SSE_FALLBACK = False  # True 则融资数据仅取上交所(更快但非两市合并)
 VOLUME_UP_RATIO = 1.05           # 量比≥此值判为放量
 VOLUME_DOWN_RATIO = 0.95         # 量比≤此值判为缩量

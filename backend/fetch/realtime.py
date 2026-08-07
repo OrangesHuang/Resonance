@@ -2,7 +2,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
-from config import REALTIME_URL, HTTP_TIMEOUT, ETFS, INDEX_CODE
+from config import (
+    REALTIME_URL, HTTP_TIMEOUT, ETFS, INDEX_CODE, MARKET_TURNOVER_SYMBOLS,
+)
 
 
 @dataclass
@@ -78,3 +80,45 @@ def fetch_realtime_quotes() -> dict[str, RealtimeQuote]:
 def fetch_index_quote() -> Optional[RealtimeQuote]:
     quotes = fetch_realtime_quotes()
     return quotes.get("000300")
+
+
+def _fetch_raw(symbols: str) -> str:
+    url = REALTIME_URL.format(symbols=symbols)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        return resp.read().decode("gbk")
+
+
+def fetch_market_turnover_intraday() -> Optional[dict]:
+    """盘中两市成交额(元): 上证指数+深证成指 实时累计成交额。
+
+    腾讯指数行情字段35格式: "价格/成交量(手)/成交额(元)"。
+    """
+    try:
+        text = _fetch_raw(MARKET_TURNOVER_SYMBOLS)
+    except Exception as e:
+        print(f"[FETCH] intraday turnover failed: {e}")
+        return None
+
+    total_yuan = 0.0
+    ts = ""
+    for line in text.strip().split("\n"):
+        if '="' not in line:
+            continue
+        raw = line.split('="')[1].rstrip('";\n')
+        fields = raw.split("~")
+        if len(fields) <= 35 or "/" not in fields[35]:
+            continue
+        seg = fields[35].split("/")
+        if len(seg) < 3:
+            continue
+        try:
+            total_yuan += float(seg[2])
+        except (IndexError, ValueError):
+            continue
+        if not ts and len(fields) > 30:
+            ts = fields[30]
+
+    if total_yuan <= 0:
+        return None
+    return {"amount_yi": round(total_yuan / 1e8, 2), "timestamp": ts}

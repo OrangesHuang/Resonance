@@ -83,7 +83,10 @@ def analyze_single_etf(
 
     return {
         "date": target["date"],
+        "open": target["open"],
         "close": target["close"],
+        "high": target["high"],
+        "low": target["low"],
         "change_pct": round(change_pct, 2),
         "volume": target["volume"],
         "volume_ma20": round(ma20, 2),

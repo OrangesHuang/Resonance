@@ -74,6 +74,24 @@ def _volume_correction_factor(elapsed: float) -> float:
         return 0.85 + 0.15 * ((elapsed - 225) / 15)
 
 
+def estimate_full_day_turnover(amount_yi: float, now: datetime) -> float:
+    """盘中累计成交额 → 全天预估(按U型量能时间修正)。"""
+    elapsed = _elapsed_trading_minutes(now)
+    correction = _volume_correction_factor(elapsed)
+    if correction <= 0.001:
+        return amount_yi
+    return round(amount_yi / correction, 2)
+
+
+def calc_turnover_percentile(est_yi: float, hist_amounts: list[float]) -> Optional[float]:
+    """全天预估成交额在历史序列中的分位(0-100)。"""
+    valid = [v for v in hist_amounts if v and v > 0]
+    if len(valid) < 20:
+        return None
+    below = sum(1 for v in valid if v < est_yi)
+    return round(below / len(valid) * 100, 1)
+
+
 def calc_intraday_signal(
     quote: RealtimeQuote,
     idx_quote: Optional[RealtimeQuote],

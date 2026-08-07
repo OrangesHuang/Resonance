@@ -47,25 +47,34 @@ def etf_history(code: str, days: int = Query(default=640, ge=1, le=640)):
 
 
 def _build_kline_from_db(records: list[dict], limit: int) -> list[dict]:
-    """从 etf_daily 表构建 K 线数据，不调外部 API。"""
+    """从 etf_daily 表构建 K 线数据，不调外部 API。
+
+    优先用真实 OHLC(open/high/low 已入库的), 否则退回重构。
+    """
     recent = records[:limit][::-1]  # DESC → ASC
     result = []
     for r in recent:
         close = r.get("close_price")
-        chg = r.get("change_pct")
         if close is None or close == 0:
             continue
-        # 从收盘价和涨跌幅反推开盘价
-        if chg is not None and chg != 0:
-            op = round(close / (1 + chg / 100), 3)
-        else:
-            op = close
+        op = r.get("open_price")
+        hi = r.get("high_price")
+        lo = r.get("low_price")
+        if op is None or hi is None or lo is None:
+            # 无真实OHLC: 从收盘价和涨跌幅反推
+            chg = r.get("change_pct")
+            if chg is not None and chg != 0:
+                op = round(close / (1 + chg / 100), 3)
+            else:
+                op = close
+            hi = round(max(op, close), 3)
+            lo = round(min(op, close), 3)
         result.append({
             "date": r["date"],
             "open": op,
             "close": close,
-            "high": round(max(op, close), 3),
-            "low": round(min(op, close), 3),
+            "high": hi,
+            "low": lo,
             "volume": r.get("volume") or 0,
         })
     return result

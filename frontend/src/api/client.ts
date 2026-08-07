@@ -1,4 +1,4 @@
-import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse } from './types'
+import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse } from './types'
 
 const BASE = '/api'
 
@@ -52,6 +52,10 @@ export function refreshEtf(): Promise<EtfRefreshResult> {
 
 export function fetchRealtimeStatus(): Promise<RealtimeStatus> {
   return get('/realtime/status')
+}
+
+export function fetchRealtimeTurnover(): Promise<RealtimeTurnoverResponse> {
+  return get('/realtime/turnover')
 }
 
 export function fetchStats(): Promise<StatsResponse> {

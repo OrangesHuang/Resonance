@@ -72,3 +72,44 @@ def cleanup_old_snapshots(keep_days: int = 7) -> int:
         return cursor.rowcount
     finally:
         conn.close()
+
+
+# ========== 盘中两市成交额 ==========
+
+def insert_intraday_turnover(ts: str, amount_yi: float, est_amount_yi: float) -> None:
+    conn = get_connection()
+    try:
+        conn.execute("""
+            INSERT INTO intraday_turnover (timestamp, amount_yi, est_amount_yi)
+            VALUES (?, ?, ?)
+            ON CONFLICT(timestamp) DO UPDATE SET
+                amount_yi=excluded.amount_yi,
+                est_amount_yi=excluded.est_amount_yi
+        """, (ts, amount_yi, est_amount_yi))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_today_intraday_turnover(date_str: str) -> list[dict]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT timestamp, amount_yi, est_amount_yi FROM intraday_turnover "
+            "WHERE timestamp LIKE ? ORDER BY timestamp ASC", (f"{date_str}%",)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_latest_intraday_turnover() -> Optional[dict]:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT timestamp, amount_yi, est_amount_yi FROM intraday_turnover "
+            "ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()

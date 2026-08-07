@@ -267,9 +267,11 @@ def job_fetch_etf_latest(progress: ProgressFn) -> dict:
             shares_delta_pct=share_info.get("delta_pct"),
         )
         if result:
-            result["shares_yi"] = share_info.get("shares_yi")
-            result["shares_delta_yi"] = share_info.get("delta_yi")
-            result["shares_delta_pct"] = share_info.get("delta_pct")
+            # 份额日期必须与当日匹配(份额 T+1 发布, 缓存可能是前一日)
+            if share_info.get("date") == result["date"]:
+                result["shares_yi"] = share_info.get("shares_yi")
+                result["shares_delta_yi"] = share_info.get("delta_yi")
+                result["shares_delta_pct"] = share_info.get("delta_pct")
             upsert_daily(result["date"], code, result)
             count += 1
             latest_date = result["date"]

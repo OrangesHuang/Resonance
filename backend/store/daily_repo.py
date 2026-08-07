@@ -9,12 +9,16 @@ def upsert_daily(date: str, code: str, data: dict) -> None:
     conn = get_connection()
     try:
         conn.execute("""
-            INSERT INTO etf_daily (date, code, name, idx_name, close_price, change_pct,
+            INSERT INTO etf_daily (date, code, name, idx_name, open_price, high_price,
+                low_price, close_price, change_pct,
                 volume, volume_ma20, volume_ratio, shares_yi, shares_delta_yi,
                 shares_delta_pct, vol_prob, dir_prob, share_prob, composite_prob,
                 idx_chg, signal_level, price_position, trade_direction, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
             ON CONFLICT(date, code) DO UPDATE SET
+                open_price=COALESCE(excluded.open_price, etf_daily.open_price),
+                high_price=COALESCE(excluded.high_price, etf_daily.high_price),
+                low_price=COALESCE(excluded.low_price, etf_daily.low_price),
                 close_price=excluded.close_price,
                 change_pct=excluded.change_pct,
                 volume=excluded.volume,
@@ -26,7 +30,6 @@ def upsert_daily(date: str, code: str, data: dict) -> None:
                 share_prob=COALESCE(excluded.share_prob, etf_daily.share_prob),
                 vol_prob=excluded.vol_prob,
                 dir_prob=excluded.dir_prob,
-                share_prob=excluded.share_prob,
                 composite_prob=excluded.composite_prob,
                 idx_chg=excluded.idx_chg,
                 signal_level=excluded.signal_level,
@@ -35,6 +38,7 @@ def upsert_daily(date: str, code: str, data: dict) -> None:
                 updated_at=datetime('now','localtime')
         """, (
             date, code, info.get("name", ""), info.get("idx", ""),
+            data.get("open"), data.get("high"), data.get("low"),
             data.get("close"), data.get("change_pct"),
             data.get("volume"), data.get("volume_ma20"), data.get("volume_ratio"),
             data.get("shares_yi"), data.get("shares_delta_yi"), data.get("shares_delta_pct"),

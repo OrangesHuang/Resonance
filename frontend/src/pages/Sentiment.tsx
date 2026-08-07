@@ -1,6 +1,8 @@
 import * as echarts from 'echarts'
 import type { EChartsType } from 'echarts'
+import { useQuery } from '@tanstack/react-query'
 import { useSentiment, useRefreshSentiment } from '../hooks/useSentiment'
+import { fetchRealtimeTurnover } from '../api/client'
 import SentimentLineChart from '../components/SentimentLineChart'
 import type { VolumeState, ZoneKey, ZoneLevel, ZoneIndicator, SentimentZone } from '../api/types'
 
@@ -104,6 +106,11 @@ function ZoneBanner({ zone }: { zone: SentimentZone }) {
 export default function Sentiment() {
   const { data, isLoading, error } = useSentiment()
   const refresh = useRefreshSentiment()
+  const { data: turnoverRT } = useQuery({
+    queryKey: ['realtimeTurnover'],
+    queryFn: fetchRealtimeTurnover,
+    refetchInterval: 60 * 1000,
+  })
 
   if (error) {
     return <div className="text-red-400 text-center py-20">连接后端失败，请确认服务已启动</div>
@@ -148,12 +155,50 @@ export default function Sentiment() {
         </div>
       </div>
 
+      {turnoverRT && (
+        <div className="mb-4 flex items-center gap-3 flex-wrap text-xs bg-gray-900/60 border border-gray-800 rounded-lg px-3 py-2">
+          <span className="text-gray-500">今日盘中成交额(5分钟轮询)</span>
+          {turnoverRT.latest ? (
+            <>
+              <span className="text-sky-400 font-mono">{formatYi(turnoverRT.latest.amount_yi)}</span>
+              <span className="text-gray-600">预估全天</span>
+              <span className="text-white font-mono">{formatYi(turnoverRT.latest.est_amount_yi)}</span>
+              {turnoverRT.percentile != null && (
+                <>
+                  <span className="text-gray-600">历史分位</span>
+                  <span className={`font-mono ${turnoverRT.percentile >= 80 ? 'text-red-400' : turnoverRT.percentile <= 20 ? 'text-green-400' : 'text-gray-300'}`}>
+                    {turnoverRT.percentile.toFixed(0)}%
+                  </span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${turnoverRT.percentile >= 80 ? 'bg-red-500/20 text-red-400' : turnoverRT.percentile <= 20 ? 'bg-green-500/20 text-green-400' : 'bg-gray-700/40 text-gray-400'}`}>
+                    {turnoverRT.percentile >= 80 ? '过热' : turnoverRT.percentile <= 20 ? '冷清' : '中性'}
+                  </span>
+                </>
+              )}
+              <span className="text-gray-600">对比 {turnoverRT.hist_days} 个历史交易日</span>
+            </>
+          ) : (
+            <span className="text-gray-600">暂无盘中数据{turnoverRT.is_trading ? '(等待首次轮询)' : '(非交易时段)'}</span>
+          )}
+        </div>
+      )}
+
       <ZoneBanner zone={data.zone} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard title="两市成交额">
-          <div className="text-2xl font-mono text-white">{formatYi(tSum?.latest_yi)}</div>
-          <div className="mt-1 text-xs text-gray-500">MA5 {formatYi(tSum?.ma5_yi)}</div>
+          {turnoverRT?.is_trading && turnoverRT.latest ? (
+            <>
+              <div className="text-2xl font-mono text-white">{formatYi(turnoverRT.latest.amount_yi)}</div>
+              <div className="mt-1 text-xs text-gray-500">
+                盘中累计 · 预估全天 {formatYi(turnoverRT.latest.est_amount_yi)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-2xl font-mono text-white">{formatYi(tSum?.latest_yi)}</div>
+              <div className="mt-1 text-xs text-gray-500">MA5 {formatYi(tSum?.ma5_yi)}</div>
+            </>
+          )}
         </StatCard>
         <StatCard title="量能状态">
           {tSum?.volume_state ? (

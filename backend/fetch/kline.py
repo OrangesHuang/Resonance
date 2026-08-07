@@ -5,7 +5,7 @@ from typing import Optional
 
 from config import (
     KLINE_URL, HTTP_TIMEOUT, KLINE_LIMIT, ETFS, INDEX_CODE,
-    KLINE_CACHE_TTL_SEC, KLINE_FAIL_COOLDOWN_SEC,
+    KLINE_CACHE_TTL_SEC, KLINE_FAIL_COOLDOWN_SEC, SINA_KLINE_URL,
 )
 
 _CACHE: dict[tuple[str, int], tuple[float, Optional[list[dict]]]] = {}
@@ -43,6 +43,36 @@ def _market_prefix(code: str) -> str:
     return "sz", code
 
 
+def _fetch_sina(code: str, limit: int) -> Optional[list[dict]]:
+    """新浪K线(日线, 未复权): 腾讯不可达时的降级源(无需代理直连可用)。"""
+    prefix, num = _market_prefix(code)
+    url = SINA_KLINE_URL.format(symbol=f"{prefix}{num}", limit=limit)
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn"})
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        print(f"[FETCH] kline sina {code} failed: {e}")
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    result = []
+    for r in data:
+        if not r.get("day"):
+            continue
+        result.append({
+            "date": r["day"],
+            "open": float(r["open"]),
+            "close": float(r["close"]),
+            "high": float(r["high"]),
+            "low": float(r["low"]),
+            "volume": float(r["volume"]),
+        })
+    return result or None
+
+
 def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
     cached = _cached(code, limit)
     if cached is not None:
@@ -58,6 +88,10 @@ def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         print(f"[FETCH] kline {code} failed: {e}")
+        result = _fetch_sina(code, limit)  # 降级新浪
+        if result:
+            _store(code, limit, result)
+            return result
         _store(code, limit, None)
         return []
 
@@ -77,8 +111,7 @@ def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
             "volume": float(r[5]),
         })
     if not result:
-        _store(code, limit, None)
-        return []
+        result = _fetch_sina(code, limit) or []
     _store(code, limit, result)
     return result
 

@@ -106,8 +106,16 @@ def init_db() -> None:
                 created_at      TEXT DEFAULT (datetime('now','localtime')),
                 updated_at      TEXT DEFAULT (datetime('now','localtime'))
             );
+
+            CREATE TABLE IF NOT EXISTS intraday_turnover (
+                timestamp   TEXT PRIMARY KEY,
+                amount_yi   REAL,
+                est_amount_yi REAL,
+                created_at  TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
         _migrate_add_direction_columns(conn)
+        _migrate_add_ohlc_columns(conn)
         _migrate_drop_etf_kline(conn)
         conn.commit()
     finally:
@@ -121,6 +129,14 @@ def _migrate_add_direction_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN price_position REAL")
         if "trade_direction" not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN trade_direction TEXT")
+
+
+def _migrate_add_ohlc_columns(conn: sqlite3.Connection) -> None:
+    """etf_daily 增加真实开高低收列(上影/下影线需要真实 high/low)。"""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(etf_daily)")}
+    for col in ("open_price", "high_price", "low_price"):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE etf_daily ADD COLUMN {col} REAL")
 
 
 def _migrate_drop_etf_kline(conn: sqlite3.Connection) -> None:
