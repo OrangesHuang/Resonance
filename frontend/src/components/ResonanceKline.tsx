@@ -2,6 +2,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts } from 'echarts'
 import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../api/types'
+import useIsMobile from '../hooks/useIsMobile'
 import { windowToZoom, zoomToWindow, DEFAULT_VISIBLE_BARS, type DateWindow } from './chartZoom'
 import { buildTradeBands, sanitizeBands } from './tradeBands'
 import { computeRangeStats } from './rangeStats'
@@ -57,9 +58,15 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   const onZoomChangeRef = useRef(onZoomChange)
   onSelectDateRef.current = onSelectDate
   onZoomChangeRef.current = onZoomChange
+  const isMobile = useIsMobile()
+  const mobileRangeStart = useRef<string | null>(null)
+  const isMobileRef = useRef(isMobile)
+  isMobileRef.current = isMobile
 
   // 区间统计: 点击首日→末日, 计算区间涨跌/高低/策略收益/净申赎
   const rangeSel = useRangeSelect()
+  const rangeSelRef = useRef(rangeSel)
+  rangeSelRef.current = rangeSel
 
   const rangeStats = useMemo(() => {
     if (!rangeSel.sel.start || !rangeSel.sel.end) return null
@@ -105,10 +112,11 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     // 区间统计激活: 禁用 inside 拖拽平移(拖拽=框选)
     // 注意: ECharts merge 语义下未显式字段会残留旧值,
     // 关闭时必须显式设回 moveOnMouseMove: true 否则拖移永久失效
-    const brushActive = rangeSel.mode
+    // 移动端: 不使用 brush(触摸不支持), 改用两次点击选区间
+    const brushActive = rangeSel.mode && !isMobile
     const insideZoom = brushActive
       ? { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: false }
-      : { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: true }
+      : { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: true, preventDefaultMouseMove: true }
 
     const { markPoint, markLine, markLineTop, probMarkLine } =
       buildMarks(trades, kline, dates, selectedDate)
@@ -122,6 +130,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       // brushType 随 mode 动态化: 激活 rect / 关闭 false
       // (写死 rect 会在关闭后的任何 setOption 时重新激活 brush 占用
       //  globalPan 互斥锁, 导致 dataZoom 拖拽平移失效)
+      // 移动端不支持 brush, 改用两次点击选区间
       brush: {
         xAxisIndex: 0,
         yAxisIndex: 0,
@@ -258,8 +267,12 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     inst.dispatchAction({ type: 'dataZoom', start, end })
   }, [dateWindow, kline])
 
-  // 区间统计激活时自动启用 brush 光标(免去每次点 toolbox 按钮)
+  // 区间统计模式切换: 桌面端启用 brush 光标; 移动端清除待选状态
   useEffect(() => {
+    if (isMobile) {
+      mobileRangeStart.current = null
+      return
+    }
     const inst = chartRef.current
     if (!inst) return
     inst.dispatchAction({
@@ -270,7 +283,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     if (!rangeSel.mode) {
       inst.dispatchAction({ type: 'brush', command: 'clear', areas: [] })
     }
-  }, [rangeSel.mode, rangeSel.sel])
+  }, [rangeSel.mode, isMobile])
 
   const onEvents = useMemo(() => ({
     click: (params: ClickParam) => {
@@ -281,10 +294,20 @@ export default function ResonanceKline({ kline, history, signals, trades, select
         }
         const d = params.dataIndex != null ? datesRef.current[params.dataIndex] : undefined
         if (!d) return
-        // 区间统计激活时, 点击仅选中日期(框选由 brushEnd 负责)
+        // 移动端区间统计: 两次点击选区间(代替桌面端拖拽框选)
+        if (isMobileRef.current && rangeSelRef.current.mode) {
+          const rs = rangeSelRef.current
+          if (mobileRangeStart.current == null) {
+            mobileRangeStart.current = d
+            onSelectDateRef.current(d)
+          } else {
+            rs.setRange(mobileRangeStart.current, d)
+            mobileRangeStart.current = null
+          }
+          return
+        }
         onSelectDateRef.current(d)
       } catch (e) {
-        // 忽略 ECharts 事件参数异常(部分版本 markPoint 事件 data 结构差异)
         console.warn('[Kline] click handler ignored:', e)
       }
     },
@@ -321,11 +344,11 @@ export default function ResonanceKline({ kline, history, signals, trades, select
 
   return (
     <div>
-      <RangeToolbar hook={rangeSel} />
+      <RangeToolbar hook={rangeSel} isMobile={isMobile} />
       <ReactECharts
         ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
         option={option}
-        style={{ height: 620, cursor: 'pointer' }}
+        style={{ height: isMobile ? 400 : 620, cursor: 'pointer' }}
         lazyUpdate
         onEvents={onEvents}
       />

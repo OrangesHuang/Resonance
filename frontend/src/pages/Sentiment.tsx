@@ -2,6 +2,7 @@ import * as echarts from 'echarts'
 import type { EChartsType } from 'echarts'
 import { useQuery } from '@tanstack/react-query'
 import { useSentiment, useRefreshSentiment } from '../hooks/useSentiment'
+import useIsMobile from '../hooks/useIsMobile'
 import { fetchRealtimeTurnover } from '../api/client'
 import SentimentLineChart from '../components/SentimentLineChart'
 import type { VolumeState, ZoneKey, ZoneLevel, ZoneIndicator, SentimentZone } from '../api/types'
@@ -106,6 +107,7 @@ function ZoneBanner({ zone }: { zone: SentimentZone }) {
 export default function Sentiment() {
   const { data, isLoading, error } = useSentiment()
   const refresh = useRefreshSentiment()
+  const isMobile = useIsMobile()
   const { data: turnoverRT } = useQuery({
     queryKey: ['realtimeTurnover'],
     queryFn: fetchRealtimeTurnover,
@@ -134,7 +136,7 @@ export default function Sentiment() {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <h2 className="text-xl font-bold text-white">市场情绪</h2>
         {data.updated_at && (
           <span className="text-xs text-gray-500">数据截至 {data.updated_at}</span>
@@ -227,7 +229,7 @@ export default function Sentiment() {
           <div className="text-sm font-medium text-gray-300 mb-2">两市成交额(万亿)</div>
           <SentimentLineChart
             dates={dates}
-            height={340}
+            height={isMobile ? 240 : 340}
             yFormatter={v => (v / 10000).toFixed(4)}
             lineTip={v => `${(v / 10000).toFixed(4)} 万亿`}
             onReady={linkChart}
@@ -241,7 +243,7 @@ export default function Sentiment() {
           <div className="text-sm font-medium text-gray-300 mb-2">融资余额(万亿) · 净买入(亿)</div>
           <SentimentLineChart
             dates={dates}
-            height={340}
+            height={isMobile ? 240 : 340}
             yFormatter={v => (v / 10000).toFixed(4)}
             lineTip={v => `${(v / 10000).toFixed(4)} 万亿`}
             barFormatter={v => v.toFixed(0)}
@@ -262,7 +264,7 @@ export default function Sentiment() {
         <div className="text-sm font-medium text-gray-300 mb-2">情绪分区历史（红=危险区 · 绿=安全区 · 灰=中性区）</div>
         <SentimentLineChart
           dates={dates}
-          height={220}
+          height={isMobile ? 180 : 220}
           barFormatter={v => v.toFixed(0)}
           onReady={linkChart}
           lines={[]}

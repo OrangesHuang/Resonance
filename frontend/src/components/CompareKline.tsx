@@ -1,6 +1,7 @@
 import { useMemo, useRef, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { KlinePoint, TradePoint } from '../api/types'
+import useIsMobile from '../hooks/useIsMobile'
 import { buildTradeBands, sanitizeBands } from './tradeBands'
 import { computeRangeStats } from './rangeStats'
 import { useRangeSelect, RangeToolbar } from './rangeSelect'
@@ -27,9 +28,19 @@ export default function CompareKline({ kline, trades, height = 320 }: {
   const datesRef = useRef<string[]>([])
   const chartRef = useRef<import('echarts').ECharts | null>(null)
   const rangeSel = useRangeSelect()
+  const isMobile = useIsMobile()
+  const mobileRangeStart = useRef<string | null>(null)
+  const isMobileRef = useRef(isMobile)
+  isMobileRef.current = isMobile
+  const rangeSelRef = useRef(rangeSel)
+  rangeSelRef.current = rangeSel
 
-  // 区间统计激活时自动启用 brush 光标(免去每次点 toolbox 按钮)
+  // 区间统计模式切换: 桌面端启用 brush 光标; 移动端清除待选状态
   useEffect(() => {
+    if (isMobile) {
+      mobileRangeStart.current = null
+      return
+    }
     const inst = chartRef.current
     if (!inst) return
     inst.dispatchAction({
@@ -40,7 +51,7 @@ export default function CompareKline({ kline, trades, height = 320 }: {
     if (!rangeSel.mode) {
       inst.dispatchAction({ type: 'brush', command: 'clear', areas: [] })
     }
-  }, [rangeSel.mode, rangeSel.sel])
+  }, [rangeSel.mode, isMobile])
 
   const rangeStats = useMemo(() => {
     if (!rangeSel.sel.start || !rangeSel.sel.end) return null
@@ -63,12 +74,11 @@ export default function CompareKline({ kline, trades, height = 320 }: {
     const tradesByDate = new Map(trades.map(t => [t.date, t]))
     const tradeBands = sanitizeBands(buildTradeBands(trades, dates[dates.length - 1]), dates)
     // 区间统计激活: 禁用 inside 拖拽平移(拖拽=框选)
-    // 注意: ECharts merge 语义下未显式字段会残留旧值,
-    // 关闭时必须显式设回 moveOnMouseMove: true 否则拖移永久失效
-    const brushActive = rangeSel.mode
+    // 移动端: 不使用 brush, 改用两次点击选区间
+    const brushActive = rangeSel.mode && !isMobile
     const insideZoom = brushActive
       ? { type: 'inside' as const, xAxisIndex: [0, 1], moveOnMouseMove: false }
-      : { type: 'inside' as const, xAxisIndex: [0, 1], moveOnMouseMove: true }
+      : { type: 'inside' as const, xAxisIndex: [0, 1], moveOnMouseMove: true, preventDefaultMouseMove: true }
     const markPoint = {
       clip: false,
       data: trades
@@ -135,7 +145,7 @@ export default function CompareKline({ kline, trades, height = 320 }: {
       brush: {
         xAxisIndex: 0,
         yAxisIndex: 0,
-        brushType: rangeSel.mode ? 'rect' : false,
+        brushType: brushActive ? 'rect' : false,
         brushMode: 'single',
         brushStyle: {
           borderColor: '#0ea5e9',
@@ -224,7 +234,17 @@ export default function CompareKline({ kline, trades, height = 320 }: {
       try {
         const d = params.dataIndex != null ? datesRef.current[params.dataIndex] : undefined
         if (!d) return
-        // 区间统计激活时点击不改变区间(框选由 brushEnd 负责)
+        // 移动端区间统计: 两次点击选区间
+        if (isMobileRef.current && rangeSelRef.current.mode) {
+          const rs = rangeSelRef.current
+          if (mobileRangeStart.current == null) {
+            mobileRangeStart.current = d
+          } else {
+            rs.setRange(mobileRangeStart.current, d)
+            mobileRangeStart.current = null
+          }
+          return
+        }
       } catch (e) {
         console.warn('[Kline] click handler ignored:', e)
       }
@@ -250,7 +270,7 @@ export default function CompareKline({ kline, trades, height = 320 }: {
 
   return (
     <div>
-      <RangeToolbar hook={rangeSel} />
+      <RangeToolbar hook={rangeSel} isMobile={isMobile} />
       <ReactECharts
         ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
         option={option} style={{ height }} lazyUpdate onEvents={onEvents} />

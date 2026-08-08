@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
 import { fetchPortfolioBacktest } from '../api/client'
+import useIsMobile from '../hooks/useIsMobile'
 
 const KIND_STYLE: Record<string, string> = {
   BUY: 'text-green-400',
@@ -32,6 +33,7 @@ function StatCard({ label, value, sub, tone }: {
 }
 
 export default function PortfolioBacktest() {
+  const isMobile = useIsMobile()
   const { data, isLoading, error } = useQuery({
     queryKey: ['portfolioBacktest'],
     queryFn: fetchPortfolioBacktest,
@@ -126,7 +128,7 @@ export default function PortfolioBacktest() {
 
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-4">
         <div className="text-xs text-gray-500 mb-2">净值走势（每份净值 · 虚线为组合仓位%）</div>
-        {option && <ReactECharts option={option} style={{ height: 380 }} lazyUpdate />}
+        {option && <ReactECharts option={option} style={{ height: isMobile ? 260 : 380 }} lazyUpdate />}
       </div>
 
       {data.open_positions.length > 0 && (

@@ -5,6 +5,7 @@ import type { ECharts } from 'echarts'
 import { fetchEtfHistory } from '../api/client'
 import KlineChart from '../components/KlineChart'
 import SignalHistoryChart from '../components/SignalHistoryChart'
+import useIsMobile from '../hooks/useIsMobile'
 import type { ZoomWindow } from '../api/types'
 
 const HISTORY_DAYS = 640
@@ -14,6 +15,7 @@ const DEFAULT_START_DATE = '2025-12-31'
 export default function EtfDetail() {
   const { code } = useParams<{ code: string }>()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const { data, isLoading } = useQuery({
     queryKey: ['etf', code, 'history', HISTORY_DAYS],
     queryFn: () => fetchEtfHistory(code!, HISTORY_DAYS),
@@ -75,7 +77,7 @@ export default function EtfDetail() {
   const signalCount = alignedPoints.filter(p => p !== null).length
 
   return (
-    <div className="flex flex-col h-[calc(100vh-112px)]">
+    <div className={`flex flex-col shrink-0 ${isMobile ? 'h-[calc(100dvh-48px)]' : 'h-[calc(100vh-112px)]'}`}>
       <button onClick={() => navigate('/')} className="mb-4 text-sm text-gray-400 hover:text-white shrink-0">
         ← 返回总览
       </button>

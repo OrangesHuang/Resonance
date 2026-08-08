@@ -72,7 +72,7 @@ export default function KlineChart({ kline, groupId, height = 520, zoom, onReady
       },
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: [0, 1], start: zoom.start, end: zoom.end },
+      { type: 'inside', xAxisIndex: [0, 1], start: zoom.start, end: zoom.end, preventDefaultMouseMove: true },
       {
         type: 'slider',
         xAxisIndex: [0, 1],

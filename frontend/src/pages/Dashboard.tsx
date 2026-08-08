@@ -13,7 +13,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-4 text-sm">
+      <div className="flex items-center gap-4 mb-4 text-sm flex-wrap">
         <span className={`px-2 py-1 rounded ${status?.is_trading ? 'bg-green-500/20 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
           {status?.is_trading ? '盘中实时' : '已收盘'}
         </span>

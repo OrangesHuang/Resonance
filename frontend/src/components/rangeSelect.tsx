@@ -38,7 +38,7 @@ export function useRangeSelect() {
   return { mode, sel, setRange, toggle, clear, band }
 }
 
-export function RangeToolbar({ hook }: { hook: ReturnType<typeof useRangeSelect> }) {
+export function RangeToolbar({ hook, isMobile }: { hook: ReturnType<typeof useRangeSelect>; isMobile?: boolean }) {
   return (
     <div className="flex items-center gap-2 mb-1 text-xs">
       <button
@@ -53,9 +53,9 @@ export function RangeToolbar({ hook }: { hook: ReturnType<typeof useRangeSelect>
       </button>
       {hook.mode && (
         <span className="text-gray-500">
-          {hook.sel.start == null || hook.sel.end == null
-            ? '拖拽框选区间起止日期'
-            : `已选 ${hook.sel.start} ~ ${hook.sel.end}`}
+          {hook.sel.start != null && hook.sel.end != null
+            ? `已选 ${hook.sel.start} ~ ${hook.sel.end}`
+            : isMobile ? '依次点击K线选择起止日期' : '拖拽框选区间起止日期'}
         </span>
       )}
     </div>

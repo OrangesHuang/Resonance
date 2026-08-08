@@ -5,3 +5,12 @@
 body {
   @apply bg-gray-950 text-gray-100 antialiased;
 }
+
+@keyframes slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.2s ease-out;
+}

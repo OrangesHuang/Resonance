@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useResonance } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
+import useIsMobile from '../hooks/useIsMobile'
 import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, refreshEtf } from '../api/client'
 import ResonanceLights from '../components/ResonanceLights'
 import ResonanceKline from '../components/ResonanceKline'
@@ -30,6 +31,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
   minDate: string | null
 }) {
   const { data, isLoading, error } = useSentiment()
+  const isMobile = useIsMobile()
 
   if (error) {
     return (
@@ -74,7 +76,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
           <div className="text-xs text-gray-500 mb-1">两市成交额(万亿) · MA5</div>
           <SentimentLineChart
             dates={dates}
-            height={240}
+            height={isMobile ? 180 : 240}
             yFormatter={v => (v / 10000).toFixed(4)}
             lineTip={v => `${(v / 10000).toFixed(4)} 万亿`}
             selectedDate={selectedDate}
@@ -91,7 +93,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
           <div className="text-xs text-gray-500 mb-1">融资余额(万亿) · 净买入(亿)</div>
           <SentimentLineChart
             dates={dates}
-            height={240}
+            height={isMobile ? 180 : 240}
             yFormatter={v => (v / 10000).toFixed(4)}
             lineTip={v => `${(v / 10000).toFixed(4)} 万亿`}
             barFormatter={v => v.toFixed(0)}
@@ -257,7 +259,7 @@ export default function Resonance() {
         >
           下一日 →
         </button>
-        <span className="ml-auto text-[11px] text-gray-600">逐日回放练盘感（键盘 ← → 亦可）· 点选/缩放任意图表，全部联动</span>
+        <span className="ml-auto text-[11px] text-gray-600 hidden md:inline">逐日回放练盘感（键盘 ← → 亦可）· 点选/缩放任意图表，全部联动</span>
       </div>
 
       {/* V1: 红绿灯面板 */}
