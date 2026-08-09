@@ -82,7 +82,7 @@ log "启动后端 http://localhost:$BACKEND_PORT （--reload 自动重载代码�
 PIDS+=($!)
 
 log "启动前端 http://localhost:$FRONTEND_PORT"
-(cd "$FRONTEND_DIR" && exec npm run dev) &
+(cd "$FRONTEND_DIR" && exec npm run dev -- --host 0.0.0.0) &
 PIDS+=($!)
 
 cat <<EOF
