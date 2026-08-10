@@ -5,6 +5,12 @@
   左侧抄底会在集群中段入场, 继续承压5-10%
   需要等待集群结束+反弹确认后右侧入场
 
+历史教训:
+  2026-07-27 买入后 8/10 触发"巨量流出"卖出, 但 7/1-8/4 累计吸筹
+  92.4亿仅回撤45.7% — 右侧确认买入使"买入日份额"基准被抬高,
+  修正为以"买入前60日最低份额"(吸筹周期起点)为基准
+  (2025-02-17 那轮份额跌破吸筹起点, 卖出仍正确, 不受影响)
+
 算法:
   Phase 1 — 暴跌集群检测: 10天内≥3个ACCUMULATE → 进入等待
   Phase 2 — 右侧确认: 集群结束后连续2天涨+放量 → 买入
@@ -30,6 +36,10 @@ MIN_HOLD = 5
 COOLDOWN = 3
 VOL_LOOKBACK = 20
 TRADE_START = "2024-01-01"
+# 吸筹周期起点窗口: 右侧确认买入常发生在吸筹中后段, 用买入日份额作基准
+# 会把已流入份额计入基准, 导致小幅回撤即"净流入回撤过半"过早卖出
+# (案例: 2026-07-27 买入, 7/1-8/4 累计吸筹92.4亿仅回撤45.7%却触发卖出)
+BASE_LOOKBACK = 60
 
 
 def _count_crash_accum(rows: list[dict], idx: int, window: int = 10) -> int:
@@ -57,7 +67,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     waiting_for_reversal = False
     last_sell_price = None
     entry_shares = None      # 买入时份额
-    peak_net_inflow = 0.0    # 累计净流入峰值
+    base_shares = None       # 吸筹起点份额(买入前 BASE_LOOKBACK 日最低)
+    peak_shares = None       # 持仓期最高份额(用于计算净流入峰值)
     watch_mode = False       # 顶部观察模式(阈值达标后等破位)
     watch_peak = 0.0         # 观察期最高收盘
 
@@ -145,10 +156,12 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             hold_days += 1
             cur_shares = row.get("shares_yi")
 
-            # 跟踪累计净流入
-            if cur_shares is not None and entry_shares is not None:
-                net_flow = cur_shares - entry_shares
-                peak_net_inflow = max(peak_net_inflow, net_flow)
+            # 跟踪持仓期最高份额
+            if cur_shares is not None:
+                if peak_shares is None:
+                    peak_shares = cur_shares
+                else:
+                    peak_shares = max(peak_shares, cur_shares)
 
             # 卖出条件1: DISTRIBUTE集群中不触发巨量流出 (让集群完整)
             in_dist_cluster = dist_count >= 1
@@ -156,13 +169,16 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 (rows[j].get("shares_delta_yi") or 0) >= 5
                 for j in range(max(0, i - 3), i)
             )
+            peak_inflow = (peak_shares - base_shares
+                           if peak_shares is not None and base_shares is not None
+                           else 0.0)
             massive_outflow = (not in_dist_cluster  # 不在DISTRIBUTE集群中
                                and not recent_big_inflow
                                and sd_yi <= -5
-                               and peak_net_inflow > 0
+                               and peak_inflow > 0
                                and cur_shares is not None
-                               and entry_shares is not None
-                               and (cur_shares - entry_shares) < peak_net_inflow * 0.5)
+                               and base_shares is not None
+                               and (cur_shares - base_shares) < peak_inflow * 0.5)
 
             # 卖出条件2: DISTRIBUTE + 份额净流出 (经典确认)
             is_dist = td == "DISTRIBUTE"
@@ -206,7 +222,13 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             watch_mode = False
             watch_peak = 0.0
             entry_shares = row.get("shares_yi")
-            peak_net_inflow = 0.0
+            peak_shares = entry_shares
+            # 吸筹起点 = 买入前 BASE_LOOKBACK 日内最低份额
+            # (右侧确认买入时基准不被已流入份额抬高, 避免过早卖出)
+            base_shares = min(
+                (rows[j].get("shares_yi") for j in range(max(0, i - BASE_LOOKBACK), i)
+                 if rows[j].get("shares_yi") is not None),
+                default=None)
             vol = row.get("volume") or 0
             prev_vols = [rows[j].get("volume") or 0
                          for j in range(max(0, i - VOL_LOOKBACK), i)]
