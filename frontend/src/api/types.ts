@@ -502,3 +502,51 @@ export interface RealtimeTurnoverResponse {
   series: IntradayTurnoverPoint[]
   fetched_at: string
 }
+
+// ========== 衍生品数据 ==========
+
+export interface OptionPCRPoint {
+  date: string
+  underlying_code: string
+  underlying_name: string
+  pcr: number
+  call_volume: number
+  put_volume: number
+  call_oi: number
+  put_oi: number
+}
+
+export interface FuturesBasisPoint {
+  date: string
+  futures_code: string
+  futures_name: string
+  fut_close: number
+  spot_close: number
+  basis: number
+  basis_pct: number
+  volume: number
+  hold: number
+}
+
+export interface DerivativesOverview {
+  pcr: OptionPCRPoint[]
+  basis: FuturesBasisPoint[]
+  pcr_latest_date: string | null
+  basis_latest_date: string | null
+  trading_days: number
+}
+
+export interface DivergenceSignal {
+  date: string
+  kind: 'TOP' | 'BOT'
+  score: number
+  grade: 'CONF' | 'WATCH'
+  rules: string[]
+  rule_names: string[]
+  close: number
+}
+
+export interface DivergenceResponse {
+  code: string
+  signals: DivergenceSignal[]
+}

@@ -6,7 +6,7 @@ from config import (
 )
 from scheduler.data_jobs import (
     job_sync_calendar, job_backfill_etf_daily, job_backfill_shares,
-    job_fetch_sentiment, job_fetch_etf_latest,
+    job_fetch_sentiment, job_fetch_etf_latest, job_fetch_derivatives,
 )
 from scheduler.rebuild import job_rebuild_all
 
@@ -32,6 +32,9 @@ JOB_DEFS: dict[str, dict] = {
     "fetch_etf_latest": {
         "label": "刷新最新ETF数据", "exclusive": False, "defaults": {},
     },
+    "fetch_derivatives": {
+        "label": "拉取衍生品数据", "exclusive": False, "defaults": {},
+    },
     "rebuild_all": {
         "label": "一键重建全部数据", "exclusive": True,
         "defaults": {
@@ -50,5 +53,6 @@ JOB_FNS = {
     "backfill_shares": job_backfill_shares,
     "fetch_sentiment": job_fetch_sentiment,
     "fetch_etf_latest": job_fetch_etf_latest,
+    "fetch_derivatives": job_fetch_derivatives,
     "rebuild_all": job_rebuild_all,
 }

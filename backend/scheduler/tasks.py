@@ -33,6 +33,8 @@ from store.calendar_repo import (
     upsert_trade_dates, get_calendar_count, get_range, get_last_trading_day, reload_cache,
 )
 from store.breadth_repo import upsert_breadth, get_latest_breadth_date
+from fetch.derivatives import fetch_option_pcr, fetch_futures_basis
+from store.derivatives_repo import upsert_pcr, upsert_basis, get_pcr_latest_date, get_basis_latest_date
 from scheduler.time_guard import is_trading_time, trading_day_guard
 
 _kline_cache: dict[str, list[dict]] = {}
@@ -334,6 +336,30 @@ def task_fetch_breadth() -> dict:
     return {}
 
 
+def task_fetch_derivatives(backfill: bool = False) -> dict:
+    """采集期权PCR + 股指期货基差。backfill=True 时回溯190天。"""
+    print(f"[SCHEDULER] fetching derivatives (backfill={backfill})...")
+
+    pcr_start = None
+    if backfill:
+        pcr_start = (datetime.now() - timedelta(days=280)).strftime("%Y-%m-%d")
+    else:
+        latest = get_pcr_latest_date()
+        if latest:
+            pcr_start = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    pcr_rows = fetch_option_pcr(start_date=pcr_start, on_row=lambda r: upsert_pcr([r]))
+    if pcr_rows:
+        print(f"[SCHEDULER] PCR upserted: {len(pcr_rows)} rows")
+
+    basis_rows = fetch_futures_basis()
+    if basis_rows:
+        upsert_basis(basis_rows)
+        print(f"[SCHEDULER] basis upserted: {len(basis_rows)} rows")
+
+    return {"pcr": len(pcr_rows), "basis": len(basis_rows)}
+
+
 def start_scheduler() -> None:
     init_db()
     reload_cache()
@@ -355,6 +381,9 @@ def start_scheduler() -> None:
 
     if get_turnover_count() == 0 or get_margin_count() == 0:
         task_fetch_sentiment(backfill=True)
+
+    if get_pcr_latest_date() is None:
+        task_fetch_derivatives(backfill=True)
 
     scheduler.add_job(
         task_realtime_poll,
@@ -415,6 +444,12 @@ def start_scheduler() -> None:
         trading_day_guard(task_fetch_breadth),
         CronTrigger(hour=16, minute=30, day_of_week="mon-fri"),
         id="fetch_breadth",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        trading_day_guard(task_fetch_derivatives),
+        CronTrigger(hour=17, minute=0, day_of_week="mon-fri"),
+        id="fetch_derivatives",
         replace_existing=True,
     )
     scheduler.add_job(

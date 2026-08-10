@@ -277,3 +277,28 @@ def job_fetch_etf_latest(progress: ProgressFn) -> dict:
             latest_date = result["date"]
     progress(len(codes) + 1, len(codes) + 1, f"完成 {count} 只 ETF")
     return {"count": count, "date": latest_date}
+
+
+def job_fetch_derivatives(progress: ProgressFn) -> dict:
+    """拉取期权PCR + 股指期货基差(支持增量回溯)。"""
+    from fetch.derivatives import fetch_option_pcr, fetch_futures_basis
+    from store.derivatives_repo import upsert_pcr, upsert_basis, get_pcr_latest_date
+    from datetime import timedelta
+
+    latest = get_pcr_latest_date()
+    if latest:
+        pcr_start = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    else:
+        pcr_start = (datetime.now() - timedelta(days=280)).strftime("%Y-%m-%d")
+
+    progress(0, 2, f"拉取期权PCR ({pcr_start}~)…")
+    pcr_rows = fetch_option_pcr(
+        start_date=pcr_start,
+        on_row=lambda r: upsert_pcr([r]),
+    )
+    progress(1, 2, "拉取股指期货基差…")
+    basis_rows = fetch_futures_basis()
+    if basis_rows:
+        upsert_basis(basis_rows)
+    progress(2, 2, f"完成 PCR {len(pcr_rows)} 行, 基差 {len(basis_rows)} 行")
+    return {"pcr": len(pcr_rows), "basis": len(basis_rows)}

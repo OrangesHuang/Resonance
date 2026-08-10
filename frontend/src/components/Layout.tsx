@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/sentiment', label: '市场情绪', end: false },
   { to: '/calendar', label: '交易日历', end: false },
   { to: '/data', label: '数据管理', end: false },
+  { to: '/derivatives', label: '衍生品数据', end: false },
 ]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
