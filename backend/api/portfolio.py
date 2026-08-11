@@ -70,7 +70,7 @@ def _generic_v1_trades(code: str) -> list[dict]:
             td_green = td == "ACCUMULATE"
             sp_green = sp is not None and sp >= 65
             tp_cold = tp is not None and tp <= 10
-            cp_high = cp is not None and cp > 60
+            cp_high = cp is not None and cp > 50
             if pp_green and sp_green and td_green:
                 action = "BUY"
             elif pp_green and td_green and tp_cold:

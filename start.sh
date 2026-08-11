@@ -6,6 +6,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# 自动后台化: 如果在交互终端且未指定 --foreground, 则用 nohup 后台启动
+if [[ -t 0 && "${1:-}" != "--foreground" ]]; then
+  echo "[start] 检测到交互终端, 自动后台启动 (nohup)"
+  echo "[start] 日志: $ROOT/nohup.out"
+  echo "[start] 停止: pkill -f 'uvicorn main:app.*--port 8001'"
+  nohup "$0" --foreground > "$ROOT/nohup.out" 2>&1 &
+  echo "[start] 已后台启动, PID: $!"
+  exit 0
+fi
+
 BACKEND_DIR="$ROOT/backend"
 FRONTEND_DIR="$ROOT/frontend"
 VENV_DIR="$ROOT/.venv"

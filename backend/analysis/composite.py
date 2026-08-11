@@ -1,9 +1,10 @@
 from typing import Optional
 
 from config import (
-    WEIGHT_VOLUME, WEIGHT_DIRECTION, WEIGHT_SHARES,
-    WEIGHT_VOLUME_DEGRADED, WEIGHT_DIRECTION_DEGRADED,
     VOLUME_MA_WINDOW,
+    COMPOSITE_VOLUME_FLOOR, COMPOSITE_VOLUME_SPAN,
+    COMPOSITE_AGREE_REWARD, COMPOSITE_CONFLICT_PENALTY,
+    COMPOSITE_PP_VOL_MAX,
 )
 from analysis.factors import (
     calc_volume_probability,
@@ -16,11 +17,41 @@ from analysis.factors import (
 
 
 def calc_composite_probability(
-    vp: float, dp: float, sp: Optional[float]
+    vp: float, dp: float, sp: Optional[float],
+    price_position: Optional[float] = None,
 ) -> float:
+    """分层门控模型: 方向为基调, 量能为置信度, 份额+价格为验证层。
+
+    Layer 1: 方向概率作为基调 (dp)
+    Layer 2: 量概率调节方向偏离度 — 低量收缩向中性, 高量保持偏离
+    Layer 3: 价格位置×量能交互 — 低位放量=吸筹证据, 高位放量=出货证据
+    Layer 4: 份额验证 — 价格位置作为可信度放大器
+      低位放大流入证据(便宜价位买入更可信), 高位放大流出证据(高价抛售更可信)
+    """
+    direction_deviation = (dp - 50) / 50
+    volume_confidence = vp / 100
+    adjusted_deviation = direction_deviation * (
+        COMPOSITE_VOLUME_FLOOR + COMPOSITE_VOLUME_SPAN * volume_confidence
+    )
+    signal = 50 + adjusted_deviation * 50
+
+    if price_position is not None:
+        pp_deviation = (price_position - 50) / 50
+        signal += pp_deviation * volume_confidence * -COMPOSITE_PP_VOL_MAX
+
     if sp is not None:
-        return round(vp * WEIGHT_VOLUME + dp * WEIGHT_DIRECTION + sp * WEIGHT_SHARES, 1)
-    return round(vp * WEIGHT_VOLUME_DEGRADED + dp * WEIGHT_DIRECTION_DEGRADED, 1)
+        share_deviation = (sp - 50) / 50
+        if price_position is not None:
+            position_scale = 0.5 + price_position / 100
+        else:
+            position_scale = 1.0
+        amplified = share_deviation * position_scale
+        if amplified > 0:
+            signal += amplified * COMPOSITE_AGREE_REWARD
+        else:
+            signal += amplified * COMPOSITE_CONFLICT_PENALTY
+
+    return round(max(0.0, min(100.0, signal)), 1)
 
 
 def _calc_t5_return(kline: list[dict], end_idx: int) -> Optional[float]:
@@ -72,11 +103,10 @@ def analyze_single_etf(
     )
 
     sp = calc_share_probability(shares_delta_pct)
-    cp = calc_composite_probability(vp, dp, sp)
-    signal_level = classify_signal(cp)
-
     price_position = calc_price_position(kline, target_idx)
     trade_direction = classify_trade_direction(price_position, volume_ratio)
+    cp = calc_composite_probability(vp, dp, sp, price_position)
+    signal_level = classify_signal(cp)
 
     prev_close = kline[target_idx - 1]["close"] if target_idx > 0 else target["open"]
     change_pct = (target["close"] - prev_close) / prev_close * 100 if prev_close else 0

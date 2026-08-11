@@ -132,11 +132,10 @@ def calc_intraday_signal(
     )
 
     sp = calc_share_probability(latest_share_delta_pct)
-    cp = calc_composite_probability(vp, dp, sp)
-    signal_level = classify_signal(cp)
-
     price_position = calc_price_position_from_price(quote.price, kline_history)
     trade_direction = classify_trade_direction(price_position, intraday_vr)
+    cp = calc_composite_probability(vp, dp, sp, price_position)
+    signal_level = classify_signal(cp)
 
     premium_pct = None
     if idx_quote and quote.prev_close > 0:

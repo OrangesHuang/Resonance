@@ -103,10 +103,10 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
         return {"code": code, "trades": result["trades"],
                 "metrics": result["metrics"], "holding": result["holding"]}
 
-    from analysis.strategy_zz500 import run_zz500_strategy, ZZ500_CODE
+    from analysis.strategy_zz500_v2 import run_zz500_strategy_v2, ZZ500_CODE
     if code == ZZ500_CODE:
         etf_rows = list(reversed(get_by_code(code)))
-        result = run_zz500_strategy(etf_rows)
+        result = run_zz500_strategy_v2(etf_rows)
         return {"code": code, "trades": result["trades"],
                 "metrics": result["metrics"], "holding": result["holding"]}
 
@@ -159,7 +159,7 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
             td_green = td == "ACCUMULATE"
             sp_green = sp is not None and sp >= 65
             tp_cold = tp is not None and tp <= 10
-            cp_high = cp is not None and cp > 60
+            cp_high = cp is not None and cp > 50
             if pp_green and sp_green and td_green:
                 action, reason = "BUY", "价格低位+份额净申购+吸筹"
             elif pp_green and td_green and tp_cold:

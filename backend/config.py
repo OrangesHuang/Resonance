@@ -29,6 +29,14 @@ WEIGHT_SHARES = 0.30
 WEIGHT_VOLUME_DEGRADED = 0.70
 WEIGHT_DIRECTION_DEGRADED = 0.30
 
+# 综合概率 V2: 分层门控模型参数
+COMPOSITE_VERSION = 2
+COMPOSITE_VOLUME_FLOOR = 0.3     # 量能置信度下限(低量时保留30%方向偏离)
+COMPOSITE_VOLUME_SPAN = 0.7      # 量能置信度跨度(高量时额外贡献70%)
+COMPOSITE_AGREE_REWARD = 15.0    # 份额与方向一致时的最大增强
+COMPOSITE_CONFLICT_PENALTY = 25.0  # 份额与方向矛盾时的最大惩罚(非对称)
+COMPOSITE_PP_VOL_MAX = 20.0      # 价格位置×量能交互项最大调节幅度
+
 SIGNAL_HIGH = 70.0
 SIGNAL_MID = 50.0
 
