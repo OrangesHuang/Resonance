@@ -16,17 +16,20 @@
     - 近期强吸筹(近10日累计≥2亿)时出货信号豁免(刚吸筹完就卖是错的),
       但豁免须看整轮吸筹周期的资金留存: 12-16~12-31 吸筹 +4.0亿,
       01-05 最后 +0.3 → 峰值 4.3; 01-06/07 连续净赎回撤走 1.55(回撤36%)
-      → 庄家钱已撤离, 豁免失效可卖(12-16~01-22 累计只剩 +1.0亿)
+    - 撤离须持续确认: 单日回撤破位可能是换手 —— 01-07 单日-1.0亿冲至
+      36%, 但 01-08 起流出快速衰减(-0.6→-0.25→-0.1)且价格缩量续涨至
+      01-23 @1.490; 连续两日回撤≥30% 才是资金真撤离, 支撑消失即离场
   份额 T+1 披露 → 出货信号当日触发, 次日(确认 sd)执行, 无前视偏差。
 
 历史教训:
   1. 08-13 出货信号(pp99+vr2.0)但当日申购+1.0 → 若卖只 +33.5%,
      实际 09-02 卖 @1.233 +48.2%(当日流出-0.35 确认)
   2. 2026-01-06/01-07 出货信号(pp98+vr1.54/1.64+流出-0.55/-1.00):
-     a10=4.1/3.4 看似刚吸筹, 但周期回撤 12.8%/36%(4.3亿撤走1.55),
-     量能记忆耗尽 → 01-08 卖 @1.386 +16.6%(原 03-04 +13.7%),
-     多 2.9pp 且释放 2 个月资金 (卖飞尾部: 01-08~01-23 续涨至 1.490,
-     但 03-04 回落到 1.352)
+     a10=4.1/3.4 看似刚吸筹, 周期回撤 12.8%/36%。01-07 单日破位视为
+     换手豁免(次日流出即衰减, 价格缩量续涨); 01-08 连续两日回撤
+     36%→50% + 当日 sd-0.6 确认资金持续撤离 → 01-09 卖 @1.418 +19.3%
+     (首日即卖 1.386 +16.6% / 拖到 03-04 1.352 +13.7%; 真顶 01-23
+     @1.490 当天 sd+0.05/vr0.79 无任何信号, 不可捕捉)
   3. 06-22 出货信号(pp99+vr1.76+流出-0.5) → 06-23 确认卖 @1.779
      +42.0%; 若等止盈 07-14 @1.768 收益接近但多扛 3 周波动
   4. 2026-05-20 pp100 出货但当日申购+0.5(吸筹中洗盘) → 豁免;
@@ -42,17 +45,22 @@
     极低位缩量: pp≤15+vr<1.0+跌≥2%+距高点≥15天+非集群
        → 2025-11-21 @1.189 / 2026-03-23 @1.253
     极低位放量恐慌: pp≤10+跌≥5%+vr≥1.2 → 2026-07-30 @1.374
-  卖出(3规则, 全部需当日净赎回 sd<0 确认, T+1 执行):
-    量能记忆豁免: 近10日累计 sd ≥ 2亿 且 周期回撤<30%(资金未撤离)
+  卖出(4规则, 全部需当日净赎回 sd<0 确认, T+1 执行):
+    量能记忆豁免: 近10日累计 sd ≥ 2亿 且 周期回撤未连续两日≥30%
     S1 出货信号: DISTRIBUTE+pp≥97+vr≥1.5+sd<0+非豁免 → T+1 卖
-       → 2026-01-06/07 信号 → 01-08 @1.386 / 06-22 信号 → 06-23 @1.779
+       → 06-22 信号 → 06-23 @1.779
     S2 破位出货: 跌≥2.5%+vr≥1.5+sd<0+非豁免 → T+1 卖
        → 2025-09-02 信号 → 09-03 @1.233 / 2026-03-03 → 03-04 @1.352
+    R1 豁免失效撤离: a10≥2亿(本该豁免)+回撤连续两日≥30%+sd<0 → T+1 卖
+       支撑已消失不等K线信号(顶部后常缩量阴跌, S1/S2 失明)
+       → 2026-01-08 确认(回撤36%→50%) → 01-09 @1.418
     T1 止盈: 持仓≥10天 + 收盘<持仓最高×0.90 + 非吸筹中(a10<0.5)
        → 2025-10-17 @1.234 (无吸筹期兜底)
 """
 
 from __future__ import annotations
+
+from base.analysis.strategy.metrics import calc_round_metrics
 
 KC_CODE = "589680"
 
@@ -79,10 +87,11 @@ DIST_VR_MIN = 1.5  # 出货信号: 量比阈值
 BREAK_CHG = -2.5  # 破位出货: 跌幅阈值
 BREAK_VR_MIN = 1.5  # 破位出货: 量比下限
 MEMORY_EXEMPT = 2.0  # 量能记忆: 近10日累计吸筹≥2亿(豁免前提之一)
-CYCLE_RETREAT_MAX = 0.30  # 量能记忆: 吸筹周期累计净申赎从峰值回撤≥30% 豁免失效
-# 双重条件: 近10日刚吸筹 且 周期资金未大幅撤出, 才豁免出货信号。
-# 2026-01-06 回撤12.8%(流出第一天)豁免; 01-07 回撤36%(4.3亿撤走1.55)
-# 资金已撤离 → 01-08 卖 @1.386 +16.6%(原 03-04 +13.7%); 阈值20~35%结果一致
+CYCLE_RETREAT_MAX = 0.30  # 量能记忆: 吸筹周期累计净申赎从峰值回撤阈值
+# 双重条件: 近10日刚吸筹 且 周期回撤未连续两日≥30%, 才豁免出货信号。
+# 单日破位视为换手: 2026-01-07 单日-1.0亿冲至36%但次日流出衰减、价格续涨;
+# 连续两日(01-07/08: 36%→50%)确认资金持续撤离 → 01-09 卖 @1.418 +19.3%。
+# 阈值25~35%扫描结果一致(回撤从12.8%跳至36%/50%, 远离边界)
 FUND_EXEMPT = 0.5  # 止盈豁免: 前10日累计净申赎阈值(吸筹中)
 SD_WINDOW = 10  # 吸筹动能窗口
 SD_MIN_COUNT = 8  # 吸筹动能最少有效天数
@@ -141,12 +150,22 @@ def run_kc_strategy(rows: list[dict]) -> dict:
         cycle_sum[i] = c
         cycle_peak[i] = p
 
+    # 撤离持续确认: 当日与前一日回撤均≥阈值才算资金持续撤离。
+    # 单日破位可能是换手(01-07 单日-1.0亿冲至36%, 次日流出即衰减且价格续涨)
+    retreat_sustained = [False] * n
+    for i in range(1, n):
+        if cycle_peak[i] > 0 and cycle_peak[i - 1] > 0:
+            r_now = 1.0 - cycle_sum[i] / cycle_peak[i]
+            r_prev = 1.0 - cycle_sum[i - 1] / cycle_peak[i - 1]
+            retreat_sustained[i] = r_now >= CYCLE_RETREAT_MAX and r_prev >= CYCLE_RETREAT_MAX
+
     trades = []
     position = 0.0
     hold_days = 0
     cooldown = COOLDOWN
     peak_close = 0.0
     pending_sell_idx = None
+    pending_kind = "dist"
 
     for i in range(n):
         row = rows[i]
@@ -167,8 +186,10 @@ def run_kc_strategy(rows: list[dict]) -> dict:
         # ---- T+1 确认执行挂起的卖出 ----
         if pending_sell_idx is not None and i > pending_sell_idx:
             signal_date = rows[pending_sell_idx]["date"]
+            signal_sd = rows[pending_sell_idx].get("shares_delta_yi")
             action = "SELL"
-            reason = f"{signal_date}出货确认sd{rows[pending_sell_idx].get('shares_delta_yi')}"
+            kind = "资金持续撤离" if pending_kind == "retreat" else "出货确认"
+            reason = f"{signal_date}{kind}sd{signal_sd}"
             pending_sell_idx = None
 
         # ---- 买入 ----
@@ -218,11 +239,10 @@ def run_kc_strategy(rows: list[dict]) -> dict:
             sd_today = rows[i].get("shares_delta_yi")
             is_dist = td == "DISTRIBUTE"
 
-            # 量能记忆: 近10日吸筹≥2亿 且 周期资金未大幅撤出(回撤<30%)才豁免。
-            # 只看近10日会误判: 01-06/07 看似刚吸筹(a10=4.1/3.4),
-            # 但周期回撤36%说明12月底吸的4.3亿已撤走1.55, 豁免应失效
-            retreat = 1.0 - cycle_sum[i] / cycle_peak[i] if cycle_peak[i] > 0 else 0.0
-            memory_exempt = a10 is not None and a10 >= MEMORY_EXEMPT and retreat < CYCLE_RETREAT_MAX
+            # 量能记忆: 近10日吸筹≥2亿 且 周期回撤未连续两日≥30% 才豁免。
+            # 单日破位视为换手观察: 01-07 单日-1.0亿冲至36%但次日流出衰减、
+            # 价格续涨, 不卖; 连续两日≥30% = 资金持续撤离, 豁免失效
+            memory_exempt = a10 is not None and a10 >= MEMORY_EXEMPT and not retreat_sustained[i]
             # 止盈豁免: 吸筹中(a10≥0.5)不止盈
             trail_exempt = a10 is not None and a10 >= FUND_EXEMPT
 
@@ -239,6 +259,18 @@ def run_kc_strategy(rows: list[dict]) -> dict:
                 chg <= BREAK_CHG and vr >= BREAK_VR_MIN and not memory_exempt and sd_today is not None and sd_today < 0
             ):
                 pending_sell_idx = i
+                pending_kind = "dist"
+            # 豁免失效主动撤离: 本该豁免(近10日刚吸筹)但资金持续撤走 =
+            # 支撑消失, 不等K线信号直接离场(顶部后常缩量阴跌, S1/S2 失明)
+            elif (
+                a10 is not None
+                and a10 >= MEMORY_EXEMPT
+                and retreat_sustained[i]
+                and sd_today is not None
+                and sd_today < 0
+            ):
+                pending_sell_idx = i
+                pending_kind = "retreat"
             # T1: 止盈兜底 (吸筹中豁免)
             elif hold_days >= MIN_HOLD and close < peak_close * (1 - TRAIL_PCT) and not trail_exempt:
                 reason = f"止盈: 高点{peak_close:.3f}回落至{close:.3f}"
@@ -256,55 +288,5 @@ def run_kc_strategy(rows: list[dict]) -> dict:
             peak_close = 0.0
             trades.append({"date": d, "action": "SELL", "price": close, "reason": reason})
 
-    metrics = _calc_metrics(trades, closes[-1] if closes else 0, position)
+    metrics = calc_round_metrics(trades, closes[-1] if closes else 0, position)
     return {"code": KC_CODE, "trades": trades, "metrics": metrics, "holding": position > 0}
-
-
-def _calc_metrics(trades: list[dict], last_close: float, position: float) -> dict:
-    rounds = []
-    buy_price = None
-    buy_date = None
-    for t in trades:
-        if t["action"] == "BUY":
-            buy_price = t["price"]
-            buy_date = t["date"]
-        elif t["action"] == "SELL" and buy_price is not None:
-            ret = (t["price"] - buy_price) / buy_price * 100
-            rounds.append(
-                {
-                    "buy_date": buy_date,
-                    "sell_date": t["date"],
-                    "buy_price": buy_price,
-                    "sell_price": t["price"],
-                    "return_pct": round(ret, 2),
-                }
-            )
-            buy_price = None
-
-    if position > 0 and buy_price is not None:
-        ret = (last_close - buy_price) / buy_price * 100
-        rounds.append(
-            {
-                "buy_date": buy_date,
-                "sell_date": None,
-                "buy_price": buy_price,
-                "sell_price": last_close,
-                "return_pct": round(ret, 2),
-            }
-        )
-
-    total_ret = 1.0
-    wins = 0
-    for r in rounds:
-        total_ret *= 1 + r["return_pct"] / 100
-        if r["return_pct"] > 0:
-            wins += 1
-
-    return {
-        "rounds": rounds,
-        "total_return_pct": round((total_ret - 1) * 100, 2),
-        "round_count": len(rounds),
-        "win_count": wins,
-        "win_rate": round(wins / len(rounds) * 100, 1) if rounds else 0,
-        "trade_count": len(trades),
-    }
