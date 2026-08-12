@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import ReactECharts from 'echarts-for-react'
 import { fetchPortfolioBacktest } from '../api/client'
 import type { PortfolioTrade } from '../api/types'
-import useIsMobile from '../hooks/useIsMobile'
 import { useLocalStorage } from '../hooks/useLocalStorage'
+import { buildRows } from '../components/TradePopups'
+import type { TradeRow } from '../components/TradePopups'
+import PortfolioChart from '../components/PortfolioChart'
 
 const DEFAULT_PINNED = ["159352", "589680", "515080"]
 
@@ -14,81 +15,6 @@ const KIND_STYLE: Record<string, string> = {
   SWITCH: 'text-amber-400',
   SELL: 'text-red-400',
   SKIP: 'text-gray-500',
-}
-
-type TradeRow = {
-  date: string
-  kind: string
-  kind_label: string
-  name: string
-  code: string
-  signal_date: string
-  units: number
-  price: number
-  amount: number
-}
-
-// 转仓 = 卖旧买新: 把 SWITCH(转出) 与其对应 BUY(转入) 合并为单行,
-// 如 "中证红利(减半) → 科创综指"; 无关联的 BUY 照常显示
-function buildRows(trades: PortfolioTrade[]): TradeRow[] {
-  const byTo = new Map<string, PortfolioTrade[]>()
-  for (const s of trades) {
-    if (s.kind !== 'SWITCH') continue
-    const arr = byTo.get(s.to_code ?? '') ?? []
-    arr.push(s)
-    byTo.set(s.to_code ?? '', arr)
-  }
-  const consumed = new Set<PortfolioTrade>()
-  const rows: TradeRow[] = []
-  for (const t of trades) {
-    // SWITCH 先于其 BUY 入日志, 第一遍跳过, 避免被当作孤立转仓提前输出
-    if (consumed.has(t) || t.kind === 'SWITCH') continue
-    const group = t.kind === 'BUY' ? byTo.get(t.code) : undefined
-    if (group && group.length > 0) {
-      for (const s of group) consumed.add(s)
-      const tag = (s: PortfolioTrade) =>
-        s.action === 'LIQUIDATE' ? '(清仓)' : s.action === 'REDUCE' ? '(减半)' : ''
-      rows.push({
-        date: t.date,
-        kind: 'SWITCH',
-        kind_label: '转仓',
-        name: `${group.map(s => `${s.name}${tag(s)}`).join(' + ')} → ${t.name}`,
-        code: t.code,
-        signal_date: t.signal_date,
-        units: t.units,
-        price: t.price,
-        amount: t.amount,
-      })
-      continue
-    }
-    rows.push({
-      date: t.date,
-      kind: t.kind,
-      kind_label: t.kind_label,
-      name: t.name,
-      code: t.code,
-      signal_date: t.signal_date,
-      units: t.units,
-      price: t.price,
-      amount: t.amount,
-    })
-  }
-  // 未被消费的 SWITCH(仅 SKIP 极端场景: 转出后仍不足半份, 当日无对应 BUY)防御显示
-  for (const t of trades) {
-    if (t.kind !== 'SWITCH' || consumed.has(t)) continue
-    rows.push({
-      date: t.date,
-      kind: 'SWITCH',
-      kind_label: t.kind_label,
-      name: t.to_name ? `${t.name} → ${t.to_name}` : t.name,
-      code: t.code,
-      signal_date: t.signal_date,
-      units: t.units,
-      price: t.price,
-      amount: t.amount,
-    })
-  }
-  return rows
 }
 
 function fmtWan(v: number): string {
@@ -113,9 +39,7 @@ function StatCard({ label, value, sub, tone }: {
 }
 
 export default function PortfolioBacktest() {
-  const isMobile = useIsMobile()
   const [pinnedCodes] = useLocalStorage<string[]>('pinnedEtfs', DEFAULT_PINNED)
-  const [selectedTrade, setSelectedTrade] = useState<{ date: string; items: TradeRow[] } | null>(null)
   const { data, isLoading, error } = useQuery({
     queryKey: ['portfolioBacktest', pinnedCodes],
     queryFn: () => fetchPortfolioBacktest(pinnedCodes),
@@ -135,119 +59,6 @@ export default function PortfolioBacktest() {
     for (const [d, arr] of byDate) m.set(d, buildRows(arr))
     return m
   }, [data])
-
-  const option = useMemo(() => {
-    if (!data || data.curve.length === 0) return null
-    const dates = data.curve.map(c => c.date)
-    const nav = data.curve.map(c => c.nav_per_share)
-    const pos = data.curve.map(c => c.position_pct)
-
-    const KIND_ICON: Record<string, string> = {
-      BUY: '▲', TOPUP: '▲', SWITCH: '⇄', SELL: '▼', SKIP: '●',
-    }
-    const KIND_CLR: Record<string, string> = {
-      BUY: '#22c55e', TOPUP: '#38bdf8', SWITCH: '#f59e0b', SELL: '#ef4444', SKIP: '#9ca3af',
-    }
-    const KIND_ZH: Record<string, string> = {
-      BUY: '买入', TOPUP: '加仓', SWITCH: '转仓', SELL: '卖出', SKIP: '信号跳过',
-    }
-
-    const markers: { coord: [string, number]; value: string; itemStyle: { color: string } }[] = []
-    for (const [date, rows] of displayRowsByDate) {
-      const idx = dates.indexOf(date)
-      if (idx < 0) continue
-      const main = rows[0]
-      const posVal = data.curve[idx]?.position_pct ?? 0
-      markers.push({
-        coord: [date, posVal],
-        value: `${KIND_ICON[main.kind] ?? '●'}`,
-        itemStyle: { color: KIND_CLR[main.kind] ?? '#9ca3af' },
-      })
-    }
-
-    return {
-      backgroundColor: 'transparent',
-      animation: false,
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: '#111827',
-        borderColor: '#374151',
-        textStyle: { color: '#e5e7eb' },
-        formatter: (params: { seriesName: string; dataIndex: number; value: number }[]) => {
-          const i = params[0]?.dataIndex ?? 0
-          const c = data.curve[i]
-          if (!c) return ''
-          const dayRows = displayRowsByDate.get(c.date)
-          let html = `<div style="font-size:11px;line-height:1.8">` +
-            `<b>${c.date}</b><br/>` +
-            `每份净值：<b style="color:#22c55e">${c.nav_per_share.toFixed(4)} 元</b><br/>` +
-            `总资产：${fmtWan(c.nav)} 元<br/>` +
-            `仓位：${c.position_pct.toFixed(1)}%`
-          if (dayRows) {
-            html += '<br/><span style="border-top:1px solid #374151;display:block;margin:4px 0"></span>'
-            for (const t of dayRows) {
-              const clr = KIND_CLR[t.kind] ?? '#9ca3af'
-              const zh = KIND_ZH[t.kind] ?? t.kind
-              html += `<div style="color:${clr}">${zh} ${t.name} ${t.amount.toLocaleString()} 元</div>`
-            }
-          }
-          html += '</div>'
-          return html
-        },
-      },
-      legend: { data: ['每份净值(元)', '仓位%'], textStyle: { color: '#9ca3af' }, top: 0 },
-      grid: { left: 55, right: 50, top: 30, bottom: 30 },
-      xAxis: {
-        type: 'category',
-        data: dates,
-        axisLabel: { color: '#6b7280', fontSize: 10 },
-        axisLine: { lineStyle: { color: '#374151' } },
-      },
-      yAxis: [
-        { type: 'value', scale: true, axisLabel: { color: '#6b7280' }, splitLine: { lineStyle: { color: '#1f2937' } } },
-        { type: 'value', min: 0, max: 100, axisLabel: { color: '#6b7280', formatter: '{value}%' }, splitLine: { show: false } },
-      ],
-      dataZoom: [
-        { type: 'inside', xAxisIndex: 0 },
-        { type: 'slider', xAxisIndex: 0, bottom: 8, height: 16, borderColor: '#374151', backgroundColor: '#111827', textStyle: { color: '#6b7280' } },
-      ],
-      series: [
-        {
-          name: '每份净值(元)',
-          type: 'line',
-          data: nav,
-          showSymbol: false,
-          lineStyle: { width: 1.8, color: '#22c55e' },
-          itemStyle: { color: '#22c55e' },
-          areaStyle: { color: 'rgba(34, 197, 94, 0.08)' },
-        },
-        {
-          name: '仓位%',
-          type: 'line',
-          yAxisIndex: 1,
-          data: pos,
-          showSymbol: false,
-          lineStyle: { width: 1, color: '#38bdf8', type: 'dashed' as const },
-          itemStyle: { color: '#38bdf8' },
-          markPoint: {
-            symbol: 'triangle',
-            symbolSize: 18,
-            symbolOffset: [0, -8],
-            data: markers,
-          },
-        },
-      ],
-    }
-  }, [data, displayRowsByDate])
-
-  const chartEvents = useMemo(() => ({
-    click: (params: { componentType?: string; data?: { coord?: [string, number] } }) => {
-      if (params.componentType === 'markPoint' && params.data?.coord) {
-        const rows = displayRowsByDate.get(params.data.coord[0])
-        if (rows) setSelectedTrade({ date: params.data.coord[0], items: rows })
-      }
-    },
-  }), [displayRowsByDate])
 
   const trades = useMemo(() => {
     const out: TradeRow[] = []
@@ -274,31 +85,15 @@ export default function PortfolioBacktest() {
         <StatCard label="最大回撤" value={`-${data.max_drawdown_pct.toFixed(1)}%`} tone="red" />
         <StatCard label="期末每份净值" value={`${data.final_nav_per_share.toFixed(4)} 元`} sub="初始 1.0000 元" />
         <StatCard label="期末总资产" value={fmtWan(data.final_nav)} sub="初始 100 万" />
-        <StatCard label="空仓日期" value={`${data.empty_days} 天`} sub={`本轮周期空仓占比 ${data.empty_days_pct.toFixed(1)}%`} />
+        <StatCard label="空仓日期" value={`${data.empty_days} 个交易日`} sub={`本轮周期空仓占比 ${data.empty_days_pct.toFixed(1)}%`} />
         <StatCard label="策略信号" value={`${data.signal_count} 笔`} sub={`${data.trades.length} 次组合操作`} />
       </div>
 
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-4">
-        <div className="text-xs text-gray-500 mb-2">净值走势（每份净值 · 虚线为组合仓位% · 点击标记查看交易）</div>
-        <div className="relative">
-          {option && <ReactECharts option={option} style={{ height: isMobile ? 260 : 380 }} lazyUpdate onEvents={chartEvents} />}
-          {selectedTrade && (
-            <div className="absolute top-2 right-2 bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-lg z-10 min-w-[200px] max-w-[280px]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-white">{selectedTrade.date}</span>
-                <button onClick={() => setSelectedTrade(null)}
-                  className="text-gray-400 hover:text-white text-lg leading-none px-1">&times;</button>
-              </div>
-              {selectedTrade.items.map((t, i) => (
-                <div key={i} className="text-xs mb-1.5 last:mb-0">
-                  <span className={`font-bold ${KIND_STYLE[t.kind] ?? 'text-gray-300'}`}>{t.kind_label}</span>
-                  <span className="text-gray-300 ml-1">{t.name}</span>
-                  <span className="text-gray-500 ml-1">{t.price} × {(t.amount / 10000).toFixed(2)}万</span>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="text-xs text-gray-500 mb-2">
+          上: 组合每份净值 + 仓位%(虚线) · 中: ETF 净值(归一化) + B/S 买卖点 · 下: ETF 份额净申赎(红申购/绿赎回) · 三图联动缩放 · 点击圆点查看交易
         </div>
+        <PortfolioChart data={data} displayRowsByDate={displayRowsByDate} />
       </div>
 
       {data.open_positions.length > 0 && (

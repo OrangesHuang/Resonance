@@ -475,6 +475,14 @@ export interface PortfolioOpenPosition {
   buy_date: string
 }
 
+export interface PortfolioEtfSeries {
+  code: string
+  name: string
+  nav: (number | null)[]
+  delta: (number | null)[]
+  trades: { date: string; action: string }[]
+}
+
 export interface PortfolioBacktestResponse {
   initial_capital: number
   initial_nav_per_share: number
@@ -488,6 +496,7 @@ export interface PortfolioBacktestResponse {
   curve: PortfolioCurvePoint[]
   trades: PortfolioTrade[]
   open_positions: PortfolioOpenPosition[]
+  etf_series: PortfolioEtfSeries[]
 }
 
 // ========== 盘中两市成交额 ==========

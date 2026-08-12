@@ -10,7 +10,8 @@ from typing import Optional
 from fastapi import APIRouter, Query
 
 from config import ETFS, SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS
-from store.daily_repo import get_by_code, get_trading_dates
+from store.daily_repo import get_by_code
+from store.calendar_repo import get_trade_days
 from store.sentiment_repo import get_turnover_series, get_margin_series
 from analysis.sentiment import enrich_turnover, percentile_series
 from analysis.resonance import turnover_value
@@ -21,7 +22,7 @@ from analysis.strategy_kc50 import KC50_CODE
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
-TRADE_START = "2024-10-08"
+TRADE_START = "2025-01-01"
 INIT_CAPITAL = 1_000_000   # 100 万初始净值
 INIT_SHARES = 1_000_000    # 每份 1 元
 
@@ -77,7 +78,9 @@ def portfolio_backtest(codes: Optional[str] = Query(None)):
             rows.setdefault(t["date"], t["price"])
         price_map[code] = rows
 
-    dates = [d for d in get_trading_dates() if d >= TRADE_START]
+    # 日期轴以交易日历为准(排除节假日/周末), 上限为最后有 K 线价格的日期
+    max_kline_date = max(d for m in price_map.values() for d in m)
+    dates = [d for d in get_trade_days(TRADE_START) if d <= max_kline_date]
     if not dates:
         dates = sorted({d for m in price_map.values() for d in m})
 
@@ -110,6 +113,28 @@ def portfolio_backtest(codes: Optional[str] = Query(None)):
         for p in result["open_positions"]
     ]
 
+    # 各 ETF 序列: 归一化净值(以区间首日收盘为基准 1.0) + 份额净申赎 + 策略买卖点
+    etf_series = []
+    for code in target_codes:
+        rows = {r["date"]: r for r in get_by_code(code)}
+        ordered = sorted((d, r) for d, r in rows.items()
+                         if r.get("close_price") is not None)
+        base = ordered[0][1]["close_price"] if ordered else None
+        nav = [
+            round(rows[d]["close_price"] / base, 4)
+            if d in rows and rows[d].get("close_price") and base else None
+            for d in dates
+        ]
+        delta = [rows[d].get("shares_delta_yi") if d in rows else None for d in dates]
+        etf_series.append({
+            "code": code,
+            "name": ETFS.get(code, {}).get("name", code),
+            "nav": nav,
+            "delta": delta,
+            "trades": [{"date": t["date"], "action": t["action"]}
+                       for t in trades_by_code[code] if t["action"] in ("BUY", "SELL")],
+        })
+
     return {
         "initial_capital": INIT_CAPITAL,
         "initial_nav_per_share": 1.0,
@@ -123,4 +148,5 @@ def portfolio_backtest(codes: Optional[str] = Query(None)):
         "curve": curve,
         "trades": trade_log,
         "open_positions": open_positions,
+        "etf_series": etf_series,
     }

@@ -5,7 +5,7 @@
 - 若还有余钱 → 仓位可升至 25%(2 单位)
 - 一旦其他标的发出买入信号 → 原有 25% 仓位必须降至 12.5% 释放资金
 - 信号次日按当日收盘价成交
-- 起算: 2024-10-08(924 之后), 起始 100% 现金
+- 起算: 2025-01-01(此前不计), 起始 100% 现金
 """
 import sys
 from pathlib import Path
@@ -13,7 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from api.portfolio import _load_trades, ALL_CODES, TRADE_START
-from store.daily_repo import get_by_code, get_trading_dates
+from store.daily_repo import get_by_code
+from store.calendar_repo import get_trade_days
 from analysis.portfolio import simulate
 
 INIT_CAPITAL = 1_000_000
@@ -29,7 +30,8 @@ def main() -> None:
             rows.setdefault(t["date"], t["price"])
         price_map[code] = rows
 
-    dates = [d for d in get_trading_dates() if d >= TRADE_START]
+    max_kline_date = max(d for m in price_map.values() for d in m)
+    dates = [d for d in get_trade_days(TRADE_START) if d <= max_kline_date]
     result = simulate(trades_by_code, price_map, dates)
 
     scale = INIT_CAPITAL
