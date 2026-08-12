@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useDataStatus, useDataJobs, useStartJob } from '../hooks/useData'
 import SourceCard from '../components/data/SourceCard'
+import RecalcCard from '../components/data/RecalcCard'
+import FlowSteps from '../components/data/FlowSteps'
 import JobsPanel from '../components/data/JobsPanel'
 import SchedulerPanel from '../components/data/SchedulerPanel'
 import type { JobState } from '../api/types'
@@ -64,6 +66,8 @@ export default function DataManage() {
   }
 
   const labelOf = (task: string) => status.data?.jobs.find(j => j.task === task)?.label ?? task
+  const flowOf = (task: string) => status.data?.jobs.find(j => j.task === task)?.data_flow
+  const rebuildFlow = flowOf('rebuild_all')
 
   if (status.isLoading) return <div className="text-gray-500 text-center py-10">加载中…</div>
   if (status.isError || !status.data) return <div className="text-red-400 text-center py-10">数据状态加载失败</div>
@@ -104,6 +108,11 @@ export default function DataManage() {
               className="px-3 py-1.5 rounded text-sm bg-red-600/90 text-white hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
               {rebuildRunning ? '重建中…' : '一键重建全部数据'}
             </button>
+          )}
+          {rebuildFlow && rebuildFlow.length > 0 && (
+            <div className="mt-2 w-80 ml-auto">
+              <FlowSteps flow={rebuildFlow} />
+            </div>
           )}
         </div>
       </div>
@@ -147,7 +156,8 @@ export default function DataManage() {
           ]}
           actionLabel="回填日度" onAction={() => run('backfill_etf_daily', rangeParams)}
           disabled={runningTasks.has('backfill_etf_daily') || rebuildRunning}
-          running={runningTasks.has('backfill_etf_daily')} progress={progressFor('backfill_etf_daily')} />
+          running={runningTasks.has('backfill_etf_daily')} progress={progressFor('backfill_etf_daily')}
+          flow={flowOf('backfill_etf_daily')} />
 
         <SourceCard title="份额数据" description="ETF 份额净申赎，重算 share_prob（影响份额流向灯）"
           level={shareLevel} levelText={LEVEL_TEXT[shareLevel]}
@@ -159,7 +169,8 @@ export default function DataManage() {
           secondaryLabel={missingShares > 0 ? `补全缺失 (${missingShares})` : undefined}
           secondaryOnAction={missingShares > 0 ? () => run('backfill_missing_shares') : undefined}
           secondaryDisabled={runningTasks.has('backfill_missing_shares') || rebuildRunning}
-          secondaryRunning={runningTasks.has('backfill_missing_shares')} />
+          secondaryRunning={runningTasks.has('backfill_missing_shares')}
+          flow={flowOf('backfill_shares')} />
 
         <SourceCard title="市场情绪" description="两市成交额 + 融资余额（全市场指标，需≥20点暖机）"
           level={sentLevel} levelText={sentLevel === 'warn' ? '不足20点' : LEVEL_TEXT[sentLevel]}
@@ -170,7 +181,8 @@ export default function DataManage() {
           ]}
           actionLabel="拉取情绪" onAction={() => run('fetch_sentiment', rangeParams)}
           disabled={runningTasks.has('fetch_sentiment') || rebuildRunning}
-          running={runningTasks.has('fetch_sentiment')} progress={progressFor('fetch_sentiment')} />
+          running={runningTasks.has('fetch_sentiment')} progress={progressFor('fetch_sentiment')}
+          flow={flowOf('fetch_sentiment')} />
 
         <SourceCard title="交易日历" description="A股交易日历，供回填与定时任务判定"
           level={calLevel} levelText={calLevel === 'ok' ? '正常' : '空'}
@@ -181,7 +193,15 @@ export default function DataManage() {
           ]}
           actionLabel="同步日历" onAction={() => run('sync_calendar')}
           disabled={runningTasks.has('sync_calendar') || rebuildRunning}
-          running={runningTasks.has('sync_calendar')} progress={progressFor('sync_calendar')} />
+          running={runningTasks.has('sync_calendar')} progress={progressFor('sync_calendar')}
+          flow={flowOf('sync_calendar')} />
+
+        <RecalcCard
+          flow={flowOf('recalc_composite')}
+          onAction={() => run('recalc_composite')}
+          disabled={runningTasks.has('recalc_composite') || rebuildRunning}
+          running={runningTasks.has('recalc_composite')}
+          progress={progressFor('recalc_composite')} />
       </div>
 
       <h3 className="text-sm font-semibold text-white mb-2">任务记录</h3>

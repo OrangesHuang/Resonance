@@ -1,26 +1,32 @@
 """数据管理 API:数据源状态 + 后台任务调度/查询。"""
+
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime
 from functools import partial
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from config import (
-    DEFAULT_ETF_SEED_DAYS, DEFAULT_SHARES_BACKFILL_DAYS, SENTIMENT_BACKFILL_DAYS,
-    JOB_LIST_LIMIT, JOB_DAYS_MAX,
+from base.config import (
+    DEFAULT_ETF_SEED_DAYS,
+    DEFAULT_SHARES_BACKFILL_DAYS,
+    JOB_DAYS_MAX,
+    JOB_LIST_LIMIT,
+    SENTIMENT_BACKFILL_DAYS,
 )
-from store.daily_repo import get_stats
-from store.sentiment_repo import (
-    get_turnover_count, get_margin_count, get_turnover_series, get_margin_series,
+from base.scheduler.job_manager import job_manager, run_job
+from base.scheduler.job_registry import JOB_DEFS, JOB_FNS
+from base.scheduler.tasks import scheduler
+from base.store.calendar_repo import get_calendar_count, get_last_sync, get_range
+from base.store.daily_repo import get_stats
+from base.store.sentiment_repo import (
+    get_margin_count,
+    get_margin_series,
+    get_turnover_count,
+    get_turnover_series,
 )
-from store.calendar_repo import get_calendar_count, get_range, get_last_sync
-from scheduler.tasks import scheduler
-from scheduler.job_manager import job_manager, run_job
-from scheduler.job_registry import JOB_DEFS, JOB_FNS
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -40,8 +46,7 @@ def _series_range(rows: list[dict]) -> list:
 def data_status():
     turnover = get_turnover_series()
     margin = get_margin_series()
-    running = [j.to_dict() for j in job_manager.list(JOB_LIST_LIMIT)
-               if j.status in ("pending", "running")]
+    running = [j.to_dict() for j in job_manager.list(JOB_LIST_LIMIT) if j.status in ("pending", "running")]
     sched = []
     for j in scheduler.get_jobs():
         nr = j.next_run_time
@@ -51,16 +56,19 @@ def data_status():
             "etf_daily": get_stats(),
             "turnover": {"count": get_turnover_count(), "range": _series_range(turnover)},
             "margin": {"count": get_margin_count(), "range": _series_range(margin)},
-            "calendar": {"count": get_calendar_count(), "range": get_range(),
-                         "last_sync": get_last_sync()},
+            "calendar": {"count": get_calendar_count(), "range": get_range(), "last_sync": get_last_sync()},
         },
-        "jobs": [{"task": k, "label": v["label"], "defaults": v["defaults"]}
-                 for k, v in JOB_DEFS.items()],
+        "jobs": [
+            {"task": k, "label": v["label"], "defaults": v["defaults"], "data_flow": v.get("data_flow", [])}
+            for k, v in JOB_DEFS.items()
+        ],
         "running": running,
         "scheduler": sched,
-        "defaults": {"etf_days": DEFAULT_ETF_SEED_DAYS,
-                     "shares_days": DEFAULT_SHARES_BACKFILL_DAYS,
-                     "sentiment_days": SENTIMENT_BACKFILL_DAYS},
+        "defaults": {
+            "etf_days": DEFAULT_ETF_SEED_DAYS,
+            "shares_days": DEFAULT_SHARES_BACKFILL_DAYS,
+            "sentiment_days": SENTIMENT_BACKFILL_DAYS,
+        },
     }
 
 
@@ -72,7 +80,7 @@ def _merge_params(defaults: dict, incoming: dict) -> dict:
     return merged
 
 
-def _validate_params(params: dict) -> Optional[str]:
+def _validate_params(params: dict) -> str | None:
     for k, v in params.items():
         if k.endswith("days"):
             if not isinstance(v, int) or isinstance(v, bool) or not (1 <= v <= JOB_DAYS_MAX):

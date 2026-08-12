@@ -1,3 +1,6 @@
+import type { DataFlowItem } from '../../api/types'
+import FlowSteps from './FlowSteps'
+
 const LEVEL_STYLES: Record<string, string> = {
   ok: 'bg-green-500/15 text-green-400 border-green-500/30',
   warn: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
@@ -15,7 +18,7 @@ interface Progress {
   message: string
 }
 
-export default function SourceCard({ title, description, stats, level, levelText, actionLabel, onAction, disabled, running, progress, secondaryLabel, secondaryOnAction, secondaryDisabled, secondaryRunning }: {
+export default function SourceCard({ title, description, stats, level, levelText, actionLabel, onAction, disabled, running, progress, secondaryLabel, secondaryOnAction, secondaryDisabled, secondaryRunning, flow }: {
   title: string
   description: string
   stats: StatLine[]
@@ -30,6 +33,7 @@ export default function SourceCard({ title, description, stats, level, levelText
   secondaryOnAction?: () => void
   secondaryDisabled?: boolean
   secondaryRunning?: boolean
+  flow?: DataFlowItem[]
 }) {
   const pct = progress && progress.total > 0
     ? Math.round((progress.current / progress.total) * 100)
@@ -49,6 +53,11 @@ export default function SourceCard({ title, description, stats, level, levelText
           </div>
         ))}
       </div>
+      {flow && flow.length > 0 && (
+        <div className="mb-3 pt-3 border-t border-gray-800/80">
+          <FlowSteps flow={flow} />
+        </div>
+      )}
       {running && progress && (
         <div className="mb-3">
           <div className="h-1.5 bg-gray-800 rounded overflow-hidden">
