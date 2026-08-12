@@ -1,12 +1,23 @@
-"""组合回测 API: 8 标的统一仓位分配逻辑的净值走势与交易记录。"""
+"""组合回测 API: 8 标的统一仓位分配逻辑的净值走势与交易记录。
+
+买卖点与页面「共振买卖点」共用统一入口(analysis.trades_router),
+保证组合回测遵循各 ETF 多指标共振买卖点, 而非单一通用策略。
+"""
 from __future__ import annotations
+
+from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from config import ETFS
+from config import ETFS, SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS
 from store.daily_repo import get_by_code, get_trading_dates
+from store.sentiment_repo import get_turnover_series, get_margin_series
+from analysis.sentiment import enrich_turnover, percentile_series
+from analysis.resonance import turnover_value
 from analysis.portfolio import simulate
-from analysis.strategy_v3 import run_v3_strategy
+from analysis.trades_router import compute_trades
+from analysis.strategy_a500 import A500_CODE
+from analysis.strategy_kc50 import KC50_CODE
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -23,21 +34,39 @@ KIND_LABEL = {
     "REDUCE": "减仓",
     "SELL": "卖出",
     "LIQUIDATE": "清仓腾资",
+    "SKIP": "信号跳过(资金不足)",
 }
 
 
-def _load_trades(codes: list[str] | None = None) -> dict[str, list[dict]]:
+def _load_trades(codes: Optional[list[str]] = None) -> dict[str, list[dict]]:
+    """按各 ETF 专属策略生成买卖点(与页面共振买卖点一致)。"""
     target_codes = codes if codes else ALL_CODES
+    turnover = enrich_turnover(get_turnover_series())
+    margin = get_margin_series()
+    t_pct = percentile_series(
+        [r.get("date") for r in turnover],
+        [turnover_value(r) for r in turnover],
+        SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+    m_pct = percentile_series(
+        [r.get("date") for r in margin],
+        [r.get("fin_balance_yi") for r in margin],
+        SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+
+    hs300_rows = list(reversed(get_by_code("510300")))
+    kc_idx_rows = list(reversed(get_by_code("589680")))
+
     out: dict[str, list[dict]] = {}
     for code in target_codes:
         rows = list(reversed(get_by_code(code)))
-        result = run_v3_strategy(rows)
+        result = compute_trades(code, rows, t_pct=t_pct, m_pct=m_pct,
+                                hs300_rows=hs300_rows if code == A500_CODE else None,
+                                kc_idx_rows=kc_idx_rows if code == KC50_CODE else None)
         out[code] = [t for t in result["trades"] if t["date"] >= TRADE_START]
     return out
 
 
 @router.get("/backtest")
-def portfolio_backtest(codes: str | None = Query(None)):
+def portfolio_backtest(codes: Optional[str] = Query(None)):
     code_list = codes.split(",") if codes else None
     target_codes = code_list if code_list else ALL_CODES
     trades_by_code = _load_trades(code_list)

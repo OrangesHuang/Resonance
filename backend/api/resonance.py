@@ -39,100 +39,17 @@ def resonance_day(code: str = DEFAULT_RESONANCE_CODE, date: str = ""):
 
 @router.get("/trades")
 def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
+    """页面「共振买卖点」— 按 ETF 代码分派各专属策略(与组合回测共用统一入口)。"""
     if code not in ETFS:
         raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
 
-    from analysis.strategy_kc import run_kc_strategy, KC_CODE
-    if code == KC_CODE:
-        etf_rows = list(reversed(get_by_code(code)))
-        result = run_kc_strategy(etf_rows)
-        return {"code": code, "trades": result["trades"]}
-
-    from analysis.strategy_zz import run_zz_strategy, ZZ_CODE
-    if code == ZZ_CODE:
-        etf_rows = list(reversed(get_by_code(code)))
-        # 注入成交额分位 (_tp) 和融资分位 (_mp)
-        turnover = enrich_turnover(get_turnover_series())
-        margin = get_margin_series()
-        t_pct = percentile_series(
-            [r.get("date") for r in turnover],
-            [turnover_value(r) for r in turnover],
-            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
-        m_pct = percentile_series(
-            [r.get("date") for r in margin],
-            [r.get("fin_balance_yi") for r in margin],
-            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
-        for r in etf_rows:
-            r["_tp"] = t_pct.get(r["date"], {}).get("percentile")
-            r["_mp"] = m_pct.get(r["date"], {}).get("percentile")
-        result = run_zz_strategy(etf_rows)
-        return {"code": code, "trades": result["trades"]}
-
-    from analysis.strategy_div import run_div_strategy, DIV_CODE
-    if code == DIV_CODE:
-        etf_rows = list(reversed(get_by_code(code)))
-        # 注入成交额分位数据 (_tp)
-        turnover = enrich_turnover(get_turnover_series())
-        t_pct = percentile_series(
-            [r.get("date") for r in turnover],
-            [turnover_value(r) for r in turnover],
-            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
-        for r in etf_rows:
-            r["_tp"] = t_pct.get(r["date"], {}).get("percentile")
-        result = run_div_strategy(etf_rows)
-        return {"code": code, "trades": result["trades"]}
-
-    from analysis.strategy_sh50 import run_sh50_strategy, SH50_CODE
-    if code == SH50_CODE:
-        etf_rows = list(reversed(get_by_code(code)))
-        result = run_sh50_strategy(etf_rows)
-        return {"code": code, "trades": result["trades"],
-                "metrics": result["metrics"], "holding": result["holding"]}
-
-    from analysis.strategy_sc50 import run_sc50_strategy, SC50_CODE
-    if code == SC50_CODE:
-        etf_rows = list(reversed(get_by_code(code)))
-        result = run_sc50_strategy(etf_rows)
-        return {"code": code, "trades": result["trades"],
-                "metrics": result["metrics"], "holding": result["holding"]}
-
-    from analysis.strategy_kc50 import run_kc50_strategy, KC50_CODE
-    if code == KC50_CODE:
-        kc50_rows = list(reversed(get_by_code(KC50_CODE)))
-        kc_idx_rows = list(reversed(get_by_code("589680")))
-        result = run_kc50_strategy(kc50_rows, kc_idx_rows)
-        return {"code": code, "trades": result["trades"],
-                "metrics": result["metrics"], "holding": result["holding"]}
-
-    from analysis.strategy_zz500_v2 import run_zz500_strategy_v2, ZZ500_CODE
-    if code == ZZ500_CODE:
-        etf_rows = list(reversed(get_by_code(code)))
-        result = run_zz500_strategy_v2(etf_rows)
-        return {"code": code, "trades": result["trades"],
-                "metrics": result["metrics"], "holding": result["holding"]}
-
-    from analysis.strategy_a500 import run_a500_strategy, A500_CODE
-    if code == A500_CODE:
-        a500_rows = list(reversed(get_by_code(A500_CODE)))
-        hs300_rows = list(reversed(get_by_code("510300")))
-        turnover = enrich_turnover(get_turnover_series())
-        margin = get_margin_series()
-        t_pct = percentile_series(
-            [r.get("date") for r in turnover],
-            [turnover_value(r) for r in turnover],
-            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
-        m_pct = percentile_series(
-            [r.get("date") for r in margin],
-            [r.get("fin_balance_yi") for r in margin],
-            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
-        result = run_a500_strategy(a500_rows, hs300_rows, t_pct, m_pct)
-        return {"code": code, "trades": result["trades"],
-                "metrics": result["metrics"], "holding": result["holding"]}
+    from analysis.strategy_a500 import A500_CODE
+    from analysis.strategy_kc50 import KC50_CODE
+    from analysis.trades_router import compute_trades
 
     etf_rows = list(reversed(get_by_code(code)))
     turnover = enrich_turnover(get_turnover_series())
     margin = get_margin_series()
-
     t_pct = percentile_series(
         [r.get("date") for r in turnover],
         [turnover_value(r) for r in turnover],
@@ -142,82 +59,16 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
         [r.get("fin_balance_yi") for r in margin],
         SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
 
-    import math
-    SELL_PP = 80
-    SELL_MP = 90
-    MIN_HOLD = 10
-    VOL_LOOKBACK = 20
-    TRADE_START = "2024-10-08"
+    hs300_rows = None
+    kc_idx_rows = None
+    if code == A500_CODE:
+        hs300_rows = list(reversed(get_by_code("510300")))
+    elif code == KC50_CODE:
+        kc_idx_rows = list(reversed(get_by_code("589680")))
 
-    trades = []
-    position = 0.0
-    hold_days = 0
-    sell_threshold = 1
-    dist_count = 0
-
-    for i, row in enumerate(etf_rows):
-        d = row["date"]
-        if d not in t_pct and d not in m_pct:
-            continue
-        close = row.get("close_price")
-        if close is None:
-            continue
-        pp = row.get("price_position")
-        td = row.get("trade_direction")
-        sp = row.get("share_prob")
-        cp = row.get("composite_prob")
-        tp = t_pct.get(d, {}).get("percentile")
-        mp = m_pct.get(d, {}).get("percentile")
-
-        action = None
-        reason = ""
-
-        if position == 0 and d >= TRADE_START:
-            pp_green = pp is not None and pp <= 40
-            pp_extreme = pp is not None and pp <= 10
-            td_green = td == "ACCUMULATE"
-            sp_green = sp is not None and sp >= 65
-            tp_cold = tp is not None and tp <= 10
-            cp_high = cp is not None and cp > 50
-            if pp_green and sp_green and td_green:
-                action, reason = "BUY", "价格低位+份额净申购+吸筹"
-            elif pp_green and td_green and tp_cold:
-                action, reason = "BUY", "价格低位+吸筹+成交额极冷"
-            elif pp_extreme and td_green and cp_high:
-                action, reason = "BUY", "价格极低位+吸筹+概率>60%"
-
-        if position == 1:
-            hold_days += 1
-            if td == "DISTRIBUTE" and pp is not None and pp >= SELL_PP \
-                    and mp is not None and mp >= SELL_MP:
-                dist_count += 1
-
-            if hold_days >= MIN_HOLD and td == "DISTRIBUTE" \
-                    and dist_count >= sell_threshold:
-                reason = (f"出货共振(第{dist_count}/{sell_threshold}次出货确认)"
-                          f"+价格{pp:.0f}%+融资{mp:.0f}%分位")
-                action = "SELL"
-
-        if action == "BUY":
-            position = 1.0
-            hold_days = 0
-            dist_count = 0
-            vol = row.get("volume") or 0
-            prev_vols = [etf_rows[j].get("volume") or 0
-                         for j in range(max(0, i - VOL_LOOKBACK), i)]
-            avg_vol = sum(prev_vols) / len(prev_vols) if prev_vols else 1
-            ratio = vol / avg_vol if avg_vol > 0 else 1.0
-            tp_cold = tp is not None and tp <= 10
-            if tp_cold:
-                sell_threshold = 1
-            else:
-                sell_threshold = max(2, math.ceil(2 + ratio * 0.55))
-            trades.append({"date": d, "action": action, "price": close, "reason": reason})
-        elif action == "SELL":
-            position = 0.0
-            trades.append({"date": d, "action": action, "price": close, "reason": reason})
-
-    return {"code": code, "trades": trades}
+    result = compute_trades(code, etf_rows, t_pct=t_pct, m_pct=m_pct,
+                            hs300_rows=hs300_rows, kc_idx_rows=kc_idx_rows)
+    return {"code": code, "trades": result["trades"]}
 
 
 @router.get("/trades_kc")

@@ -13,6 +13,7 @@ const KIND_STYLE: Record<string, string> = {
   REDUCE: 'text-amber-400',
   SELL: 'text-red-400',
   LIQUIDATE: 'text-orange-400',
+  SKIP: 'text-gray-500',
 }
 
 function fmtWan(v: number): string {
@@ -60,13 +61,13 @@ export default function PortfolioBacktest() {
     }
 
     const KIND_ICON: Record<string, string> = {
-      BUY: '▲', TOPUP: '▲', SELL: '▼', REDUCE: '▼', LIQUIDATE: '▼',
+      BUY: '▲', TOPUP: '▲', SELL: '▼', REDUCE: '▼', LIQUIDATE: '▼', SKIP: '●',
     }
     const KIND_CLR: Record<string, string> = {
-      BUY: '#22c55e', TOPUP: '#38bdf8', SELL: '#ef4444', REDUCE: '#f59e0b', LIQUIDATE: '#f97316',
+      BUY: '#22c55e', TOPUP: '#38bdf8', SELL: '#ef4444', REDUCE: '#f59e0b', LIQUIDATE: '#f97316', SKIP: '#9ca3af',
     }
     const KIND_ZH: Record<string, string> = {
-      BUY: '买入', TOPUP: '加仓', SELL: '卖出', REDUCE: '减仓', LIQUIDATE: '清仓腾资',
+      BUY: '买入', TOPUP: '加仓', SELL: '卖出', REDUCE: '减仓', LIQUIDATE: '清仓腾资', SKIP: '信号跳过',
     }
 
     const markers: { coord: [string, number]; value: string; itemStyle: { color: string } }[] = []
@@ -126,7 +127,7 @@ export default function PortfolioBacktest() {
       ],
       dataZoom: [
         { type: 'inside', xAxisIndex: 0 },
-        { type: 'slider', xAxisIndex: 0, top: '88%', height: 16, borderColor: '#374151', backgroundColor: '#111827', textStyle: { color: '#6b7280' } },
+        { type: 'slider', xAxisIndex: 0, bottom: 8, height: 16, borderColor: '#374151', backgroundColor: '#111827', textStyle: { color: '#6b7280' } },
       ],
       series: [
         {
@@ -149,6 +150,7 @@ export default function PortfolioBacktest() {
           markPoint: {
             symbol: 'triangle',
             symbolSize: 18,
+            symbolOffset: [0, -8],
             data: markers,
           },
         },

@@ -6,7 +6,12 @@ import './styles/global.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 15000 },
+    // 指数退避重试: 后端刚启动未就绪时页面自动恢复, 而不是直接显示失败
+    queries: {
+      retry: 3,
+      retryDelay: attempt => Math.min(500 * 2 ** attempt, 5000),
+      staleTime: 15000,
+    },
   },
 })
 

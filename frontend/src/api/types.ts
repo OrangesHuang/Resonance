@@ -458,7 +458,7 @@ export interface PortfolioTrade {
   signal_date: string
   code: string
   name: string
-  kind: 'BUY' | 'TOPUP' | 'REDUCE' | 'SELL'
+  kind: 'BUY' | 'TOPUP' | 'REDUCE' | 'SELL' | 'LIQUIDATE' | 'SKIP'
   kind_label: string
   units: number
   price: number

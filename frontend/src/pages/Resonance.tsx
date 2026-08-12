@@ -124,7 +124,7 @@ export default function Resonance() {
   const [refreshing, setRefreshing] = useState(false)
   const queryClient = useQueryClient()
 
-  const { data, isLoading, error } = useResonance(code)
+  const { data, isLoading, error, refetch } = useResonance(code)
   const { data: etfList } = useQuery({
     queryKey: ['etfList'],
     queryFn: fetchEtfList,
@@ -178,7 +178,17 @@ export default function Resonance() {
   }, [stepDay])
 
   if (error) {
-    return <div className="text-red-400 text-center py-20">共振数据加载失败，请确认服务已启动</div>
+    return (
+      <div className="text-red-400 text-center py-20">
+        <div>共振数据加载失败，请确认服务已启动</div>
+        <button
+          onClick={() => refetch()}
+          className="mt-4 px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white"
+        >
+          重试
+        </button>
+      </div>
+    )
   }
   if (isLoading || !data) {
     return <div className="text-gray-400 text-center py-20">共振数据加载中...</div>

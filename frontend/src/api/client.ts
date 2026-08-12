@@ -13,21 +13,36 @@ async function parseError(res: Response): Promise<Error> {
   return new Error(msg)
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) throw await parseError(res)
-  return res.json()
+// 请求超时兜底: 后端未就绪/接口慢时不让页面无限挂起, 由 React Query 重试恢复
+const DEFAULT_TIMEOUT_MS = 20_000
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${BASE}${path}`, { ...init, signal: ctrl.signal })
+    if (!res.ok) throw await parseError(res)
+    return res.json()
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function get<T>(path: string, timeoutMs?: number): Promise<T> {
+  return request<T>(path, undefined, timeoutMs)
+}
+
+async function post<T>(path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const hasBody = body !== undefined
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
-    body: hasBody ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) throw await parseError(res)
-  return res.json()
+  return request<T>(
+    path,
+    {
+      method: 'POST',
+      headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+      body: hasBody ? JSON.stringify(body) : undefined,
+    },
+    timeoutMs,
+  )
 }
 
 export function fetchSignalsToday(): Promise<SignalResponse> {
@@ -96,7 +111,7 @@ export function fetchDataStatus(): Promise<DataStatus> {
 
 export function fetchPortfolioBacktest(codes?: string[]): Promise<PortfolioBacktestResponse> {
   const qs = codes?.length ? `?codes=${codes.join(',')}` : ''
-  return get(`/portfolio/backtest${qs}`)
+  return get(`/portfolio/backtest${qs}`, 60_000)
 }
 
 export function fetchDataJobs(): Promise<JobState[]> {

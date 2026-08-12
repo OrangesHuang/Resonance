@@ -42,16 +42,15 @@ pick_pip_mirror() {
   return 1
 }
 
-if [ -z "${PIP_INDEX_URL:-}" ]; then
-  MIRROR="$(pick_pip_mirror || true)"
-  if [ -n "$MIRROR" ]; then
-    export PIP_INDEX_URL="$MIRROR"
-    log "使用镜像: $MIRROR"
-  fi
-fi
-
 command -v python3 >/dev/null 2>&1 || die "未找到 python3，请先安装 Python 3.9+。"
 command -v npm     >/dev/null 2>&1 || die "未找到 npm，请先安装 Node.js。"
+
+# 依赖已装齐(requirements 未变 + 关键包可导入)则完全跳过 pip, 保证坏网络下也能秒级启动
+deps_satisfied() {
+  [ -f "$VENV_DIR/.requirements.snapshot" ] \
+    && cmp -s "$VENV_DIR/.requirements.snapshot" "$BACKEND_DIR/requirements.txt" \
+    && "$VENV_DIR/bin/python" -c 'import fastapi, uvicorn, apscheduler' >/dev/null 2>&1
+}
 
 # --- 0. 杀掉旧进程 + 清理缓存（确保每次启动都用最新代码）---
 log "释放端口 $BACKEND_PORT $FRONTEND_PORT ..."
@@ -67,9 +66,20 @@ if ! "$VENV_DIR/bin/pip" --version >/dev/null 2>&1; then
   rm -rf "$VENV_DIR"
   python3 -m venv "$VENV_DIR"
 fi
-log "安装/校验后端依赖 ..."
-"$VENV_DIR/bin/pip" install --quiet --timeout 30 --upgrade pip 2>/dev/null || log "pip 升级跳过(网络不可用, 不影响)"
-"$VENV_DIR/bin/pip" install --quiet --timeout 30 -r "$BACKEND_DIR/requirements.txt" || die "依赖安装失败, 请检查网络后重试"
+if ! deps_satisfied; then
+  log "安装/校验后端依赖 ..."
+  # 镜像探测仅在真正需要安装时执行, 减少坏网络下的启动等待
+  if [ -z "${PIP_INDEX_URL:-}" ]; then
+    MIRROR="$(pick_pip_mirror || true)"
+    if [ -n "$MIRROR" ]; then
+      export PIP_INDEX_URL="$MIRROR"
+      log "使用镜像: $MIRROR"
+    fi
+  fi
+  "$VENV_DIR/bin/pip" install --quiet --timeout 15 --retries 2 --upgrade pip 2>/dev/null || log "pip 升级跳过(网络不可用, 不影响)"
+  "$VENV_DIR/bin/pip" install --quiet --timeout 30 --retries 2 -r "$BACKEND_DIR/requirements.txt" || die "依赖安装失败, 请检查网络后重试"
+  cp "$BACKEND_DIR/requirements.txt" "$VENV_DIR/.requirements.snapshot"
+fi
 
 # --- 2. 前端依赖 ---
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
