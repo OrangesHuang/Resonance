@@ -15,7 +15,7 @@ interface Progress {
   message: string
 }
 
-export default function SourceCard({ title, description, stats, level, levelText, actionLabel, onAction, disabled, running, progress }: {
+export default function SourceCard({ title, description, stats, level, levelText, actionLabel, onAction, disabled, running, progress, secondaryLabel, secondaryOnAction, secondaryDisabled, secondaryRunning }: {
   title: string
   description: string
   stats: StatLine[]
@@ -26,6 +26,10 @@ export default function SourceCard({ title, description, stats, level, levelText
   disabled: boolean
   running: boolean
   progress?: Progress | null
+  secondaryLabel?: string
+  secondaryOnAction?: () => void
+  secondaryDisabled?: boolean
+  secondaryRunning?: boolean
 }) {
   const pct = progress && progress.total > 0
     ? Math.round((progress.current / progress.total) * 100)
@@ -57,13 +61,24 @@ export default function SourceCard({ title, description, stats, level, levelText
           </div>
         </div>
       )}
-      <button
-        onClick={onAction}
-        disabled={disabled}
-        className="mt-auto px-3 py-1.5 rounded text-sm bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {running ? '进行中…' : actionLabel}
-      </button>
+      <div className="mt-auto flex gap-2">
+        <button
+          onClick={onAction}
+          disabled={disabled}
+          className="flex-1 px-3 py-1.5 rounded text-sm bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {running ? '进行中…' : actionLabel}
+        </button>
+        {secondaryLabel && secondaryOnAction && (
+          <button
+            onClick={secondaryOnAction}
+            disabled={secondaryDisabled}
+            className="flex-1 px-3 py-1.5 rounded text-sm bg-sky-500/15 text-sky-300 border border-sky-500/40 hover:border-sky-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {secondaryRunning ? '进行中…' : secondaryLabel}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

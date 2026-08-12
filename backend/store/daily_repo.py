@@ -100,6 +100,19 @@ def shares_complete_for(date: str) -> bool:
     return all(c in rows for c in ETFS)
 
 
+def get_missing_share_dates() -> list[str]:
+    """份额缺失的交易日(升序): 当日有 K 线记录但至少一只 ETF 缺 shares_yi。"""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT date, COUNT(*) AS total, COUNT(shares_yi) AS with_shares "
+            "FROM etf_daily GROUP BY date HAVING with_shares < total ORDER BY date"
+        ).fetchall()
+        return [r["date"] for r in rows]
+    finally:
+        conn.close()
+
+
 def get_trading_dates(start: Optional[str] = None, end: Optional[str] = None) -> list[str]:
     conn = get_connection()
     try:

@@ -7,6 +7,7 @@ from config import (
 from scheduler.data_jobs import (
     job_sync_calendar, job_backfill_etf_daily, job_backfill_shares,
     job_fetch_sentiment, job_fetch_etf_latest, job_fetch_derivatives,
+    job_backfill_missing_shares,
 )
 from scheduler.rebuild import job_rebuild_all
 
@@ -23,6 +24,9 @@ JOB_DEFS: dict[str, dict] = {
         "label": "回填份额数据", "exclusive": False,
         "defaults": {"days": DEFAULT_SHARES_BACKFILL_DAYS, "force": False,
                      "start_date": None, "end_date": None},
+    },
+    "backfill_missing_shares": {
+        "label": "补全缺失份额", "exclusive": False, "defaults": {},
     },
     "fetch_sentiment": {
         "label": "拉取市场情绪", "exclusive": False,
@@ -51,6 +55,7 @@ JOB_FNS = {
     "sync_calendar": job_sync_calendar,
     "backfill_etf_daily": job_backfill_etf_daily,
     "backfill_shares": job_backfill_shares,
+    "backfill_missing_shares": job_backfill_missing_shares,
     "fetch_sentiment": job_fetch_sentiment,
     "fetch_etf_latest": job_fetch_etf_latest,
     "fetch_derivatives": job_fetch_derivatives,

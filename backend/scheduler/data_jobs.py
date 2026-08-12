@@ -23,6 +23,7 @@ from analysis.factors import calc_share_probability
 from store.daily_repo import (
     upsert_daily, update_share_data, get_trading_dates, get_by_date,
     get_latest_date_for, get_shares_by_date, shares_complete_for,
+    get_missing_share_dates,
 )
 from store.sentiment_repo import (
     upsert_turnover, upsert_margin,
@@ -177,6 +178,39 @@ def job_backfill_shares(progress: ProgressFn, days: int = DEFAULT_SHARES_BACKFIL
     progress(len(dates), len(dates), f"完成 {written} 行 ({fetched_dates} 天)")
     return {"dates": len(dates), "written": written, "fetched_dates": fetched_dates,
             "days": days}
+
+
+def job_backfill_missing_shares(progress: ProgressFn) -> dict:
+    """补全全历史缺失份额: 自动扫描缺失交易日, 仅拉取缺失 ETF, 不覆盖已有数据。
+
+    缺失成因: 远端单日拉取失败(限流/网络)、份额 T+1 发布当日拉空、
+    早期回填未覆盖。无需日期参数, 自动定位缺失日期从最早开始补。
+    """
+    dates = get_missing_share_dates()
+    if not dates:
+        progress(1, 1, "份额无缺失")
+        return {"dates": 0, "written": 0, "fetched_dates": 0}
+    prev_shares: dict = {}
+    written = 0
+    fetched_dates = 0
+    fail_streak = 0
+    for i, date in enumerate(dates, 1):
+        _load_prev_shares(date, prev_shares)
+        targets = _missing_share_etfs(date)
+        progress(i, len(dates), f"{date} 补 {len(targets)} 只: {','.join(targets[:3])}")
+        wrote = _write_shares_date(date, prev_shares, targets)
+        if wrote == 0:
+            fail_streak += 1
+            if fail_streak >= SHARES_FAIL_PAUSE_AFTER:
+                progress(i, len(dates), f"{date} 连续失败 {fail_streak} 天, 暂停 {SHARES_FAIL_PAUSE_SEC}s")
+                time.sleep(SHARES_FAIL_PAUSE_SEC)
+        else:
+            fail_streak = 0
+            fetched_dates += 1
+            written += wrote
+        time.sleep(BACKFILL_SLEEP_SEC)
+    progress(len(dates), len(dates), f"完成 {written} 行 ({fetched_dates} 天)")
+    return {"dates": len(dates), "written": written, "fetched_dates": fetched_dates}
 
 
 def job_fetch_sentiment(progress: ProgressFn, days: int = SENTIMENT_BACKFILL_DAYS,

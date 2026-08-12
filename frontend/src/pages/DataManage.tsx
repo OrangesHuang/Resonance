@@ -70,6 +70,8 @@ export default function DataManage() {
 
   const s = status.data.sources
 
+  const missingShares = s.etf_daily.total_records - s.etf_daily.records_with_shares
+
   const etfLevel = s.etf_daily.total_records === 0 ? 'empty' : s.etf_daily.records_with_shares === 0 ? 'warn' : 'ok'
   const shareLevel = s.etf_daily.records_with_shares === 0 ? 'empty' : s.etf_daily.records_with_shares < s.etf_daily.total_records ? 'warn' : 'ok'
   const sentCount = Math.min(s.turnover.count, s.margin.count)
@@ -152,7 +154,12 @@ export default function DataManage() {
           stats={[{ label: '含份额记录', value: `${s.etf_daily.records_with_shares} / ${s.etf_daily.total_records}` }]}
           actionLabel="回填份额" onAction={() => run('backfill_shares', rangeParams)}
           disabled={runningTasks.has('backfill_shares') || rebuildRunning}
-          running={runningTasks.has('backfill_shares')} progress={progressFor('backfill_shares')} />
+          running={runningTasks.has('backfill_shares')}
+          progress={progressFor('backfill_missing_shares') ?? progressFor('backfill_shares')}
+          secondaryLabel={missingShares > 0 ? `补全缺失 (${missingShares})` : undefined}
+          secondaryOnAction={missingShares > 0 ? () => run('backfill_missing_shares') : undefined}
+          secondaryDisabled={runningTasks.has('backfill_missing_shares') || rebuildRunning}
+          secondaryRunning={runningTasks.has('backfill_missing_shares')} />
 
         <SourceCard title="市场情绪" description="两市成交额 + 融资余额（全市场指标，需≥20点暖机）"
           level={sentLevel} levelText={sentLevel === 'warn' ? '不足20点' : LEVEL_TEXT[sentLevel]}
