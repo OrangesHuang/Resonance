@@ -80,7 +80,7 @@ export default function ResonanceLights({ data, selectedKey, onSelect }: {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
       <div className="flex items-center gap-3 flex-wrap mb-4">
-        <h3 className="text-base font-bold text-white">ETF择时分析</h3>
+        <h3 className="text-base font-bold text-white">ETF择时总览</h3>
         <span className="text-xs text-gray-500">{data.name} × 市场情绪 · {data.date}</span>
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-gray-400">

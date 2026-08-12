@@ -3,9 +3,9 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import useIsMobile from '../../hooks/useIsMobile'
 
 const TOP_NAV = [
-  { to: '/resonance', label: 'ETF择时分析' },
+  { to: '/resonance', label: 'ETF择时总览' },
   { to: '/compare', label: 'ETF走势对比' },
-  { to: '/portfolio', label: '组合回测' },
+  { to: '/portfolio', label: 'ETF组合回测' },
 ]
 
 const AUX_NAV = [
@@ -27,11 +27,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 function SidebarNav() {
   const location = useLocation()
-  const [auxOpen, setAuxOpen] = useState(true)
-
-  useEffect(() => {
-    if (AUX_PATHS.has(location.pathname)) setAuxOpen(true)
-  }, [location.pathname])
+  const [auxOpen, setAuxOpen] = useState(false)
 
   const auxActive = AUX_PATHS.has(location.pathname)
 

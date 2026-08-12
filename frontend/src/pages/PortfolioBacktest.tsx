@@ -67,12 +67,12 @@ export default function PortfolioBacktest() {
   }, [displayRowsByDate])
 
   if (isLoading) return <div className="text-gray-500 text-center py-10">组合回测加载中...</div>
-  if (error || !data) return <div className="text-red-400 text-center py-10">组合回测数据加载失败</div>
+  if (error || !data) return <div className="text-red-400 text-center py-10">ETF组合回测数据加载失败</div>
 
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <h2 className="text-xl font-bold text-white">组合回测</h2>
+        <h2 className="text-xl font-bold text-white">ETF组合回测</h2>
         <span className="text-xs text-gray-500">
           收藏标的组合 · 均分仓位 / 余钱加仓 / 新信号触发降仓 · 信号次日成交 · 初始 {fmtWan(data.initial_capital)} 元，每份 1 元
         </span>

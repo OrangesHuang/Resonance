@@ -233,7 +233,7 @@ export default function Resonance() {
       </div>
       <div className="flex items-center gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-white">ETF择时分析</h2>
+          <h2 className="text-lg font-bold text-white">ETF择时总览</h2>
           <p className="text-xs text-gray-500 mt-1">
             {data?.name ?? code}（{code}）× 市场情绪 · 红灯=出货/过热，绿灯=吸筹/冷清
           </p>
