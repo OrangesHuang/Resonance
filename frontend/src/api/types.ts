@@ -458,8 +458,11 @@ export interface PortfolioTrade {
   signal_date: string
   code: string
   name: string
-  kind: 'BUY' | 'TOPUP' | 'REDUCE' | 'SELL' | 'LIQUIDATE' | 'SKIP'
+  kind: 'BUY' | 'TOPUP' | 'SWITCH' | 'SELL' | 'SKIP'
   kind_label: string
+  to_code?: string
+  to_name?: string
+  action?: string
   units: number
   price: number
   amount: number
@@ -477,7 +480,8 @@ export interface PortfolioBacktestResponse {
   initial_nav_per_share: number
   total_return_pct: number
   max_drawdown_pct: number
-  avg_position_pct: number
+  empty_days: number
+  empty_days_pct: number
   final_nav: number
   final_nav_per_share: number
   signal_count: number

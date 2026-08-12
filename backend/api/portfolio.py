@@ -31,9 +31,8 @@ ALL_CODES = ["510300", "510050", "510500", "512100",
 KIND_LABEL = {
     "BUY": "买入",
     "TOPUP": "加仓",
-    "REDUCE": "减仓",
+    "SWITCH": "转仓",
     "SELL": "卖出",
-    "LIQUIDATE": "清仓腾资",
     "SKIP": "信号跳过(资金不足)",
 }
 
@@ -98,6 +97,9 @@ def portfolio_backtest(codes: Optional[str] = Query(None)):
          "code": t["code"],
          "name": ETFS.get(t["code"], {}).get("name", t["code"]),
          "kind": t["kind"], "kind_label": KIND_LABEL.get(t["kind"], t["kind"]),
+         "to_code": t.get("to_code", ""),
+         "to_name": ETFS.get(t.get("to_code", ""), {}).get("name", t.get("to_code", "")),
+         "action": t.get("action", ""),
          "units": t["units"], "price": t["price"],
          "amount": round(t["amount"] * t["price"] * scale, 0)}
         for t in result["trade_log"]
@@ -113,7 +115,8 @@ def portfolio_backtest(codes: Optional[str] = Query(None)):
         "initial_nav_per_share": 1.0,
         "total_return_pct": result["total_return_pct"],
         "max_drawdown_pct": result["max_drawdown_pct"],
-        "avg_position_pct": result["avg_position_pct"],
+        "empty_days": result["empty_days"],
+        "empty_days_pct": result["empty_days_pct"],
         "final_nav": curve[-1]["nav"] if curve else INIT_CAPITAL,
         "final_nav_per_share": curve[-1]["nav_per_share"] if curve else 1.0,
         "signal_count": sum(len(v) for v in trades_by_code.values()),

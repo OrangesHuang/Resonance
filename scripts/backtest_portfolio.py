@@ -35,7 +35,8 @@ def main() -> None:
     scale = INIT_CAPITAL
     print(f"总收益: {result['total_return_pct']:+.1f}%")
     print(f"最大回撤: {result['max_drawdown_pct']:.1f}%")
-    print(f"平均仓位: {result['avg_position_pct']:.1f}%")
+    print(f"空仓日期: {result['empty_days']} 天 "
+          f"({result['empty_days_pct']:.1f}% 交易日)")
     print(f"期末权益: {result['final_equity'] * scale:,.0f} 元 (每份 {result['final_equity']:.4f} 元)")
     print(f"信号数: {sum(len(v) for v in trades_by_code.values())} 笔, "
           f"组合操作 {len(result['trade_log'])} 次")

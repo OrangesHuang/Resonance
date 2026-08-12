@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
 import { fetchPortfolioBacktest } from '../api/client'
+import type { PortfolioTrade } from '../api/types'
 import useIsMobile from '../hooks/useIsMobile'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 
@@ -10,10 +11,84 @@ const DEFAULT_PINNED = ["159352", "589680", "515080"]
 const KIND_STYLE: Record<string, string> = {
   BUY: 'text-green-400',
   TOPUP: 'text-sky-400',
-  REDUCE: 'text-amber-400',
+  SWITCH: 'text-amber-400',
   SELL: 'text-red-400',
-  LIQUIDATE: 'text-orange-400',
   SKIP: 'text-gray-500',
+}
+
+type TradeRow = {
+  date: string
+  kind: string
+  kind_label: string
+  name: string
+  code: string
+  signal_date: string
+  units: number
+  price: number
+  amount: number
+}
+
+// 转仓 = 卖旧买新: 把 SWITCH(转出) 与其对应 BUY(转入) 合并为单行,
+// 如 "中证红利(减半) → 科创综指"; 无关联的 BUY 照常显示
+function buildRows(trades: PortfolioTrade[]): TradeRow[] {
+  const byTo = new Map<string, PortfolioTrade[]>()
+  for (const s of trades) {
+    if (s.kind !== 'SWITCH') continue
+    const arr = byTo.get(s.to_code ?? '') ?? []
+    arr.push(s)
+    byTo.set(s.to_code ?? '', arr)
+  }
+  const consumed = new Set<PortfolioTrade>()
+  const rows: TradeRow[] = []
+  for (const t of trades) {
+    // SWITCH 先于其 BUY 入日志, 第一遍跳过, 避免被当作孤立转仓提前输出
+    if (consumed.has(t) || t.kind === 'SWITCH') continue
+    const group = t.kind === 'BUY' ? byTo.get(t.code) : undefined
+    if (group && group.length > 0) {
+      for (const s of group) consumed.add(s)
+      const tag = (s: PortfolioTrade) =>
+        s.action === 'LIQUIDATE' ? '(清仓)' : s.action === 'REDUCE' ? '(减半)' : ''
+      rows.push({
+        date: t.date,
+        kind: 'SWITCH',
+        kind_label: '转仓',
+        name: `${group.map(s => `${s.name}${tag(s)}`).join(' + ')} → ${t.name}`,
+        code: t.code,
+        signal_date: t.signal_date,
+        units: t.units,
+        price: t.price,
+        amount: t.amount,
+      })
+      continue
+    }
+    rows.push({
+      date: t.date,
+      kind: t.kind,
+      kind_label: t.kind_label,
+      name: t.name,
+      code: t.code,
+      signal_date: t.signal_date,
+      units: t.units,
+      price: t.price,
+      amount: t.amount,
+    })
+  }
+  // 未被消费的 SWITCH(仅 SKIP 极端场景: 转出后仍不足半份, 当日无对应 BUY)防御显示
+  for (const t of trades) {
+    if (t.kind !== 'SWITCH' || consumed.has(t)) continue
+    rows.push({
+      date: t.date,
+      kind: 'SWITCH',
+      kind_label: t.kind_label,
+      name: t.to_name ? `${t.name} → ${t.to_name}` : t.name,
+      code: t.code,
+      signal_date: t.signal_date,
+      units: t.units,
+      price: t.price,
+      amount: t.amount,
+    })
+  }
+  return rows
 }
 
 function fmtWan(v: number): string {
@@ -40,12 +115,26 @@ function StatCard({ label, value, sub, tone }: {
 export default function PortfolioBacktest() {
   const isMobile = useIsMobile()
   const [pinnedCodes] = useLocalStorage<string[]>('pinnedEtfs', DEFAULT_PINNED)
-  const [selectedTrade, setSelectedTrade] = useState<{ date: string; items: { kind: string; name: string; amount: number; price: number; units: number; kind_label: string }[] } | null>(null)
+  const [selectedTrade, setSelectedTrade] = useState<{ date: string; items: TradeRow[] } | null>(null)
   const { data, isLoading, error } = useQuery({
     queryKey: ['portfolioBacktest', pinnedCodes],
     queryFn: () => fetchPortfolioBacktest(pinnedCodes),
     staleTime: 5 * 60 * 1000,
   })
+
+  // 每日交易按转仓语义合并为展示行(图表 tooltip / 弹窗 / 表格共用)
+  const displayRowsByDate = useMemo(() => {
+    const m = new Map<string, TradeRow[]>()
+    if (!data) return m
+    const byDate = new Map<string, PortfolioTrade[]>()
+    for (const t of data.trades) {
+      const arr = byDate.get(t.date) ?? []
+      arr.push(t)
+      byDate.set(t.date, arr)
+    }
+    for (const [d, arr] of byDate) m.set(d, buildRows(arr))
+    return m
+  }, [data])
 
   const option = useMemo(() => {
     if (!data || data.curve.length === 0) return null
@@ -53,28 +142,21 @@ export default function PortfolioBacktest() {
     const nav = data.curve.map(c => c.nav_per_share)
     const pos = data.curve.map(c => c.position_pct)
 
-    const tradeMap = new Map<string, typeof data.trades>()
-    for (const t of data.trades) {
-      const arr = tradeMap.get(t.date) ?? []
-      arr.push(t)
-      tradeMap.set(t.date, arr)
-    }
-
     const KIND_ICON: Record<string, string> = {
-      BUY: '▲', TOPUP: '▲', SELL: '▼', REDUCE: '▼', LIQUIDATE: '▼', SKIP: '●',
+      BUY: '▲', TOPUP: '▲', SWITCH: '⇄', SELL: '▼', SKIP: '●',
     }
     const KIND_CLR: Record<string, string> = {
-      BUY: '#22c55e', TOPUP: '#38bdf8', SELL: '#ef4444', REDUCE: '#f59e0b', LIQUIDATE: '#f97316', SKIP: '#9ca3af',
+      BUY: '#22c55e', TOPUP: '#38bdf8', SWITCH: '#f59e0b', SELL: '#ef4444', SKIP: '#9ca3af',
     }
     const KIND_ZH: Record<string, string> = {
-      BUY: '买入', TOPUP: '加仓', SELL: '卖出', REDUCE: '减仓', LIQUIDATE: '清仓腾资', SKIP: '信号跳过',
+      BUY: '买入', TOPUP: '加仓', SWITCH: '转仓', SELL: '卖出', SKIP: '信号跳过',
     }
 
     const markers: { coord: [string, number]; value: string; itemStyle: { color: string } }[] = []
-    for (const [date, trades] of tradeMap) {
+    for (const [date, rows] of displayRowsByDate) {
       const idx = dates.indexOf(date)
       if (idx < 0) continue
-      const main = trades[0]
+      const main = rows[0]
       const posVal = data.curve[idx]?.position_pct ?? 0
       markers.push({
         coord: [date, posVal],
@@ -95,15 +177,15 @@ export default function PortfolioBacktest() {
           const i = params[0]?.dataIndex ?? 0
           const c = data.curve[i]
           if (!c) return ''
-          const dayTrades = tradeMap.get(c.date)
+          const dayRows = displayRowsByDate.get(c.date)
           let html = `<div style="font-size:11px;line-height:1.8">` +
             `<b>${c.date}</b><br/>` +
             `每份净值：<b style="color:#22c55e">${c.nav_per_share.toFixed(4)} 元</b><br/>` +
             `总资产：${fmtWan(c.nav)} 元<br/>` +
             `仓位：${c.position_pct.toFixed(1)}%`
-          if (dayTrades) {
+          if (dayRows) {
             html += '<br/><span style="border-top:1px solid #374151;display:block;margin:4px 0"></span>'
-            for (const t of dayTrades) {
+            for (const t of dayRows) {
               const clr = KIND_CLR[t.kind] ?? '#9ca3af'
               const zh = KIND_ZH[t.kind] ?? t.kind
               html += `<div style="color:${clr}">${zh} ${t.name} ${t.amount.toLocaleString()} 元</div>`
@@ -156,32 +238,27 @@ export default function PortfolioBacktest() {
         },
       ],
     }
-  }, [data])
-
-  const tradeMap = useMemo(() => {
-    const m = new Map<string, { kind: string; name: string; amount: number; price: number; units: number; kind_label: string }[]>()
-    if (!data) return m
-    for (const t of data.trades) {
-      const arr = m.get(t.date) ?? []
-      arr.push(t)
-      m.set(t.date, arr)
-    }
-    return m
-  }, [data])
+  }, [data, displayRowsByDate])
 
   const chartEvents = useMemo(() => ({
     click: (params: { componentType?: string; data?: { coord?: [string, number] } }) => {
       if (params.componentType === 'markPoint' && params.data?.coord) {
-        const dayTrades = tradeMap.get(params.data.coord[0])
-        if (dayTrades) setSelectedTrade({ date: params.data.coord[0], items: dayTrades })
+        const rows = displayRowsByDate.get(params.data.coord[0])
+        if (rows) setSelectedTrade({ date: params.data.coord[0], items: rows })
       }
     },
-  }), [tradeMap])
+  }), [displayRowsByDate])
+
+  const trades = useMemo(() => {
+    const out: TradeRow[] = []
+    for (const d of [...displayRowsByDate.keys()].sort().reverse()) {
+      out.push(...(displayRowsByDate.get(d) ?? []))
+    }
+    return out
+  }, [displayRowsByDate])
 
   if (isLoading) return <div className="text-gray-500 text-center py-10">组合回测加载中...</div>
   if (error || !data) return <div className="text-red-400 text-center py-10">组合回测数据加载失败</div>
-
-  const trades = [...data.trades].reverse()
 
   return (
     <div>
@@ -197,7 +274,7 @@ export default function PortfolioBacktest() {
         <StatCard label="最大回撤" value={`-${data.max_drawdown_pct.toFixed(1)}%`} tone="red" />
         <StatCard label="期末每份净值" value={`${data.final_nav_per_share.toFixed(4)} 元`} sub="初始 1.0000 元" />
         <StatCard label="期末总资产" value={fmtWan(data.final_nav)} sub="初始 100 万" />
-        <StatCard label="平均仓位" value={`${data.avg_position_pct.toFixed(1)}%`} sub="资金利用率" />
+        <StatCard label="空仓日期" value={`${data.empty_days} 天`} sub={`本轮周期空仓占比 ${data.empty_days_pct.toFixed(1)}%`} />
         <StatCard label="策略信号" value={`${data.signal_count} 笔`} sub={`${data.trades.length} 次组合操作`} />
       </div>
 
@@ -243,7 +320,7 @@ export default function PortfolioBacktest() {
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs text-gray-500">交易记录留存（共 {trades.length} 条）</div>
           <div className="text-[11px] text-gray-600">
-            均分买入 → 余钱加仓 → 新信号时减仓 → 卖出信号清仓
+            均分买入 → 余钱加仓 → 新信号时转仓 → 卖出信号清仓
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -264,7 +341,7 @@ export default function PortfolioBacktest() {
                 <tr key={`${t.date}-${t.code}-${t.kind}-${i}`} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                   <td className="py-1.5 pr-3 text-gray-400 font-mono">{t.date}</td>
                   <td className="py-1.5 pr-3 text-gray-600 font-mono">{t.signal_date || '—'}</td>
-                  <td className="py-1.5 pr-3 text-gray-300">{t.code} {t.name}</td>
+                  <td className="py-1.5 pr-3 text-gray-300">{t.kind === 'SWITCH' ? t.name : `${t.code} ${t.name}`}</td>
                   <td className={`py-1.5 pr-3 ${KIND_STYLE[t.kind] ?? ''}`}>{t.kind_label}</td>
                   <td className="py-1.5 pr-3 text-right text-gray-400">{t.units}u</td>
                   <td className="py-1.5 pr-3 text-right text-gray-400 font-mono">{t.price}</td>
