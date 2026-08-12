@@ -122,40 +122,6 @@ export function startDataJob(req: StartJobRequest): Promise<StartJobResponse> {
   return post('/data/jobs', req)
 }
 
-// ========== V2 信号系统 ==========
-
-import type { V2SignalsResponse, V2SignalDayDetail, V2RegimeResponse, V2BacktestResponse } from './types'
-
-export function fetchResonanceV2Signals(code = '510300'): Promise<V2SignalsResponse> {
-  return get(`/resonance/v2/signals/${code}`)
-}
-
-export function fetchResonanceV2Signal(code: string, date: string): Promise<V2SignalDayDetail> {
-  return get(`/resonance/v2/signal?code=${code}&date=${date}`)
-}
-
-export function fetchResonanceV2Regime(code = '510300'): Promise<V2RegimeResponse> {
-  return get(`/resonance/v2/regime?code=${code}`)
-}
-
-export function fetchResonanceV2Backtest(code = '510300'): Promise<V2BacktestResponse> {
-  return get(`/resonance/v2/backtest/${code}`)
-}
-
-import type { V3TradesResponse } from './types'
-
-export function fetchResonanceV3Trades(code = '510300'): Promise<V3TradesResponse> {
-  return get(`/resonance/v3/trades/${code}`)
-}
-
-export function fetchResonanceV4Trades(code = '510300'): Promise<V3TradesResponse> {
-  return get(`/resonance/v4/trades/${code}`)
-}
-
-export function fetchResonanceV5Trades(code = '510300'): Promise<V3TradesResponse> {
-  return get(`/resonance/v5/trades/${code}`)
-}
-
 // ========== 衍生品数据 ==========
 
 export function fetchDerivativesOverview(): Promise<DerivativesOverview> {
