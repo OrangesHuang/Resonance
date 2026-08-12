@@ -18,7 +18,10 @@
   4. 2025-09-01 顶 0.847 → 09-04 深回调-9% 骗出5%止盈 → 放宽到10%
 
 算法:
-  买入(4路径, 均不依赖份额):
+  买入(5路径, 均不依赖份额):
+    P5 极低位恐慌: pp≤10 + 跌≥3% + 距30日高点跌幅≥28% + 非集群
+       → 2026-07-30 @1.039 (pp=5.7, 跌幅29.2%, 充分下跌后的极低位)
+       (过滤07-28的25.3%跌幅, 避免阴跌中段买入)
     P1 单日恐慌: 跌≥9%+ACCUMULATE+pp≤20+非集群 → 2025-04-07 @0.485
     P2 低位吸筹: ACCUMULATE+pp≤40+距30日高点≥15天+当日不创新低
        → 2024-08-30 @0.425 (2026-07-28 创新低被拦)
@@ -37,6 +40,9 @@ SC50_CODE = "159780"
 BUY_PP_MAX = 40
 PANIC_DROP = -9.0
 PANIC_PP_MAX = 20
+EXTREME_PP_MAX = 10       # 极低位阈值(pp≤10表示卖盘枯竭)
+EXTREME_DROP = -3.0       # 极低位恐慌跌幅阈值
+EXTREME_DECLINE_PCT = 28.0  # 距30日高点最小跌幅(确保充分下跌, 过滤07-28的25.3%)
 
 CLUSTER_ACCUM = 3
 CLUSTER_WINDOW = 10
@@ -126,8 +132,19 @@ def run_sc50_strategy(rows: list[dict]) -> dict:
             accum_count = _count_accum(rows, i)
             days_high = _days_since_30d_high(rows, i)
 
+            # P5: 极低位恐慌 (pp≤10 + 跌≥3% + 非集群 + 距30日高点跌幅≥25%)
+            high_30d = max((rows[j].get("close_price") or 0)
+                          for j in range(max(0, i - 29), i + 1))
+            decline_pct = (high_30d - close) / high_30d * 100 if high_30d > 0 else 0
+            if (pp is not None and pp <= EXTREME_PP_MAX
+                    and chg <= EXTREME_DROP
+                    and accum_count < CLUSTER_ACCUM
+                    and decline_pct >= EXTREME_DECLINE_PCT):
+                action = "BUY"
+                reason = f"极低位恐慌: pp{pp:.0f}+跌{chg:.1f}%+距高点跌幅{decline_pct:.1f}%"
+
             # P1: 单日恐慌 (非集群中, 左侧)
-            if (is_accum and chg <= PANIC_DROP
+            elif (is_accum and chg <= PANIC_DROP
                     and pp is not None and pp <= PANIC_PP_MAX
                     and accum_count < CLUSTER_ACCUM):
                 action = "BUY"

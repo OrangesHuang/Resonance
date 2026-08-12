@@ -11,6 +11,7 @@ import ResonanceChart from '../components/ResonanceChart'
 import ResonanceHeatmap from '../components/ResonanceHeatmap'
 import ResonanceEvidencePanel, { type ResonanceSelection } from '../components/ResonanceEvidencePanel'
 import ResonanceMethodNote from '../components/ResonanceMethodNote'
+import EtfSelector from '../components/EtfSelector'
 import SentimentLineChart from '../components/SentimentLineChart'
 import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/chartZoom'
 import type { ZoneKey } from '../api/types'
@@ -117,7 +118,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
 }
 
 export default function Resonance() {
-  const [code, setCode] = useState('510300')
+  const [code, setCode] = useState('159352')
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -213,27 +214,28 @@ export default function Resonance() {
 
   return (
     <div className="space-y-4">
+      <div className="sticky top-0 z-30 bg-gray-950/95 backdrop-blur -mx-4 px-4 py-2 border-b border-gray-800">
+        <EtfSelector
+          value={code}
+          onChange={setCode}
+          etfList={etfList ?? []}
+        />
+      </div>
       <div className="flex items-center gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-bold text-white">多指标共振</h2>
           <p className="text-xs text-gray-500 mt-1">
             {data?.name ?? code}（{code}）× 市场情绪 · 红灯=出货/过热，绿灯=吸筹/冷清
           </p>
+          {code === '159352' && (
+            <p className="text-xs text-sky-500/70 mt-0.5">
+              * 买卖点复用沪深300信号，价格为A500自身
+            </p>
+          )}
         </div>
 
         <div className="ml-auto" />
 
-        <select
-          value={code}
-          onChange={e => setCode(e.target.value)}
-          className="bg-gray-800 border border-gray-700 text-sm text-gray-200 rounded px-3 py-1.5 focus:outline-none focus:border-gray-500"
-        >
-          {(etfList ?? []).map(etf => (
-            <option key={etf.code} value={etf.code}>
-              {etf.code} {etf.name}
-            </option>
-          ))}
-        </select>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
@@ -243,7 +245,7 @@ export default function Resonance() {
         </button>
       </div>
 
-      <div className="sticky top-0 z-20 bg-gray-950/95 backdrop-blur border border-gray-800 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">
+      <div className="bg-gray-950/95 backdrop-blur border border-gray-800 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">
         <button
           onClick={() => stepDay(-1)}
           disabled={!canPrev}

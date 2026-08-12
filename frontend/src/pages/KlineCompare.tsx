@@ -1,10 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
+import * as echarts from 'echarts'
 import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
 import CompareKline from '../components/CompareKline'
 import type { TradePoint } from '../api/types'
+import { useLocalStorage } from '../hooks/useLocalStorage'
 
 const KLINE_DAYS = 640
+const DEFAULT_PINNED = ["159352", "589680", "515080"]
+const COMPARE_GROUP = 'kline-compare-sync'
+
+function linkChart(inst: echarts.ECharts) {
+  inst.group = COMPARE_GROUP
+  echarts.connect(COMPARE_GROUP)
+}
 
 function calcSummary(trades: TradePoint[]) {
   let buy: { price: number; date: string } | null = null
@@ -32,6 +41,7 @@ function calcSummary(trades: TradePoint[]) {
 }
 
 export default function KlineCompare() {
+  const [pinnedCodes] = useLocalStorage<string[]>('pinnedEtfs', DEFAULT_PINNED)
   const [hidden, setHidden] = useState<Set<string>>(new Set())
 
   const { data: etfList } = useQuery({
@@ -39,6 +49,13 @@ export default function KlineCompare() {
     queryFn: fetchEtfList,
     staleTime: Infinity,
   })
+
+  useEffect(() => {
+    if (etfList && hidden.size === 0) {
+      const nonPinned = etfList.filter(e => !pinnedCodes.includes(e.code)).map(e => e.code)
+      setHidden(new Set(nonPinned))
+    }
+  }, [etfList, pinnedCodes])
 
   const codes = etfList?.map(e => e.code) ?? []
   const results = useQueries({
@@ -49,7 +66,7 @@ export default function KlineCompare() {
           fetchEtfHistory(code, KLINE_DAYS),
           fetchResonanceTrades(code),
         ])
-        return { code, name: history.name, idx: history.idx, kline: history.kline, trades: trades.trades }
+        return { code, name: history.name, idx: history.idx, kline: history.kline, signals: history.daily_signals, trades: trades.trades }
       },
       staleTime: 5 * 60 * 1000,
     })),
@@ -59,6 +76,12 @@ export default function KlineCompare() {
     () => results.filter(r => r.data && !hidden.has(r.data.code)).map(r => r.data!),
     [results, hidden],
   )
+
+  const sharedDates = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of cards) for (const k of c.kline) set.add(k.date)
+    return Array.from(set).sort()
+  }, [cards])
 
   const toggle = (code: string) => {
     setHidden(prev => {
@@ -115,7 +138,7 @@ export default function KlineCompare() {
                   </span>
                 )}
               </div>
-              <CompareKline kline={card.kline} trades={card.trades} />
+              <CompareKline kline={card.kline} trades={card.trades} signals={card.signals} sharedDates={sharedDates} groupId={COMPARE_GROUP} onReady={linkChart} />
             </div>
           )
         })}

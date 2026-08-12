@@ -94,8 +94,9 @@ export function fetchDataStatus(): Promise<DataStatus> {
   return get('/data/status')
 }
 
-export function fetchPortfolioBacktest(): Promise<PortfolioBacktestResponse> {
-  return get('/portfolio/backtest')
+export function fetchPortfolioBacktest(codes?: string[]): Promise<PortfolioBacktestResponse> {
+  const qs = codes?.length ? `?codes=${codes.join(',')}` : ''
+  return get(`/portfolio/backtest${qs}`)
 }
 
 export function fetchDataJobs(): Promise<JobState[]> {

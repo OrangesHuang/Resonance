@@ -1,6 +1,7 @@
 import { useMemo, useRef, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
-import type { KlinePoint, TradePoint } from '../api/types'
+import * as echarts from 'echarts'
+import type { KlinePoint, TradePoint, DailySignal } from '../api/types'
 import useIsMobile from '../hooks/useIsMobile'
 import { buildTradeBands, sanitizeBands } from './tradeBands'
 import { computeRangeStats } from './rangeStats'
@@ -20,10 +21,14 @@ interface BrushEvent {
   areas?: Array<{ coordRange?: [[number, number], [number, number]] | [number, number] }>
 }
 
-export default function CompareKline({ kline, trades, height = 320 }: {
+export default function CompareKline({ kline, trades, signals, sharedDates, height = 320, groupId, onReady }: {
   kline: KlinePoint[]
   trades: TradePoint[]
+  signals?: DailySignal[]
+  sharedDates?: string[]
   height?: number
+  groupId?: string
+  onReady?: (inst: echarts.ECharts) => void
 }) {
   const datesRef = useRef<string[]>([])
   const chartRef = useRef<import('echarts').ECharts | null>(null)
@@ -60,25 +65,35 @@ export default function CompareKline({ kline, trades, height = 320 }: {
 
   const option = useMemo(() => {
     if (kline.length === 0) return null
-    const dates = kline.map(k => k.date)
+    const dates = sharedDates ?? kline.map(k => k.date)
     datesRef.current = dates
-    const ohlc = kline.map(k => [k.open, k.close, k.low, k.high])
-    const volumes = kline.map(k => k.volume)
-    const ma20 = kline.map((_, i) => {
+    const klineByDate = new Map(kline.map(k => [k.date, k]))
+    const ohlc = dates.map(d => {
+      const k = klineByDate.get(d)
+      return k ? [k.open, k.close, k.low, k.high] : '-'
+    })
+    const volumes = dates.map(d => klineByDate.get(d)?.volume ?? null)
+    const ma20 = dates.map((_, i) => {
       const lo = Math.max(0, i - 19)
-      const win = kline.slice(lo, i + 1)
-      return Number((win.reduce((s, k) => s + k.close, 0) / win.length).toFixed(3))
+      const win: number[] = []
+      for (let j = lo; j <= i; j++) {
+        const k = klineByDate.get(dates[j])
+        if (k) win.push(k.close)
+      }
+      return win.length ? Number((win.reduce((s, v) => s + v, 0) / win.length).toFixed(3)) : null
     })
 
-    const klineByDate = new Map(kline.map(k => [k.date, k]))
     const tradesByDate = new Map(trades.map(t => [t.date, t]))
     const tradeBands = sanitizeBands(buildTradeBands(trades, dates[dates.length - 1]), dates)
+    const signalMap = new Map((signals ?? []).map(s => [s.date, s]))
+    const hasShares = signalMap.size > 0
+    const xAxisAll = hasShares ? [0, 1, 2] : [0, 1]
     // 区间统计激活: 禁用 inside 拖拽平移(拖拽=框选)
     // 移动端: 不使用 brush, 改用两次点击选区间
     const brushActive = rangeSel.mode && !isMobile
     const insideZoom = brushActive
-      ? { type: 'inside' as const, xAxisIndex: [0, 1], moveOnMouseMove: false }
-      : { type: 'inside' as const, xAxisIndex: [0, 1], moveOnMouseMove: true, preventDefaultMouseMove: true }
+      ? { type: 'inside' as const, xAxisIndex: xAxisAll, moveOnMouseMove: false }
+      : { type: 'inside' as const, xAxisIndex: xAxisAll, moveOnMouseMove: true, preventDefaultMouseMove: true }
     const markPoint = {
       clip: false,
       data: trades
@@ -105,7 +120,8 @@ export default function CompareKline({ kline, trades, height = 320 }: {
 
     const tooltipFormatter = (params: TooltipParam[]) => {
       const i = params[0]?.dataIndex
-      const k = i != null ? kline[i] : undefined
+      const d = i != null ? dates[i] : undefined
+      const k = d ? klineByDate.get(d) : undefined
       if (!k) return ''
       const m = tradesByDate.get(k.date)
       const tradeHtml = m
@@ -127,11 +143,16 @@ export default function CompareKline({ kline, trades, height = 320 }: {
           `${flowHtml}<br/>` +
           `振幅：${rangeStats.amplitude_pct >= 0 ? '+' : ''}${rangeStats.amplitude_pct.toFixed(1)}%</div>`
       }
+      const sig = signalMap.get(k.date)
+      const shareHtml = sig?.shares_delta_yi != null
+        ? `<br/>净申赎：<span style="color:${sig.shares_delta_yi! >= 0 ? '#22c55e' : '#ef4444'};font-weight:bold">${sig.shares_delta_yi! >= 0 ? '+' : ''}${sig.shares_delta_yi!.toFixed(2)} 亿份</span>`
+        : ''
       return `<div style="font-size:11px;line-height:1.8">` +
         `<b>${k.date}</b><br/>` +
         `开 ${k.open} · 收 ${k.close} · 高 ${k.high} · 低 ${k.low}<br/>` +
         `成交量：${k.volume.toLocaleString('zh-CN')}` +
         tradeHtml +
+        shareHtml +
         rangeHtml +
         `</div>`
     }
@@ -165,17 +186,25 @@ export default function CompareKline({ kline, trades, height = 320 }: {
         formatter: tooltipFormatter,
       },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
-      grid: [
-        { left: 55, right: 16, top: 12, height: '66%' },
-        { left: 55, right: 16, top: '82%', height: '11%' },
-      ],
+      grid: hasShares
+        ? [
+            { left: 55, right: 16, top: 12, height: '55%' },
+            { left: 55, right: 16, top: '70%', height: '10%' },
+            { left: 55, right: 16, top: '83%', height: '10%' },
+          ]
+        : [
+            { left: 55, right: 16, top: 12, height: '66%' },
+            { left: 55, right: 16, top: '82%', height: '11%' },
+          ],
       xAxis: [
         { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { color: '#6b7280', fontSize: 10 } },
         { type: 'category', data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { show: false } },
+        ...(hasShares ? [{ type: 'category' as const, data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false } }] : []),
       ],
       yAxis: [
         { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: '#6b7280' } },
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
+        ...(hasShares ? [{ scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { show: false } }] : []),
       ],
       series: [
         {
@@ -211,12 +240,22 @@ export default function CompareKline({ kline, trades, height = 320 }: {
           yAxisIndex: 1,
           itemStyle: { color: '#4b5563' },
         },
+        ...(hasShares ? [{
+          name: '净申赎',
+          type: 'bar',
+          data: dates.map(d => {
+            const v = signalMap.get(d)?.shares_delta_yi
+            return { value: v ?? 0, itemStyle: { color: (v ?? 0) >= 0 ? '#22c55e' : '#ef4444' } }
+          }),
+          xAxisIndex: 2,
+          yAxisIndex: 2,
+        }] : []),
       ],
       dataZoom: [
         insideZoom,
         {
           type: 'slider',
-          xAxisIndex: [0, 1],
+          xAxisIndex: xAxisAll,
           top: '95%',
           height: 14,
           borderColor: '#374151',
@@ -227,7 +266,7 @@ export default function CompareKline({ kline, trades, height = 320 }: {
         },
       ],
     }
-  }, [kline, trades, rangeSel.sel, rangeSel.mode])
+  }, [kline, trades, signals, sharedDates, rangeSel.sel, rangeSel.mode])
 
   const onEvents = useMemo(() => ({
     click: (params: ClickParam) => {
@@ -273,7 +312,11 @@ export default function CompareKline({ kline, trades, height = 320 }: {
       <RangeToolbar hook={rangeSel} isMobile={isMobile} />
       <ReactECharts
         ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
-        option={option} style={{ height }} lazyUpdate onEvents={onEvents} />
+        option={option} style={{ height }} lazyUpdate onEvents={onEvents}
+        onChartReady={inst => {
+          if (groupId) { inst.group = groupId; echarts.connect(groupId) }
+          onReady?.(inst)
+        }} />
       {rangeStats && (
         <RangeStatsPanel stats={rangeStats} onClear={rangeSel.clear} />
       )}

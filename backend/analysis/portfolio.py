@@ -1,10 +1,10 @@
 """组合回测纯函数: 8 标的统一仓位分配逻辑(924 后)。
 
 规则:
-- 每个标的买入信号 → 至少持有 1 单位(12.5%)
-- 余钱充足时仓位可升至 2 单位(25%)
-- 其他标的发出买入信号 → 原有 2 单位仓位降至 1 单位释放资金
-- 先卖出 → 再买入 → 最后余钱升仓(最近买入的先升)
+- 同一天的所有买入信号作为整体处理, 不逐个触发降仓
+- 同日 N 个新买: 优先各 2 单位(25%), 钱不够则各 1 单位(12.5%)
+- 仍不够时清仓最早 1 单位持仓腾出资金
+- 先卖出 → 再批量买入 → 最后余钱升仓(最近买入的先升)
 - 成交时点: 信号在收盘后确认, 只能在下一个交易日按当日收盘价成交
 
 本模块无 I/O 副作用, 数据由调用方注入; 权益归一化为 1.0 起
@@ -61,6 +61,8 @@ def simulate(trades_by_code: dict[str, list[dict]],
         return total
 
     idx = 0
+    sold_for_cash: set[str] = set()
+    frozen_cash = 0.0
     for d in dates:
         # 当日事件
         day_events = []
@@ -68,48 +70,76 @@ def simulate(trades_by_code: dict[str, list[dict]],
             day_events.append(events[idx])
             idx += 1
 
+        sold_by_signal: set[str] = set()
+
         # 1) 卖出信号
         for _, code, action, sig_date in day_events:
             if action != "SELL" or code not in positions:
                 continue
             px = price_of(code, d)
             p = positions.pop(code)
-            cash += p["shares"] * px
+            proceeds = p["shares"] * px
+            cash += proceeds
+            frozen_cash += proceeds
+            sold_by_signal.add(code)
             trade_log.append({"date": d, "signal_date": sig_date,
                               "code": code, "kind": "SELL",
                               "units": p["units"], "price": px,
                               "amount": round(p["shares"], 6)})
 
-        # 2) 买入信号: 需要至少 1 单位
-        for _, code, action, sig_date in day_events:
-            if action != "BUY" or code in positions:
-                continue
-            # 先降仓释放资金: 所有 2 单位降至 1 单位
-            for c, p in list(positions.items()):
-                if p["units"] == 2:
-                    sell_shares = p["shares"] / 2
-                    p["shares"] -= sell_shares
-                    p["units"] = 1
-                    cash += sell_shares * price_of(c, d)
-                    trade_log.append({"date": d, "signal_date": sig_date,
-                                      "code": c, "kind": "REDUCE",
-                                      "units": 1, "price": price_of(c, d),
-                                      "amount": round(sell_shares, 6)})
-            cost = unit * equity_at(d)
-            if cash + EPS < cost:
-                continue  # 现金不足(满配 8×12.5%=100% 时不会发生)
-            px = price_of(code, d)
-            shares = cost / px
-            cash -= cost
-            positions[code] = {"shares": shares, "units": 1, "buy_date": d}
-            trade_log.append({"date": d, "signal_date": sig_date,
-                              "code": code, "kind": "BUY",
-                              "units": 1, "price": px, "amount": round(shares, 6)})
+        # 2) 买入信号: 同日所有 BUY 作为整体处理
+        buy_events = [(cd, co, sd) for cd, co, act, sd in day_events
+                      if act == "BUY" and co not in positions
+                      and not (co in sold_for_cash and co not in sold_by_signal)]
+        if buy_events:
+            n = len(buy_events)
+            eq = equity_at(d)
+            cost2 = 2 * unit * eq
+            cost1 = unit * eq
+            per_cost = cost2
+            buy_units = 2
+            if cash + EPS < cost2 * n:
+                per_cost = cost1
+                buy_units = 1
+            # 资金不足时: 先清仓旧 1u 持仓, 再按可用资金买尽可能多
+            if cash + EPS < per_cost * n:
+                while cash + EPS < per_cost:
+                    one_unit = [(c, p) for c, p in positions.items()
+                                if p["units"] == 1]
+                    if not one_unit:
+                        break
+                    oldest = min(one_unit, key=lambda x: x[1]["buy_date"])
+                    c, p = oldest
+                    px = price_of(c, d)
+                    cash += p["shares"] * px
+                    sold_for_cash.add(c)
+                    trade_log.append({"date": d,
+                                      "signal_date": buy_events[0][2],
+                                      "code": c, "kind": "LIQUIDATE",
+                                      "units": 1, "price": px,
+                                      "amount": round(p["shares"], 6)})
+                    del positions[c]
+                # 按可用资金买尽可能多(不再 all-or-nothing)
+                affordable = min(n, int((cash + EPS) / per_cost))
+                buy_events = buy_events[:affordable]
+            for _, code, sig_date in buy_events:
+                px = price_of(code, d)
+                shares = per_cost / px
+                cash -= per_cost
+                frozen_cash = max(0.0, frozen_cash - per_cost)
+                positions[code] = {"shares": shares, "units": buy_units,
+                                   "buy_date": d}
+                sold_for_cash.discard(code)
+                trade_log.append({"date": d, "signal_date": sig_date,
+                                  "code": code, "kind": "BUY",
+                                  "units": buy_units, "price": px,
+                                  "amount": round(shares, 6)})
 
-        # 3) 余钱升仓至 2 单位(最近买入的先升)
+        # 3) 余钱升仓至 2 单位(最近买入的先升, 不用冻结资金)
         while True:
             cost = unit * equity_at(d)
-            if cash + EPS < cost:
+            available = cash - frozen_cash
+            if available + EPS < cost:
                 break
             one_unit = [c for c, p in positions.items() if p["units"] == 1]
             if not one_unit:
@@ -123,6 +153,8 @@ def simulate(trades_by_code: dict[str, list[dict]],
             trade_log.append({"date": d, "signal_date": d,
                               "code": c, "kind": "TOPUP",
                               "units": 2, "price": px, "amount": round(shares, 6)})
+
+        sold_for_cash.clear()
 
         # 逐日估值
         equity = equity_at(d)

@@ -98,8 +98,9 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
 
     from analysis.strategy_kc50 import run_kc50_strategy, KC50_CODE
     if code == KC50_CODE:
-        etf_rows = list(reversed(get_by_code(code)))
-        result = run_kc50_strategy(etf_rows)
+        kc50_rows = list(reversed(get_by_code(KC50_CODE)))
+        kc_idx_rows = list(reversed(get_by_code("589680")))
+        result = run_kc50_strategy(kc50_rows, kc_idx_rows)
         return {"code": code, "trades": result["trades"],
                 "metrics": result["metrics"], "holding": result["holding"]}
 
@@ -107,6 +108,24 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
     if code == ZZ500_CODE:
         etf_rows = list(reversed(get_by_code(code)))
         result = run_zz500_strategy_v2(etf_rows)
+        return {"code": code, "trades": result["trades"],
+                "metrics": result["metrics"], "holding": result["holding"]}
+
+    from analysis.strategy_a500 import run_a500_strategy, A500_CODE
+    if code == A500_CODE:
+        a500_rows = list(reversed(get_by_code(A500_CODE)))
+        hs300_rows = list(reversed(get_by_code("510300")))
+        turnover = enrich_turnover(get_turnover_series())
+        margin = get_margin_series()
+        t_pct = percentile_series(
+            [r.get("date") for r in turnover],
+            [turnover_value(r) for r in turnover],
+            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+        m_pct = percentile_series(
+            [r.get("date") for r in margin],
+            [r.get("fin_balance_yi") for r in margin],
+            SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+        result = run_a500_strategy(a500_rows, hs300_rows, t_pct, m_pct)
         return {"code": code, "trades": result["trades"],
                 "metrics": result["metrics"], "holding": result["holding"]}
 
