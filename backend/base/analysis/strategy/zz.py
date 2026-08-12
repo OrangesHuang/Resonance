@@ -10,6 +10,10 @@
   92.4亿仅回撤45.7% — 右侧确认买入使"买入日份额"基准被抬高,
   修正为以"买入前60日最低份额"(吸筹周期起点)为基准
   (2025-02-17 那轮份额跌破吸筹起点, 卖出仍正确, 不受影响)
+  2026-08-12 再次触发巨量流出卖出(-6亿), 但 8/5-8/12 累计流出50亿后
+  价格仍创反弹新高(3.04→3.16), 属震仓而非资金撤退 — 修正为: 份额
+  跌破吸筹起点(净流入归零)无条件卖(2025-02-17 验证), 回撤过半但未
+  跌破起点需叠加价格破位确认(收盘跌破近5日最低)
 
 算法:
   Phase 1 — 暴跌集群检测: 10天内≥3个ACCUMULATE → 进入等待
@@ -172,6 +176,16 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             in_dist_cluster = dist_count >= 1
             recent_big_inflow = any((rows[j].get("shares_delta_yi") or 0) >= 5 for j in range(max(0, i - 3), i))
             peak_inflow = peak_shares - base_shares if peak_shares is not None and base_shares is not None else 0.0
+            # 价格破位确认: 收盘跌破近5日最低 (防震仓误卖, 案例 2026-08-12)
+            low_n = (
+                min((rows[j].get("close_price") or 0.0) for j in range(max(0, i - WATCH_BREAK_DAYS), i))
+                if i >= WATCH_BREAK_DAYS
+                else 0.0
+            )
+            price_break = close < low_n
+            # 跌破吸筹起点(净流入归零)无条件卖(2025-02-17 验证);
+            # 仅回撤过半时需价格破位确认(防震仓误卖, 案例 2026-08-12)
+            outflow_confirmed = price_break or (cur_shares is not None and cur_shares < base_shares)
             massive_outflow = (
                 not in_dist_cluster  # 不在DISTRIBUTE集群中
                 and not recent_big_inflow
@@ -180,6 +194,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 and cur_shares is not None
                 and base_shares is not None
                 and (cur_shares - base_shares) < peak_inflow * 0.5
+                and outflow_confirmed  # 资金撤退过半 + 破位/跌破起点 双确认
             )
 
             # 卖出条件2: DISTRIBUTE + 份额净流出 (经典确认)
