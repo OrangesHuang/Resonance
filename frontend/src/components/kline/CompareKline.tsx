@@ -1,6 +1,6 @@
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef, useEffect, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
-import * as echarts from 'echarts'
+import type { ECharts } from 'echarts'
 import type { KlinePoint, TradePoint, DailySignal } from '../../api/types'
 import useIsMobile from '../../hooks/useIsMobile'
 import { computeRangeStats } from './rangeStats'
@@ -17,17 +17,33 @@ interface BrushEvent {
   areas?: Array<{ coordRange?: [[number, number], [number, number]] | [number, number] }>
 }
 
-export default function CompareKline({ kline, trades, signals, sharedDates, height = 320, groupId, onReady }: {
+interface ZoomEvent {
+  batch?: Array<{ start?: number; end?: number }>
+  start?: number
+  end?: number
+}
+
+export interface ZoomRange {
+  start: number
+  end: number
+}
+
+// 回声过滤容差: datazoom 事件值 ≈ 自己最近转发的值时视为同步回显, 忽略防转发级联循环
+const ZOOM_ECHO_EPS = 0.05
+
+export default function CompareKline({ kline, trades, signals, sharedDates, height = 320, code, onZoomChange, onRegister, onUnmount }: {
   kline: KlinePoint[]
   trades: TradePoint[]
   signals?: DailySignal[]
   sharedDates?: string[]
   height?: number
-  groupId?: string
-  onReady?: (inst: echarts.ECharts) => void
+  code: string
+  onZoomChange: (z: ZoomRange) => void
+  onRegister: (code: string, inst: ECharts) => void
+  onUnmount: (code: string) => void
 }) {
   const datesRef = useRef<string[]>([])
-  const chartRef = useRef<import('echarts').ECharts | null>(null)
+  const chartRef = useRef<ECharts | null>(null)
   const rangeSel = useRangeSelect()
   const isMobile = useIsMobile()
   const mobileRangeStart = useRef<string | null>(null)
@@ -35,13 +51,24 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
   isMobileRef.current = isMobile
   const rangeSelRef = useRef(rangeSel)
   rangeSelRef.current = rangeSel
+  const onZoomChangeRef = useRef(onZoomChange)
+  onZoomChangeRef.current = onZoomChange
+  const onRegisterRef = useRef(onRegister)
+  onRegisterRef.current = onRegister
+  const onUnmountRef = useRef(onUnmount)
+  onUnmountRef.current = onUnmount
+  // 本图最近一次转发的缩放值: 收到相等值的事件 → 同步回显, 不再转发
+  const lastForwardRef = useRef<ZoomRange | null>(null)
+  // rAF 待转发值: 一帧内多次 datazoom 事件合并为最后一次转发, 其余图与拖动同步移动
+  const pendingZoomRef = useRef<ZoomRange | null>(null)
+  const rafRef = useRef<number | null>(null)
 
   const rangeStats = useMemo(() => {
     if (!rangeSel.sel.start || !rangeSel.sel.end) return null
     return computeRangeStats(kline, trades, rangeSel.sel.start, rangeSel.sel.end)
   }, [kline, trades, rangeSel])
 
-  // 数据驱动的 option 用 useMemo 缓存: 拖动缩放只改 zoom, 不重建整个图表
+  // 数据驱动的 option 用 useMemo 缓存: 缩放走 dispatchAction, 不重建图表
   const { option, dates } = useMemo(() =>
     buildCompareOption({ kline, trades, signals, sharedDates, rangeSel, rangeStats, isMobile }),
   [kline, trades, signals, sharedDates, rangeSel, rangeStats, isMobile])
@@ -49,6 +76,20 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
   useEffect(() => {
     datesRef.current = dates
   }, [dates])
+
+  // 挂载注册 / 卸载注销: 注册幂等(map.set + 同步一次全局缩放)。
+  // 注销放 ref 回调的 null 分支而非 cleanup effect —— StrictMode 模拟卸载只重放
+  // effects, 若在 cleanup 里注销, 图表不会再重新注册, 实例 Map 变空导致全不联动
+  const handleChartRef = useCallback((inst: ReactECharts | null) => {
+    const i = inst?.getEchartsInstance?.() ?? null
+    chartRef.current = i
+    if (i) onRegisterRef.current(code, i)
+    else onUnmountRef.current(code)
+  }, [code])
+
+  useEffect(() => () => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+  }, [code])
 
   // 区间统计模式切换: 桌面端启用 brush 光标; 移动端清除待选状态
   useEffect(() => {
@@ -101,6 +142,29 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
       if (a < 0 || b < 0 || a >= dates.length || b >= dates.length) return
       rangeSel.setRange(dates[a], dates[b])
     },
+    datazoom: (e: ZoomEvent) => {
+      const z = e.batch ? e.batch[0] : e
+      const start = z.start
+      const end = z.end
+      if (start == null || end == null) return
+      // 回声过滤: 值等于自己最近转发的值 → dispatchAction 同步回显, 不再转发
+      const last = lastForwardRef.current
+      if (last && Math.abs(last.start - start) < ZOOM_ECHO_EPS && Math.abs(last.end - end) < ZOOM_ECHO_EPS) return
+      // rAF 节流: 帧内多次事件只转发最后一次, 其余图与拖动同步移动
+      if (pendingZoomRef.current == null) {
+        pendingZoomRef.current = { start, end }
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null
+          const zz = pendingZoomRef.current
+          pendingZoomRef.current = null
+          if (!zz) return
+          lastForwardRef.current = zz
+          onZoomChangeRef.current(zz)
+        })
+      } else {
+        pendingZoomRef.current = { start, end }
+      }
+    },
   }), [rangeSel])
 
   if (option === null) {
@@ -111,12 +175,8 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
     <div>
       <RangeToolbar hook={rangeSel} isMobile={isMobile} />
       <ReactECharts
-        ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
-        option={option} style={{ height }} lazyUpdate onEvents={onEvents}
-        onChartReady={inst => {
-          if (groupId) { inst.group = groupId; echarts.connect(groupId) }
-          onReady?.(inst)
-        }} />
+        ref={handleChartRef}
+        option={option} style={{ height }} lazyUpdate onEvents={onEvents} />
       {rangeStats && (
         <RangeStatsPanel stats={rangeStats} onClear={rangeSel.clear} />
       )}

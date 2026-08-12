@@ -1,18 +1,14 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import * as echarts from 'echarts'
+import type { ECharts } from 'echarts'
 import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
 import CompareKline from '../components/kline/CompareKline'
+import type { ZoomRange } from '../components/kline/CompareKline'
 import type { TradePoint } from '../api/types'
 import { usePinnedEtfs } from '../hooks/usePinnedEtfs'
 
 const KLINE_DAYS = 640
-const COMPARE_GROUP = 'kline-compare-sync'
-
-function linkChart(inst: echarts.ECharts) {
-  inst.group = COMPARE_GROUP
-  echarts.connect(COMPARE_GROUP)
-}
 
 function calcSummary(trades: TradePoint[]) {
   let buy: { price: number; date: string } | null = null
@@ -41,6 +37,30 @@ function calcSummary(trades: TradePoint[]) {
 
 export default function KlineCompare() {
   const { pinned, togglePin } = usePinnedEtfs()
+  // 跨图缩放同步: 父级持有各图 DOM 节点, 转发时 getInstanceByDom 取当前活跃实例
+  // (StrictMode 重放会 dispose 重建实例, 存实例会拿到已销毁的旧实例; DOM 不变)
+  const instsRef = useRef(new Map<string, HTMLElement>())
+  const zoomRef = useRef<ZoomRange>({ start: 0, end: 100 })
+
+  const registerChart = useCallback((code: string, inst: ECharts) => {
+    instsRef.current.set(code, inst.getDom())
+    const z = zoomRef.current
+    inst.dispatchAction({ type: 'dataZoom', start: z.start, end: z.end })
+  }, [])
+
+  const unregisterChart = useCallback((code: string) => {
+    instsRef.current.delete(code)
+  }, [])
+
+  const forwardZoom = useCallback((source: string, z: ZoomRange) => {
+    zoomRef.current = z
+    for (const [code, dom] of instsRef.current) {
+      if (code === source) continue
+      const inst = echarts.getInstanceByDom(dom)
+      if (inst) inst.dispatchAction({ type: 'dataZoom', start: z.start, end: z.end })
+      else instsRef.current.delete(code)
+    }
+  }, [])
 
   const { data: etfList } = useQuery({
     queryKey: ['etfList'],
@@ -120,7 +140,9 @@ export default function KlineCompare() {
                   </span>
                 )}
               </div>
-              <CompareKline kline={card.kline} trades={card.trades} signals={card.signals} sharedDates={sharedDates} groupId={COMPARE_GROUP} onReady={linkChart} />
+              <CompareKline key={card.code} code={card.code} kline={card.kline} trades={card.trades} signals={card.signals} sharedDates={sharedDates}
+                onZoomChange={(z) => forwardZoom(card.code, z)}
+                onRegister={registerChart} onUnmount={unregisterChart} />
             </div>
           )
         })}
