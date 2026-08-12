@@ -49,6 +49,15 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
     }
     if (seg) emptySegs.push({ start: seg.start, end: lastDate, days: seg.days })
 
+    // tooltip 高频查找用 Map 索引 (mousemove 每帧调用 formatter)
+    const segByDate = new Map<string, { start: string; end: string; days: number }>()
+    for (const s of emptySegs) {
+      for (const c of data.curve) {
+        if (c.position_pct !== 0) continue
+        if (c.date >= s.start && c.date <= s.end) segByDate.set(c.date, s)
+      }
+    }
+
     // 主图: 组合操作发光圆点(点击弹出交易记录)
     const markers: { coord: [string, number]; itemStyle: { color: string; shadowBlur: number; shadowColor: string } }[] = []
     for (const [date, rows] of displayRowsByDate) {
@@ -59,7 +68,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
       const clr = KIND_CLR[main.kind] ?? '#9ca3af'
       markers.push({
         coord: [date, posVal],
-        itemStyle: { color: clr, shadowBlur: 14, shadowColor: clr },
+        itemStyle: { color: clr, shadowBlur: 8, shadowColor: clr },
       })
     }
 
@@ -69,6 +78,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
         type: 'line',
         data: nav,
         showSymbol: false,
+        sampling: 'lttb',
         lineStyle: { width: 1.8, color: '#22c55e' },
         itemStyle: { color: '#22c55e' },
         areaStyle: { color: 'rgba(34, 197, 94, 0.08)' },
@@ -79,6 +89,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
         yAxisIndex: 1,
         data: pos,
         showSymbol: false,
+        sampling: 'lttb',
         lineStyle: { width: 1, color: '#38bdf8', type: 'dashed' as const },
         itemStyle: { color: '#38bdf8' },
         markPoint: {
@@ -100,6 +111,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
         yAxisIndex: 2,
         data: etf.nav,
         showSymbol: false,
+        sampling: 'lttb',
         lineStyle: { width: 1.2, color },
         itemStyle: { color },
       })
@@ -113,6 +125,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
           itemStyle: { color: v >= 0 ? '#ef4444' : '#22c55e' },
         }),
         barWidth: '55%',
+        large: true,
       })
       const marks: { coord: [string, number]; value: string; itemStyle: { color: string }; label: { fontSize: number; fontWeight: string; color: string } }[] = []
       for (const t of etf.trades) {
@@ -129,7 +142,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
         })
       }
       const navSeries = series[series.length - 2] as { markPoint?: object }
-      navSeries.markPoint = { symbol: 'pin', symbolSize: 24, data: marks }
+      navSeries.markPoint = { symbol: 'pin', symbolSize: 18, data: marks }
     })
 
     const axisBase = {
@@ -155,9 +168,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
           const c = data.curve[i]
           if (!c) return ''
           const dayRows = displayRowsByDate.get(c.date)
-          const emptySeg = c.position_pct === 0
-            ? emptySegs.find(s => c.date >= s.start && c.date <= s.end)
-            : undefined
+          const emptySeg = segByDate.get(c.date)
           let html = `<div style="font-size:11px;line-height:1.8">`
           if (emptySeg) {
             html += `<b style="color:#f59e0b">空仓段</b><br/>` +
