@@ -28,19 +28,14 @@ export interface ZoomRange {
   end: number
 }
 
-// 回声过滤容差: datazoom 事件值 ≈ 自己最近转发的值时视为同步回显, 忽略防转发级联循环
-const ZOOM_ECHO_EPS = 0.05
-
-export default function CompareKline({ kline, trades, signals, sharedDates, height = 320, code, onZoomChange, onRegister, onUnmount }: {
+export default function CompareKline({ kline, trades, signals, sharedDates, height = 320, onZoomChange, onRegister }: {
   kline: KlinePoint[]
   trades: TradePoint[]
   signals?: DailySignal[]
   sharedDates?: string[]
   height?: number
-  code: string
   onZoomChange: (z: ZoomRange) => void
-  onRegister: (code: string, inst: ECharts) => void
-  onUnmount: (code: string) => void
+  onRegister: (inst: ECharts) => void
 }) {
   const datesRef = useRef<string[]>([])
   const chartRef = useRef<ECharts | null>(null)
@@ -55,13 +50,6 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
   onZoomChangeRef.current = onZoomChange
   const onRegisterRef = useRef(onRegister)
   onRegisterRef.current = onRegister
-  const onUnmountRef = useRef(onUnmount)
-  onUnmountRef.current = onUnmount
-  // 本图最近一次转发的缩放值: 收到相等值的事件 → 同步回显, 不再转发
-  const lastForwardRef = useRef<ZoomRange | null>(null)
-  // rAF 待转发值: 一帧内多次 datazoom 事件合并为最后一次转发, 其余图与拖动同步移动
-  const pendingZoomRef = useRef<ZoomRange | null>(null)
-  const rafRef = useRef<number | null>(null)
 
   const rangeStats = useMemo(() => {
     if (!rangeSel.sel.start || !rangeSel.sel.end) return null
@@ -77,19 +65,13 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
     datesRef.current = dates
   }, [dates])
 
-  // 挂载注册 / 卸载注销: 注册幂等(map.set + 同步一次全局缩放)。
-  // 注销放 ref 回调的 null 分支而非 cleanup effect —— StrictMode 模拟卸载只重放
-  // effects, 若在 cleanup 里注销, 图表不会再重新注册, 实例 Map 变空导致全不联动
-  const handleChartRef = useCallback((inst: ReactECharts | null) => {
-    const i = inst?.getEchartsInstance?.() ?? null
-    chartRef.current = i
-    if (i) onRegisterRef.current(code, i)
-    else onUnmountRef.current(code)
-  }, [code])
-
-  useEffect(() => () => {
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-  }, [code])
+  // 注册进 connect 联动组必须用 onChartReady: echarts-for-react 首次渲染
+  // 先建临时实例、finished 事件后 dispose 重建最终实例, ref 回调只能拿到
+  // 临时实例(随即被销毁)。onChartReady 每次实例重建后都以最终实例回调
+  const handleChartReady = useCallback((inst: ECharts) => {
+    chartRef.current = inst
+    onRegisterRef.current(inst)
+  }, [])
 
   // 区间统计模式切换: 桌面端启用 brush 光标; 移动端清除待选状态
   useEffect(() => {
@@ -144,26 +126,9 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
     },
     datazoom: (e: ZoomEvent) => {
       const z = e.batch ? e.batch[0] : e
-      const start = z.start
-      const end = z.end
-      if (start == null || end == null) return
-      // 回声过滤: 值等于自己最近转发的值 → dispatchAction 同步回显, 不再转发
-      const last = lastForwardRef.current
-      if (last && Math.abs(last.start - start) < ZOOM_ECHO_EPS && Math.abs(last.end - end) < ZOOM_ECHO_EPS) return
-      // rAF 节流: 帧内多次事件只转发最后一次, 其余图与拖动同步移动
-      if (pendingZoomRef.current == null) {
-        pendingZoomRef.current = { start, end }
-        rafRef.current = requestAnimationFrame(() => {
-          rafRef.current = null
-          const zz = pendingZoomRef.current
-          pendingZoomRef.current = null
-          if (!zz) return
-          lastForwardRef.current = zz
-          onZoomChangeRef.current(zz)
-        })
-      } else {
-        pendingZoomRef.current = { start, end }
-      }
+      if (z.start == null || z.end == null) return
+      // 实时联动由 echarts.connect 原生完成; 这里只记录全局缩放供新挂载图对齐
+      onZoomChangeRef.current({ start: z.start, end: z.end })
     },
   }), [rangeSel])
 
@@ -175,7 +140,7 @@ export default function CompareKline({ kline, trades, signals, sharedDates, heig
     <div>
       <RangeToolbar hook={rangeSel} isMobile={isMobile} />
       <ReactECharts
-        ref={handleChartRef}
+        onChartReady={handleChartReady}
         option={option} style={{ height }} lazyUpdate onEvents={onEvents} />
       {rangeStats && (
         <RangeStatsPanel stats={rangeStats} onClear={rangeSel.clear} />

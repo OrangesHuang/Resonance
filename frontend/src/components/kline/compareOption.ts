@@ -47,8 +47,8 @@ export function buildCompareOption({ kline, trades, signals, sharedDates, rangeS
   // 移动端: 不使用 brush, 改用两次点击选区间
   const brushActive = rangeSel.mode && !isMobile
   const insideZoom = brushActive
-    ? { type: 'inside' as const, xAxisIndex: xAxisAll, moveOnMouseMove: false }
-    : { type: 'inside' as const, xAxisIndex: xAxisAll, moveOnMouseMove: true, preventDefaultMouseMove: true }
+    ? { type: 'inside' as const, xAxisIndex: xAxisAll, moveOnMouseMove: false, throttle: 50 }
+    : { type: 'inside' as const, xAxisIndex: xAxisAll, moveOnMouseMove: true, preventDefaultMouseMove: true, throttle: 50 }
   const markPoint: object = {
     clip: false,
     data: trades

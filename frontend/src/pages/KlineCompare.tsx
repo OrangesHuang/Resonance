@@ -9,6 +9,9 @@ import type { TradePoint } from '../api/types'
 import { usePinnedEtfs } from '../hooks/usePinnedEtfs'
 
 const KLINE_DAYS = 640
+// 原生联动组: echarts.connect 让同组图在同一渲染批次内同步 dataZoom,
+// 相比手动 dispatchAction 转发(事后异步)能真正做到"一起滚动"
+const CHART_GROUP = 'klineCompare'
 
 function calcSummary(trades: TradePoint[]) {
   let buy: { price: number; date: string } | null = null
@@ -37,29 +40,19 @@ function calcSummary(trades: TradePoint[]) {
 
 export default function KlineCompare() {
   const { pinned, togglePin } = usePinnedEtfs()
-  // 跨图缩放同步: 父级持有各图 DOM 节点, 转发时 getInstanceByDom 取当前活跃实例
-  // (StrictMode 重放会 dispose 重建实例, 存实例会拿到已销毁的旧实例; DOM 不变)
-  const instsRef = useRef(new Map<string, HTMLElement>())
+  // zoomRef: 新挂载的图用当前全局缩放对齐(connect 只管已挂载图之间的实时联动)
   const zoomRef = useRef<ZoomRange>({ start: 0, end: 100 })
 
-  const registerChart = useCallback((code: string, inst: ECharts) => {
-    instsRef.current.set(code, inst.getDom())
+  const registerChart = useCallback((inst: ECharts) => {
+    inst.group = CHART_GROUP
+    echarts.connect(CHART_GROUP)
     const z = zoomRef.current
-    inst.dispatchAction({ type: 'dataZoom', start: z.start, end: z.end })
+    inst.dispatchAction({ type: 'dataZoom', start: z.start, end: z.end }, { silent: true })
   }, [])
 
-  const unregisterChart = useCallback((code: string) => {
-    instsRef.current.delete(code)
-  }, [])
-
-  const forwardZoom = useCallback((source: string, z: ZoomRange) => {
+  // 仅记录全局缩放供新图对齐; 实时联动由 connect 原生完成, 不再手动转发
+  const handleZoomChange = useCallback((z: ZoomRange) => {
     zoomRef.current = z
-    for (const [code, dom] of instsRef.current) {
-      if (code === source) continue
-      const inst = echarts.getInstanceByDom(dom)
-      if (inst) inst.dispatchAction({ type: 'dataZoom', start: z.start, end: z.end })
-      else instsRef.current.delete(code)
-    }
   }, [])
 
   const { data: etfList } = useQuery({
@@ -140,9 +133,9 @@ export default function KlineCompare() {
                   </span>
                 )}
               </div>
-              <CompareKline key={card.code} code={card.code} kline={card.kline} trades={card.trades} signals={card.signals} sharedDates={sharedDates}
-                onZoomChange={(z) => forwardZoom(card.code, z)}
-                onRegister={registerChart} onUnmount={unregisterChart} />
+              <CompareKline key={card.code} kline={card.kline} trades={card.trades} signals={card.signals} sharedDates={sharedDates}
+                onZoomChange={handleZoomChange}
+                onRegister={registerChart} />
             </div>
           )
         })}
