@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useCalendarDays, useRefreshCalendar } from '../hooks/useCalendar'
-import MiniMonth from '../components/MiniMonth'
+import MiniMonth from '../components/calendar/MiniMonth'
 import { buildMonthCells, classifyDay, toKey, pad, WEEK_HEADERS, KIND_LABEL } from '../utils/calendar'
 
 type Mode = 'month' | 'year'

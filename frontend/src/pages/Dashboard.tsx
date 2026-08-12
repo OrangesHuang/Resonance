@@ -1,5 +1,5 @@
 import { useAutoRefreshSignals, useTradingStatus, useRefreshEtf } from '../hooks/useSignals'
-import EtfSignalGrid from '../components/EtfSignalGrid'
+import EtfSignalGrid from '../components/monitor/EtfSignalGrid'
 import type { EtfSignal } from '../api/types'
 
 export default function Dashboard() {

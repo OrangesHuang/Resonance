@@ -1,10 +1,7 @@
 import { useState, useRef, useEffect } from "react"
-import type { EtfInfo } from "../api/types"
-import { useLocalStorage } from "../hooks/useLocalStorage"
-import useIsMobile from "../hooks/useIsMobile"
-
-const STORAGE_KEY = "pinnedEtfs"
-const DEFAULT_PINNED = ["159352", "589680", "515080"]
+import type { EtfInfo } from "../../api/types"
+import { usePinnedEtfs } from "../../hooks/usePinnedEtfs"
+import useIsMobile from "../../hooks/useIsMobile"
 
 interface Props {
   value: string
@@ -13,7 +10,7 @@ interface Props {
 }
 
 export default function EtfSelector({ value, onChange, etfList }: Props) {
-  const [pinnedCodes, setPinnedCodes] = useLocalStorage<string[]>(STORAGE_KEY, DEFAULT_PINNED)
+  const { pinned: pinnedCodes, togglePin } = usePinnedEtfs()
   const [expanded, setExpanded] = useState(false)
   const isMobile = useIsMobile()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -33,12 +30,6 @@ export default function EtfSelector({ value, onChange, etfList }: Props) {
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [expanded])
-
-  const togglePin = (code: string) => {
-    setPinnedCodes(prev =>
-      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
-    )
-  }
 
   const currentEtf = etfList.find(e => e.code === value)
 

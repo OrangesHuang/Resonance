@@ -2,12 +2,10 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchPortfolioBacktest } from '../api/client'
 import type { PortfolioTrade } from '../api/types'
-import { useLocalStorage } from '../hooks/useLocalStorage'
-import { buildRows } from '../components/TradePopups'
-import type { TradeRow } from '../components/TradePopups'
-import PortfolioChart from '../components/PortfolioChart'
-
-const DEFAULT_PINNED = ["159352", "589680", "515080"]
+import { usePinnedEtfs } from '../hooks/usePinnedEtfs'
+import { buildRows } from '../components/portfolio/TradePopups'
+import type { TradeRow } from '../components/portfolio/TradePopups'
+import PortfolioChart from '../components/portfolio/PortfolioChart'
 
 const KIND_STYLE: Record<string, string> = {
   BUY: 'text-green-400',
@@ -39,7 +37,7 @@ function StatCard({ label, value, sub, tone }: {
 }
 
 export default function PortfolioBacktest() {
-  const [pinnedCodes] = useLocalStorage<string[]>('pinnedEtfs', DEFAULT_PINNED)
+  const { pinned: pinnedCodes } = usePinnedEtfs()
   const { data, isLoading, error } = useQuery({
     queryKey: ['portfolioBacktest', pinnedCodes],
     queryFn: () => fetchPortfolioBacktest(pinnedCodes),

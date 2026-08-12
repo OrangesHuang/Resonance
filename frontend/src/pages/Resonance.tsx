@@ -1,19 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useResonance } from '../hooks/useResonance'
 import { useSentiment } from '../hooks/useSentiment'
 import useIsMobile from '../hooks/useIsMobile'
 import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, refreshEtf } from '../api/client'
-import ResonanceLights from '../components/ResonanceLights'
-import ResonanceKline from '../components/ResonanceKline'
-import ResonanceChart from '../components/ResonanceChart'
-import ResonanceHeatmap from '../components/ResonanceHeatmap'
-import ResonanceEvidencePanel, { type ResonanceSelection } from '../components/ResonanceEvidencePanel'
-import ResonanceMethodNote from '../components/ResonanceMethodNote'
-import EtfSelector from '../components/EtfSelector'
-import SentimentLineChart from '../components/SentimentLineChart'
-import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/chartZoom'
+import ResonanceLights from '../components/resonance/ResonanceLights'
+import ResonanceKline from '../components/resonance/ResonanceKline'
+import ResonanceChart from '../components/resonance/ResonanceChart'
+import ResonanceHeatmap from '../components/resonance/ResonanceHeatmap'
+import ResonanceEvidencePanel, { type ResonanceSelection } from '../components/resonance/ResonanceEvidencePanel'
+import ResonanceMethodNote from '../components/resonance/ResonanceMethodNote'
+import EtfSelector from '../components/common/EtfSelector'
+import SentimentLineChart from '../components/sentiment/SentimentLineChart'
+import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/common/chartZoom'
 import type { ZoneKey } from '../api/types'
 
 const KLINE_DAYS = 640
@@ -142,14 +142,14 @@ export default function Resonance() {
     staleTime: 10 * 60 * 1000,
   })
 
-  const tradeDates = history?.kline.map(k => k.date) ?? []
+  const tradeDates = useMemo(() => history?.kline.map(k => k.date) ?? [], [history])
   const klineStart = tradeDates[0] ?? null
   const displayDate = selected?.date ?? data?.date ?? tradeDates[tradeDates.length - 1] ?? ''
   const curIdx = displayDate ? tradeDates.indexOf(displayDate) : -1
   const canPrev = curIdx === -1 ? tradeDates.length > 1 : curIdx > 0
   const canNext = curIdx >= 0 && curIdx < tradeDates.length - 1
 
-  const stepDay = (dir: number) => {
+  const stepDay = useCallback((dir: number) => {
     if (tradeDates.length === 0) return
     const idx = curIdx === -1 ? tradeDates.length - 1 : curIdx
     const nextIdx = idx + dir
@@ -164,7 +164,7 @@ export default function Resonance() {
     const span = eIdx - sIdx
     if (nextIdx > eIdx) setDateWindow({ start: tradeDates[nextIdx - span], end: nextDate })
     else if (nextIdx < sIdx) setDateWindow({ start: nextDate, end: tradeDates[nextIdx + span] })
-  }
+  }, [tradeDates, curIdx, dateWindow])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -233,7 +233,7 @@ export default function Resonance() {
       </div>
       <div className="flex items-center gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-white">多指标共振</h2>
+          <h2 className="text-lg font-bold text-white">ETF择时分析</h2>
           <p className="text-xs text-gray-500 mt-1">
             {data?.name ?? code}（{code}）× 市场情绪 · 红灯=出货/过热，绿灯=吸筹/冷清
           </p>

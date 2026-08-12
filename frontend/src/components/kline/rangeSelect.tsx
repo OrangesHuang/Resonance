@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 export interface RangeSelection {
   start: string | null
@@ -12,15 +12,15 @@ export function useRangeSelect() {
   ref.current = { mode, sel }
 
   /** 由 ECharts brushEnd 设置区间(自动归一为 start <= end) */
-  const setRange = (start: string, end: string) => {
+  const setRange = useCallback((start: string, end: string) => {
     setSel(start <= end ? { start, end } : { start: end, end: start })
-  }
+  }, [])
 
-  const toggle = () => {
+  const toggle = useCallback(() => {
     setMode(m => !m)
     setSel({ start: null, end: null })
-  }
-  const clear = () => setSel({ start: null, end: null })
+  }, [])
+  const clear = useCallback(() => setSel({ start: null, end: null }), [])
 
   const band = useMemo(() =>
     (sel.start && sel.end)
@@ -35,7 +35,11 @@ export function useRangeSelect() {
       : [],
   [sel])
 
-  return { mode, sel, setRange, toggle, clear, band }
+  // 返回稳定引用: 仅 mode/sel 变化时重建, 避免下游 useMemo 因引用漂移每次重算
+  return useMemo(
+    () => ({ mode, sel, setRange, toggle, clear, band }),
+    [mode, sel, setRange, toggle, clear, band],
+  )
 }
 
 export function RangeToolbar({ hook, isMobile }: { hook: ReturnType<typeof useRangeSelect>; isMobile?: boolean }) {

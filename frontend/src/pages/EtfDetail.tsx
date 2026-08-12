@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { ECharts } from 'echarts'
 import { fetchEtfHistory } from '../api/client'
-import KlineChart from '../components/KlineChart'
-import SignalHistoryChart from '../components/SignalHistoryChart'
+import KlineChart from '../components/kline/KlineChart'
+import SignalHistoryChart from '../components/kline/SignalHistoryChart'
 import useIsMobile from '../hooks/useIsMobile'
 import type { ZoomWindow } from '../api/types'
 
@@ -23,14 +23,14 @@ export default function EtfDetail() {
     refetchOnWindowFocus: false,
   })
 
-  const kline = data?.kline || []
-  const signals = data?.daily_signals || []
+  const kline = useMemo(() => data?.kline ?? [], [data])
+  const signals = useMemo(() => data?.daily_signals ?? [], [data])
 
-  const dates = useMemo(() => kline.map(k => k.date), [data])
+  const dates = useMemo(() => kline.map(k => k.date), [kline])
   const alignedPoints = useMemo(() => {
     const byDate = new Map(signals.map(s => [s.date, s]))
     return dates.map(d => byDate.get(d) ?? null)
-  }, [data, dates])
+  }, [signals, dates])
 
   const initialZoom = useMemo<ZoomWindow>(() => {
     if (dates.length < 2) return { start: 0, end: 100 }

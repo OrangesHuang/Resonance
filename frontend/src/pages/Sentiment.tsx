@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useSentiment, useRefreshSentiment } from '../hooks/useSentiment'
 import useIsMobile from '../hooks/useIsMobile'
 import { fetchRealtimeTurnover } from '../api/client'
-import SentimentLineChart from '../components/SentimentLineChart'
+import SentimentLineChart from '../components/sentiment/SentimentLineChart'
 import type { VolumeState, ZoneKey, ZoneLevel, ZoneIndicator, SentimentZone } from '../api/types'
 
 function formatYi(v: number | null | undefined): string {
@@ -137,7 +137,7 @@ export default function Sentiment() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <h2 className="text-xl font-bold text-white">市场情绪</h2>
+        <h2 className="text-xl font-bold text-white">市场宏观指标</h2>
         {data.updated_at && (
           <span className="text-xs text-gray-500">数据截至 {data.updated_at}</span>
         )}

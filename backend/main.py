@@ -1,18 +1,21 @@
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from scheduler.tasks import start_scheduler, stop_scheduler
-from api.signals import router as signals_router
-from api.etf import router as etf_router
-from api.realtime import router as realtime_router
-from api.stats import router as stats_router
-from api.sentiment import router as sentiment_router
 from api.calendar import router as calendar_router
-from api.resonance import router as resonance_router
 from api.data import router as data_router
-from api.portfolio import router as portfolio_router
-from api.derivatives import router as derivatives_router
+from api.realtime import router as realtime_router
+from api.signals import router as signals_router
+from api.stats import router as stats_router
+from base.api.etf import router as etf_router
+from base.api.sentiment import router as sentiment_router
+from base.scheduler.tasks import start_scheduler, stop_scheduler
+from derivatives.api import router as derivatives_router
+from portfolio.api import router as portfolio_router
+from resonance.api import router as resonance_router
 
 
 @asynccontextmanager
@@ -23,8 +26,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ETF 国家队监控系统",
-    description="三因子 ETF 国家队资金监测 — 盘中实时信号",
+    title="ETF 买卖分析系统",
+    description="多因子 ETF 资金监测 — 盘中实时信号",
     version="1.0.0",
     lifespan=lifespan,
 )

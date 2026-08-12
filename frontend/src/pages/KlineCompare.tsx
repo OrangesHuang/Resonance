@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import * as echarts from 'echarts'
 import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades } from '../api/client'
-import CompareKline from '../components/CompareKline'
+import CompareKline from '../components/kline/CompareKline'
 import type { TradePoint } from '../api/types'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { usePinnedEtfs } from '../hooks/usePinnedEtfs'
 
 const KLINE_DAYS = 640
-const DEFAULT_PINNED = ["159352", "589680", "515080"]
 const COMPARE_GROUP = 'kline-compare-sync'
 
 function linkChart(inst: echarts.ECharts) {
@@ -41,21 +40,13 @@ function calcSummary(trades: TradePoint[]) {
 }
 
 export default function KlineCompare() {
-  const [pinnedCodes] = useLocalStorage<string[]>('pinnedEtfs', DEFAULT_PINNED)
-  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const { pinned, togglePin } = usePinnedEtfs()
 
   const { data: etfList } = useQuery({
     queryKey: ['etfList'],
     queryFn: fetchEtfList,
     staleTime: Infinity,
   })
-
-  useEffect(() => {
-    if (etfList && hidden.size === 0) {
-      const nonPinned = etfList.filter(e => !pinnedCodes.includes(e.code)).map(e => e.code)
-      setHidden(new Set(nonPinned))
-    }
-  }, [etfList, pinnedCodes])
 
   const codes = etfList?.map(e => e.code) ?? []
   const results = useQueries({
@@ -73,8 +64,8 @@ export default function KlineCompare() {
   })
 
   const cards = useMemo(
-    () => results.filter(r => r.data && !hidden.has(r.data.code)).map(r => r.data!),
-    [results, hidden],
+    () => results.filter(r => r.data && pinned.includes(r.data.code)).map(r => r.data!),
+    [results, pinned],
   )
 
   const sharedDates = useMemo(() => {
@@ -83,20 +74,11 @@ export default function KlineCompare() {
     return Array.from(set).sort()
   }, [cards])
 
-  const toggle = (code: string) => {
-    setHidden(prev => {
-      const next = new Set(prev)
-      if (next.has(code)) next.delete(code)
-      else next.add(code)
-      return next
-    })
-  }
-
   return (
     <div>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <h2 className="text-xl font-bold text-white">K线对比</h2>
-        <span className="text-xs text-gray-500">纵向对比各 ETF 走势与策略买卖点（点击勾选显隐）</span>
+        <h2 className="text-xl font-bold text-white">ETF走势对比</h2>
+        <span className="text-xs text-gray-500">纵向对比各 ETF 走势与策略买卖点（勾选即收藏，共振/流向页同步）</span>
       </div>
 
       <div className="flex items-center gap-3 mb-4 flex-wrap text-xs">
@@ -104,11 +86,11 @@ export default function KlineCompare() {
           <label key={etf.code} className="flex items-center gap-1.5 cursor-pointer select-none">
             <input
               type="checkbox"
-              checked={!hidden.has(etf.code)}
-              onChange={() => toggle(etf.code)}
+              checked={pinned.includes(etf.code)}
+              onChange={() => togglePin(etf.code)}
               className="accent-sky-500 w-3.5 h-3.5"
             />
-            <span className={hidden.has(etf.code) ? 'text-gray-600' : 'text-gray-300'}>
+            <span className={pinned.includes(etf.code) ? 'text-gray-300' : 'text-gray-600'}>
               {etf.code} {etf.name}
             </span>
           </label>

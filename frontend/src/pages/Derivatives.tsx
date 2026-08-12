@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import { useDerivatives, useRefreshDerivatives } from '../hooks/useDerivatives'
 import useIsMobile from '../hooks/useIsMobile'
-import SentimentLineChart from '../components/SentimentLineChart'
-import DivergenceSignals from '../components/DivergenceSignals'
+import SentimentLineChart from '../components/sentiment/SentimentLineChart'
+import DivergenceSignals from '../components/derivatives/DivergenceSignals'
 import type { OptionPCRPoint, FuturesBasisPoint } from '../api/types'
 
 const PCR_COLORS: Record<string, string> = {

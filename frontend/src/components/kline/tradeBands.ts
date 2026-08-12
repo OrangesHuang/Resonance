@@ -1,11 +1,23 @@
-import type { TradePoint } from '../api/types'
+import type { TradePoint } from '../../api/types'
 
 export const BAND_GREEN = 'rgba(34, 197, 94, 0.10)'
 export const BAND_RED = 'rgba(239, 68, 68, 0.10)'
 
+export interface BandLabel {
+  show: boolean
+  position: 'insideTop'
+  color: string
+  fontSize: number
+  formatter: string
+}
+
+const HOLD_LABEL: BandLabel = { show: true, position: 'insideTop', color: 'rgba(34, 197, 94, 0.5)', fontSize: 9, formatter: '安全区' }
+const EMPTY_LABEL: BandLabel = { show: true, position: 'insideTop', color: 'rgba(239, 68, 68, 0.5)', fontSize: 9, formatter: '危险区' }
+
 export interface TradeBandStart {
   xAxis: string
   itemStyle: { color: string }
+  label?: BandLabel
 }
 export interface TradeBandEnd {
   xAxis: string
@@ -33,13 +45,13 @@ export function buildTradeBands(trades: TradePoint[], lastDate: string): Array<[
   for (const t of trades) {
     if (t.action === 'BUY') {
       if (lastSell) {
-        bands.push([{ xAxis: lastSell, itemStyle: { color: BAND_RED } }, { xAxis: t.date }])
+        bands.push([{ xAxis: lastSell, itemStyle: { color: BAND_RED }, label: EMPTY_LABEL }, { xAxis: t.date }])
         lastSell = null
       }
       pendingBuy = t.date
     } else if (t.action === 'SELL') {
       if (pendingBuy) {
-        bands.push([{ xAxis: pendingBuy, itemStyle: { color: BAND_GREEN } }, { xAxis: t.date }])
+        bands.push([{ xAxis: pendingBuy, itemStyle: { color: BAND_GREEN }, label: HOLD_LABEL }, { xAxis: t.date }])
         pendingBuy = null
       }
       lastSell = t.date
@@ -47,7 +59,7 @@ export function buildTradeBands(trades: TradePoint[], lastDate: string): Array<[
   }
   // 未平仓: 最后一次买入延伸到最后一日
   if (pendingBuy && pendingBuy < lastDate) {
-    bands.push([{ xAxis: pendingBuy, itemStyle: { color: BAND_GREEN } }, { xAxis: lastDate }])
+    bands.push([{ xAxis: pendingBuy, itemStyle: { color: BAND_GREEN }, label: HOLD_LABEL }, { xAxis: lastDate }])
   }
   return bands
 }

@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import useIsMobile from '../hooks/useIsMobile'
+import useIsMobile from '../../hooks/useIsMobile'
 
 const TOP_NAV = [
-  { to: '/resonance', label: '多指标共振' },
-  { to: '/compare', label: 'K线对比' },
+  { to: '/resonance', label: 'ETF择时分析' },
+  { to: '/compare', label: 'ETF走势对比' },
   { to: '/portfolio', label: '组合回测' },
 ]
 
 const AUX_NAV = [
-  { to: '/monitor', label: 'ETF 国家队监控' },
-  { to: '/sentiment', label: '市场情绪' },
-  { to: '/calendar', label: '交易日历' },
-  { to: '/data', label: '数据管理' },
+  { to: '/sentiment', label: '市场宏观指标' },
+  { to: '/monitor', label: 'ETF流向分析' },
   { to: '/derivatives', label: '衍生品数据' },
+  { to: '/data', label: '数据管理' },
+  { to: '/calendar', label: '交易日历' },
 ]
 
 const AUX_PATHS = new Set(AUX_NAV.map(i => i.to))
@@ -81,8 +81,8 @@ function SidebarNav() {
 function SidebarBrand() {
   return (
     <div className="px-4 py-5 border-b border-gray-800">
-      <h1 className="text-lg font-bold text-white leading-tight">ETF 国家队监控</h1>
-      <p className="mt-1 text-xs text-gray-500">三因子信号系统</p>
+      <h1 className="text-lg font-bold text-white leading-tight">ETF买卖分析</h1>
+      <p className="mt-1 text-xs text-gray-500">多因子信号系统</p>
     </div>
   )
 }
@@ -125,7 +125,7 @@ export default function Layout() {
             <line x1="3" y1="15" x2="17" y2="15" />
           </svg>
         </button>
-        <h1 className="text-sm font-bold text-white truncate">ETF 国家队监控</h1>
+        <h1 className="text-sm font-bold text-white truncate">ETF买卖分析</h1>
       </header>
 
       {drawerOpen && (
