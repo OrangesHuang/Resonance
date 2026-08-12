@@ -1,16 +1,17 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from store.calendar_repo import get_trade_days, get_range, get_last_sync
-from scheduler.tasks import task_sync_calendar
+from base.scheduler.tasks import task_sync_calendar
+from base.store.calendar_repo import get_last_sync, get_range, get_trade_days
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
 
 @router.get("/days")
-def calendar_days(year: Optional[int] = Query(default=None)):
+def calendar_days(year: int | None = Query(default=None)):
     if year is None:
         year = datetime.now().year
     days = get_trade_days(f"{year}-01-01", f"{year}-12-31")

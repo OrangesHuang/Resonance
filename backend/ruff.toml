@@ -1,0 +1,9 @@
+# 后端 lint 配置(ruff)
+target-version = "py39"
+line-length = 120
+
+[lint]
+# 存量规则暂缓(待专项清理, 勿随意启用):
+# - DTZ005/DTZ007: 中国市场应用, 服务器本地时区即 Asia/Shanghai, naive datetime 约定
+# - BLE001: 第三方库(akshare/requests)异常面宽, 暂用盲捕获, 清理时逐步替换为具体异常
+ignore = ["DTZ005", "DTZ007", "BLE001"]

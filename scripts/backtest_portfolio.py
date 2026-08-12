@@ -1,4 +1,4 @@
-"""924 之后 8 标的组合回测(薄壳): 复用 backend/analysis/portfolio.py。
+"""924 之后 8 标的组合回测(薄壳): 复用 backend/portfolio/api.py。
 
 规则:
 - 每个标的发出买入信号 → 至少持有 12.5% 仓位(1 单位)
@@ -12,10 +12,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from api.portfolio import _load_trades, ALL_CODES, TRADE_START
-from store.daily_repo import get_by_code
-from store.calendar_repo import get_trade_days
-from analysis.portfolio import simulate
+from base.store.calendar_repo import get_trade_days
+from base.store.daily_repo import get_by_code
+from portfolio.analysis.simulator import simulate
+from portfolio.api import _load_trades, ALL_CODES, TRADE_START
 
 INIT_CAPITAL = 1_000_000
 

@@ -2,9 +2,9 @@
 import sys
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "backend"))
 
-from config import DEFAULT_ETF_SEED_DAYS
-from store.database import init_db
-from scheduler.data_jobs import job_backfill_etf_daily
+from base.config import DEFAULT_ETF_SEED_DAYS
+from base.store.database import init_db
+from base.scheduler.data_jobs import job_backfill_etf_daily
 
 
 def _print_progress(current: int, total: int, message: str) -> None:

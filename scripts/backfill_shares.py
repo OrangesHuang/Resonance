@@ -5,9 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from config import DEFAULT_SHARES_BACKFILL_DAYS
-from store.database import init_db
-from scheduler.data_jobs import job_backfill_shares
+from base.config import DEFAULT_SHARES_BACKFILL_DAYS
+from base.store.database import init_db
+from base.scheduler.data_jobs import job_backfill_shares
 
 
 def _print_progress(current: int, total: int, message: str) -> None:

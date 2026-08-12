@@ -14,9 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from store.daily_repo import get_by_code
-from store.derivatives_repo import get_pcr_series, get_basis_series
-from analysis.derivatives_divergence import compute_divergence
+from base.store.daily_repo import get_by_code
+from base.store.derivatives_repo import get_pcr_series, get_basis_series
+from derivatives.analysis.divergence import compute_divergence
 
 CODE = "588000"
 FUTURES = "IC"  # 科创50 无对应股指期货, 用中证500(IC)代理

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from fastapi import APIRouter
 
-from store.daily_repo import get_stats
-from store.realtime_repo import get_latest_snapshot
+from base.store.daily_repo import get_stats
+from base.store.realtime_repo import get_latest_snapshot
 
 router = APIRouter(prefix="/api", tags=["stats"])
 

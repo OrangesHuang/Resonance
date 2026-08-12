@@ -8,9 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from config import ETFS
-from store.database import init_db, get_connection
-from fetch.kline import fetch_kline
+from base.config import ETFS
+from base.store.database import init_db, get_connection
+from base.fetch.kline import fetch_kline
 
 
 def main() -> None:
