@@ -78,7 +78,7 @@ export default function EtfDetail() {
 
   return (
     <div className={`flex flex-col shrink-0 ${isMobile ? 'h-[calc(100dvh-48px)]' : 'h-[calc(100vh-112px)]'}`}>
-      <button onClick={() => navigate('/')} className="mb-4 text-sm text-gray-400 hover:text-white shrink-0">
+      <button onClick={() => navigate('/monitor')} className="mb-4 text-sm text-gray-400 hover:text-white shrink-0">
         ← 返回总览
       </button>
       <div className="flex items-baseline justify-between mb-1 shrink-0">

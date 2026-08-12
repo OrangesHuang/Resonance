@@ -1,20 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import { SignalCard } from './SignalCard'
+import { useFavorites } from '../hooks/useFavorites'
 import type { EtfSignal } from '../api/types'
-
-function groupEtfByIdx(etfs: EtfSignal[]): Array<[string, EtfSignal[]]> {
-  const map = new Map<string, EtfSignal[]>()
-  for (const etf of etfs) {
-    const key = etf.idx_name || '其他'
-    const list = map.get(key)
-    if (list) list.push(etf)
-    else map.set(key, [etf])
-  }
-  return Array.from(map.entries())
-}
 
 export default function EtfSignalGrid({ etfs }: { etfs: EtfSignal[] }) {
   const navigate = useNavigate()
+  const { favorites, toggleFavorite } = useFavorites()
 
   if (etfs.length === 0) {
     return (
@@ -24,26 +15,47 @@ export default function EtfSignalGrid({ etfs }: { etfs: EtfSignal[] }) {
     )
   }
 
+  const favEtfs = etfs.filter(e => favorites.includes(e.code))
+  const otherEtfs = etfs.filter(e => !favorites.includes(e.code))
+
+  const renderGrid = (list: EtfSignal[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      {list.map(etf => (
+        <SignalCard
+          key={etf.code}
+          signal={etf}
+          favorite={favorites.includes(etf.code)}
+          onToggleFavorite={() => toggleFavorite(etf.code)}
+          onClick={() => navigate(`/etf/${etf.code}`)}
+        />
+      ))}
+    </div>
+  )
+
   return (
     <div className="space-y-5">
-      {groupEtfByIdx(etfs).map(([idx, list]) => (
-        <section key={idx}>
+      {favEtfs.length > 0 && (
+        <section>
           <h3 className="flex items-center gap-2 mb-2 text-xs font-medium text-gray-500">
-            <span className="inline-block w-1 h-3 rounded-full bg-blue-500" />
-            {idx}
-            <span className="text-gray-600">{list.length} 只</span>
+            <span className="text-amber-400">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            </span>
+            收藏
+            <span className="text-gray-600">{favEtfs.length} 只</span>
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {list.map(etf => (
-              <SignalCard
-                key={etf.code}
-                signal={etf}
-                onClick={() => navigate(`/etf/${etf.code}`)}
-              />
-            ))}
-          </div>
+          {renderGrid(favEtfs)}
         </section>
-      ))}
+      )}
+      <section>
+        <h3 className="flex items-center gap-2 mb-2 text-xs font-medium text-gray-500">
+          <span className="inline-block w-1 h-3 rounded-full bg-blue-500" />
+          {favEtfs.length > 0 ? '其他' : '全部'}
+          <span className="text-gray-600">{otherEtfs.length} 只</span>
+        </h3>
+        {renderGrid(otherEtfs)}
+      </section>
     </div>
   )
 }

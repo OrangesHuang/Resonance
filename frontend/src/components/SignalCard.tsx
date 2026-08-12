@@ -30,7 +30,12 @@ export function DirectionBadge({ direction }: { direction?: string | null }) {
   )
 }
 
-export function SignalCard({ signal, onClick }: { signal: EtfSignal; onClick: () => void }) {
+export function SignalCard({ signal, onClick, favorite, onToggleFavorite }: {
+  signal: EtfSignal
+  onClick: () => void
+  favorite?: boolean
+  onToggleFavorite?: () => void
+}) {
   const price = signal.price ?? signal.close_price ?? 0
   const changePct = signal.change_pct ?? 0
   const volumeRatio = signal.volume_ratio ?? 0
@@ -51,6 +56,19 @@ export function SignalCard({ signal, onClick }: { signal: EtfSignal; onClick: ()
           <span className="ml-2 text-xs text-gray-500">{signal.code}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          {onToggleFavorite && (
+            <button
+              onClick={e => { e.stopPropagation(); onToggleFavorite() }}
+              className={`p-1 -m-1 rounded transition-colors ${
+                favorite ? 'text-amber-400' : 'text-gray-600 hover:text-gray-400'
+              }`}
+              aria-label={favorite ? '取消收藏' : '收藏'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={favorite ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            </button>
+          )}
           <DirectionBadge direction={signal.trade_direction} />
           <SignalBadge level={signal.signal_level} />
         </div>

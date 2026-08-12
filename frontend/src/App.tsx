@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import EtfDetail from './pages/EtfDetail'
@@ -15,7 +15,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/resonance" replace />} />
+          <Route path="/monitor" element={<Dashboard />} />
           <Route path="/etf/:code" element={<EtfDetail />} />
           <Route path="/resonance" element={<Resonance />} />
           <Route path="/compare" element={<KlineCompare />} />

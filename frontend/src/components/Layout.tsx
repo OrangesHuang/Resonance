@@ -2,16 +2,21 @@ import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import useIsMobile from '../hooks/useIsMobile'
 
-const NAV_ITEMS = [
-  { to: '/resonance', label: '多指标共振', end: false },
-  { to: '/', label: 'ETF 国家队监控', end: true },
-  { to: '/compare', label: 'K线对比', end: false },
-  { to: '/portfolio', label: '组合回测', end: false },
-  { to: '/sentiment', label: '市场情绪', end: false },
-  { to: '/calendar', label: '交易日历', end: false },
-  { to: '/data', label: '数据管理', end: false },
-  { to: '/derivatives', label: '衍生品数据', end: false },
+const TOP_NAV = [
+  { to: '/resonance', label: '多指标共振' },
+  { to: '/compare', label: 'K线对比' },
+  { to: '/portfolio', label: '组合回测' },
 ]
+
+const AUX_NAV = [
+  { to: '/monitor', label: 'ETF 国家队监控' },
+  { to: '/sentiment', label: '市场情绪' },
+  { to: '/calendar', label: '交易日历' },
+  { to: '/data', label: '数据管理' },
+  { to: '/derivatives', label: '衍生品数据' },
+]
+
+const AUX_PATHS = new Set(AUX_NAV.map(i => i.to))
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `block px-3 py-2 rounded text-sm transition-colors ${
@@ -19,6 +24,68 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
       ? 'bg-gray-800 text-white font-medium'
       : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
   }`
+
+function SidebarNav() {
+  const location = useLocation()
+  const [auxOpen, setAuxOpen] = useState(true)
+
+  useEffect(() => {
+    if (AUX_PATHS.has(location.pathname)) setAuxOpen(true)
+  }, [location.pathname])
+
+  const auxActive = AUX_PATHS.has(location.pathname)
+
+  return (
+    <nav className="flex-1 px-3 py-4 space-y-1">
+      {TOP_NAV.map(item => (
+        <NavLink key={item.to} to={item.to} className={linkClass}>
+          {item.label}
+        </NavLink>
+      ))}
+      <button
+        onClick={() => setAuxOpen(o => !o)}
+        className={`flex w-full items-center justify-between px-3 py-2 rounded text-sm transition-colors ${
+          auxActive
+            ? 'text-white'
+            : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+        }`}
+      >
+        <span>辅助数据</span>
+        <svg
+          width="14" height="14" viewBox="0 0 20 20" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-transform ${auxOpen ? 'rotate-90' : ''}`}
+        >
+          <polyline points="7 4 13 10 7 16" />
+        </svg>
+      </button>
+      {auxOpen && (
+        <div className="space-y-1">
+          {AUX_NAV.map(item => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/monitor'}
+              className={({ isActive }) => `${linkClass({ isActive })} pl-8`}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </nav>
+  )
+}
+
+function SidebarBrand() {
+  return (
+    <div className="px-4 py-5 border-b border-gray-800">
+      <h1 className="text-lg font-bold text-white leading-tight">ETF 国家队监控</h1>
+      <p className="mt-1 text-xs text-gray-500">三因子信号系统</p>
+    </div>
+  )
+}
 
 export default function Layout() {
   const isMobile = useIsMobile()
@@ -31,17 +98,8 @@ export default function Layout() {
     return (
       <div className="flex min-h-screen w-full">
         <aside className="w-56 shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
-          <div className="px-4 py-5 border-b border-gray-800">
-            <h1 className="text-lg font-bold text-white leading-tight">ETF 国家队监控</h1>
-            <p className="mt-1 text-xs text-gray-500">三因子信号系统</p>
-          </div>
-          <nav className="flex-1 px-3 py-4 space-y-1">
-            {NAV_ITEMS.map(item => (
-              <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          <SidebarBrand />
+          <SidebarNav />
           <div className="px-4 py-3 border-t border-gray-800 text-xs text-gray-600">
             中央汇金 ETF 资金监测
           </div>
@@ -77,17 +135,8 @@ export default function Layout() {
             onClick={() => setDrawerOpen(false)}
           />
           <aside className="absolute left-0 top-0 bottom-0 w-64 bg-gray-900 border-r border-gray-800 flex flex-col animate-slide-in">
-            <div className="px-4 py-5 border-b border-gray-800">
-              <h1 className="text-lg font-bold text-white leading-tight">ETF 国家队监控</h1>
-              <p className="mt-1 text-xs text-gray-500">三因子信号系统</p>
-            </div>
-            <nav className="flex-1 px-3 py-4 space-y-1">
-              {NAV_ITEMS.map(item => (
-                <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
+            <SidebarBrand />
+            <SidebarNav />
             <div className="px-4 py-3 border-t border-gray-800 text-xs text-gray-600">
               中央汇金 ETF 资金监测
             </div>
