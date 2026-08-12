@@ -6,10 +6,10 @@ import type { PopupState } from './TradePopups'
 import type { PortfolioBacktestResponse } from '../../api/types'
 
 const KIND_CLR: Record<string, string> = {
-  BUY: '#22c55e', TOPUP: '#38bdf8', SWITCH: '#f59e0b', SELL: '#ef4444', SKIP: '#9ca3af',
+  BUY: '#22c55e', SELL: '#ef4444', TRIM: '#f59e0b', REFILL: '#38bdf8',
 }
 const KIND_ZH: Record<string, string> = {
-  BUY: '买入', TOPUP: '加仓', SWITCH: '转仓', SELL: '卖出', SKIP: '信号跳过',
+  BUY: '买入建仓', SELL: '整仓卖出', TRIM: '减仓平衡', REFILL: '补仓平衡',
 }
 const ETF_COLORS = ['#a78bfa', '#2dd4bf', '#f472b6', '#facc15',
                     '#fb923c', '#34d399', '#60a5fa', '#c084fc', '#94a3b8']
@@ -20,7 +20,7 @@ function fmtWan(v: number): string {
 
 export default function PortfolioChart({ data, displayRowsByDate }: {
   data: PortfolioBacktestResponse
-  displayRowsByDate: Map<string, { date: string; kind: string; kind_label: string; name: string; code: string; signal_date: string; units: number; price: number; amount: number }[]>
+  displayRowsByDate: Map<string, { date: string; kind: string; kind_label: string; name: string; code: string; signal_date: string; weight_pct: number; price: number; amount: number }[]>
 }) {
   const isMobile = useIsMobile()
   const [popups, setPopups] = useState<PopupState[]>([])

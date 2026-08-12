@@ -1,9 +1,10 @@
-"""924 之后 8 标的组合回测(薄壳): 复用 backend/portfolio/api.py。
+"""组合回测(薄壳): 复用 backend/portfolio/api.py。
 
-规则:
-- 每个标的发出买入信号 → 至少持有 12.5% 仓位(1 单位)
-- 若还有余钱 → 仓位可升至 25%(2 单位)
-- 一旦其他标的发出买入信号 → 原有 25% 仓位必须降至 12.5% 释放资金
+规则(等权满仓调度):
+- 首个买入信号 → 全仓买入即满仓
+- 新买入信号 → 与现有持仓按总权益严格等权(1/m):
+  TRIM 超配 → 建新仓 → REFILL 低配, 完成后现金 ≈ 0
+- 卖出信号 → 整仓清掉回现金, 剩余持仓不再平衡; 回款待下一个买点并入分配池
 - 信号次日按当日收盘价成交
 - 起算: 2025-01-01(此前不计), 起始 100% 现金
 """
@@ -39,15 +40,16 @@ def main() -> None:
     print(f"最大回撤: {result['max_drawdown_pct']:.1f}%")
     print(f"空仓日期: {result['empty_days']} 天 "
           f"({result['empty_days_pct']:.1f}% 交易日)")
-    print(f"期末权益: {result['final_equity'] * scale:,.0f} 元 (每份 {result['final_equity']:.4f} 元)")
+    print(f"期末权益: {result['final_equity'] * scale:,.0f} 元 (净值 {result['final_equity']:.4f})")
     print(f"信号数: {sum(len(v) for v in trades_by_code.values())} 笔, "
           f"组合操作 {len(result['trade_log'])} 次")
     print()
     print("=== 组合操作明细(信号次日成交) ===")
     for t in result["trade_log"]:
         sig = f"信号 {t['signal_date']}" if t.get("signal_date") else ""
-        print(f"  {t['date']} {sig:>12} {t['code']} {t['kind']:<6} "
-              f"{t['units']}u @{t['price']} 金额{t['amount'] * t['price'] * scale:,.0f} 元")
+        print(f"  {t['date']} {sig:>12} {t['code']} {t['kind']:<7} "
+              f"@{t['price']} 金额{t['amount'] * scale:,.0f} 元 "
+              f"权重{t['weight_pct']:.1f}%")
     print()
     print("=== 权益曲线(每季末) ===")
     prev_q = ""

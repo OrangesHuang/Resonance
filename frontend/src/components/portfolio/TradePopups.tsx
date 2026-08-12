@@ -7,80 +7,30 @@ export type TradeRow = {
   name: string
   code: string
   signal_date: string
-  units: number
+  weight_pct: number
   price: number
   amount: number
 }
 
-// 转仓 = 卖旧买新: 把 SWITCH(转出) 与其对应 BUY(转入) 合并为单行,
-// 如 "中证红利(减半) → 科创综指"; 无关联的 BUY 照常显示
-export function buildRows(trades: PortfolioTrade[]): TradeRow[] {
-  const byTo = new Map<string, PortfolioTrade[]>()
-  for (const s of trades) {
-    if (s.kind !== 'SWITCH') continue
-    const arr = byTo.get(s.to_code ?? '') ?? []
-    arr.push(s)
-    byTo.set(s.to_code ?? '', arr)
-  }
-  const consumed = new Set<PortfolioTrade>()
-  const rows: TradeRow[] = []
-  for (const t of trades) {
-    // SWITCH 先于其 BUY 入日志, 第一遍跳过, 避免被当作孤立转仓提前输出
-    if (consumed.has(t) || t.kind === 'SWITCH') continue
-    const group = t.kind === 'BUY' ? byTo.get(t.code) : undefined
-    if (group && group.length > 0) {
-      for (const s of group) consumed.add(s)
-      const tag = (s: PortfolioTrade) =>
-        s.action === 'LIQUIDATE' ? '(清仓)' : s.action === 'REDUCE' ? '(减半)' : ''
-      rows.push({
-        date: t.date,
-        kind: 'SWITCH',
-        kind_label: '转仓',
-        name: `${group.map(s => `${s.name}${tag(s)}`).join(' + ')} → ${t.name}`,
-        code: t.code,
-        signal_date: t.signal_date,
-        units: t.units,
-        price: t.price,
-        amount: t.amount,
-      })
-      continue
-    }
-    rows.push({
-      date: t.date,
-      kind: t.kind,
-      kind_label: t.kind_label,
-      name: t.name,
-      code: t.code,
-      signal_date: t.signal_date,
-      units: t.units,
-      price: t.price,
-      amount: t.amount,
-    })
-  }
-  // 未被消费的 SWITCH(仅 SKIP 极端场景: 转出后仍不足半份, 当日无对应 BUY)防御显示
-  for (const t of trades) {
-    if (t.kind !== 'SWITCH' || consumed.has(t)) continue
-    rows.push({
-      date: t.date,
-      kind: 'SWITCH',
-      kind_label: t.kind_label,
-      name: t.to_name ? `${t.name} → ${t.to_name}` : t.name,
-      code: t.code,
-      signal_date: t.signal_date,
-      units: t.units,
-      price: t.price,
-      amount: t.amount,
-    })
-  }
-  return rows
+export function toRows(trades: PortfolioTrade[]): TradeRow[] {
+  return trades.map(t => ({
+    date: t.date,
+    kind: t.kind,
+    kind_label: t.kind_label,
+    name: t.name,
+    code: t.code,
+    signal_date: t.signal_date,
+    weight_pct: t.weight_pct,
+    price: t.price,
+    amount: t.amount,
+  }))
 }
 
 const KIND_STYLE: Record<string, string> = {
   BUY: 'text-green-400',
-  TOPUP: 'text-sky-400',
-  SWITCH: 'text-amber-400',
   SELL: 'text-red-400',
-  SKIP: 'text-gray-500',
+  TRIM: 'text-amber-400',
+  REFILL: 'text-sky-400',
 }
 
 export interface PopupState {

@@ -364,21 +364,19 @@ export interface PortfolioTrade {
   signal_date: string
   code: string
   name: string
-  kind: 'BUY' | 'TOPUP' | 'SWITCH' | 'SELL' | 'SKIP'
+  kind: 'BUY' | 'SELL' | 'TRIM' | 'REFILL'
   kind_label: string
-  to_code?: string
-  to_name?: string
-  action?: string
-  units: number
   price: number
   amount: number
+  weight_pct: number
 }
 
 export interface PortfolioOpenPosition {
   code: string
   name: string
-  units: number
   buy_date: string
+  market_value: number
+  weight_pct: number
 }
 
 export interface PortfolioEtfSeries {

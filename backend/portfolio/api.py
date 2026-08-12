@@ -1,4 +1,4 @@
-"""组合回测 API: 8 标的统一仓位分配逻辑的净值走势与交易记录。
+"""组合回测 API: 等权满仓调度的净值走势与交易记录。
 
 买卖点与页面「共振买卖点」共用统一入口(analysis.strategy.router),
 保证组合回测遵循各 ETF 多指标共振买卖点, 而非单一通用策略。
@@ -22,16 +22,14 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
 TRADE_START = "2025-01-01"
 INIT_CAPITAL = 1_000_000  # 100 万初始净值
-INIT_SHARES = 1_000_000  # 每份 1 元
 
 ALL_CODES = ["510300", "510050", "510500", "512100", "515080", "588000", "589680", "159780", "159352"]
 
 KIND_LABEL = {
-    "BUY": "买入",
-    "TOPUP": "加仓",
-    "SWITCH": "转仓",
-    "SELL": "卖出",
-    "SKIP": "信号跳过(资金不足)",
+    "BUY": "买入建仓",
+    "SELL": "整仓卖出",
+    "TRIM": "减仓平衡",
+    "REFILL": "补仓平衡",
 }
 
 
@@ -94,14 +92,14 @@ def portfolio_backtest(codes: str | None = Query(None)):
     if not dates:
         dates = sorted({d for m in price_map.values() for d in m})
 
-    result = simulate(trades_by_code, price_map, dates, unit=1.0 / len(target_codes))
+    result = simulate(trades_by_code, price_map, dates)
 
     scale = INIT_CAPITAL
     curve = [
         {
             "date": h["date"],
             "nav": round(h["equity"] * scale, 0),  # 总资产(元)
-            "nav_per_share": round(h["equity"], 4),  # 每份净值(元)
+            "nav_per_share": round(h["equity"], 4),  # 归一化净值(1.0 起)
             "position_pct": h["position_pct"],
         }
         for h in result["history"]
@@ -114,24 +112,28 @@ def portfolio_backtest(codes: str | None = Query(None)):
             "name": ETFS.get(t["code"], {}).get("name", t["code"]),
             "kind": t["kind"],
             "kind_label": KIND_LABEL.get(t["kind"], t["kind"]),
-            "to_code": t.get("to_code", ""),
-            "to_name": ETFS.get(t.get("to_code", ""), {}).get("name", t.get("to_code", "")),
-            "action": t.get("action", ""),
-            "units": t["units"],
             "price": t["price"],
-            "amount": round(t["amount"] * t["price"] * scale, 0),
+            "amount": round(t["amount"] * scale, 0),
+            "weight_pct": t.get("weight_pct", 0.0),
         }
         for t in result["trade_log"]
     ]
-    open_positions = [
-        {
-            "code": p["code"],
-            "name": ETFS.get(p["code"], {}).get("name", p["code"]),
-            "units": p["units"],
-            "buy_date": p["buy_date"],
-        }
-        for p in result["open_positions"]
-    ]
+    last_date = dates[-1] if dates else ""
+    open_positions = []
+    final_equity = result["final_equity"]
+    for p in result["open_positions"]:
+        pm = price_map.get(p["code"], {})
+        px = next((pm[x] for x in sorted(pm, reverse=True) if x <= last_date), 0.0)
+        mv = p["shares"] * px
+        open_positions.append(
+            {
+                "code": p["code"],
+                "name": ETFS.get(p["code"], {}).get("name", p["code"]),
+                "buy_date": p["buy_date"],
+                "market_value": round(mv * scale, 0),
+                "weight_pct": round(mv / final_equity * 100, 1) if final_equity > 0 else 0.0,
+            }
+        )
 
     # 各 ETF 序列: 归一化净值(以区间首日收盘为基准 1.0) + 份额净申赎 + 策略买卖点
     etf_series = []
