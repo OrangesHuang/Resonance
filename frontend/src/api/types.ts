@@ -289,7 +289,7 @@ export interface JobState {
   result: Record<string, unknown> | null
 }
 
-export type DataFlowStep = 'fetch' | 'derive' | 'write' | 'offline'
+export type DataFlowStep = 'fetch' | 'derive' | 'write' | 'offline' | 'read' | 'delete'
 
 export interface DataFlowItem {
   step: DataFlowStep
@@ -331,6 +331,16 @@ export interface DataSources {
 export interface SchedulerJobInfo {
   id: string
   next_run: string | null
+}
+
+export interface ScheduledTaskInfo {
+  id: string
+  label: string
+  schedule: string
+  purpose: string
+  data_flow: DataFlowItem[]
+  next_run: string | null
+  prev_run: string | null
 }
 
 export interface DataStatus {

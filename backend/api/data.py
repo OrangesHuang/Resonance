@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 
 from fastapi import APIRouter, HTTPException, Query
@@ -18,6 +18,7 @@ from base.config import (
 )
 from base.scheduler.job_manager import job_manager, run_job
 from base.scheduler.job_registry import JOB_DEFS, JOB_FNS
+from base.scheduler.scheduled_defs import SCHEDULED_DEFS
 from base.scheduler.tasks import scheduler
 from base.store.calendar_repo import get_calendar_count, get_last_sync, get_range
 from base.store.daily_repo import get_stats
@@ -128,3 +129,64 @@ def get_job(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
     return job.to_dict()
+
+
+def _prev_fire_time(trigger: object, now: datetime) -> datetime | None:
+    """反推上次计划触发时间(本版本 APScheduler trigger 无 get_previous_fire_time)。
+
+    谓词 P(x) = "(x, now) 内存在触发":P(now) 恒假,往前指数扩窗直到 P(lo) 为真,
+    再在 [lo, hi] 分钟级二分找最晚触发点。
+    """
+    get_next = getattr(trigger, "get_next_fire_time", None)
+    if get_next is None:
+        return None
+    best: datetime | None = None
+    hi = now
+    step = timedelta(hours=1)
+    lo = now - step
+    for _ in range(40):
+        cand = get_next(lo, now)
+        if cand is not None and cand < now:
+            best = cand
+            break
+        hi = lo
+        step *= 2
+        lo = now - step
+    else:
+        return None
+    grain = timedelta(minutes=1)
+    while hi - lo > grain:
+        mid = lo + (hi - lo) / 2
+        cand = get_next(mid, now)
+        if cand is not None and cand < now:
+            lo = mid
+            best = cand
+        else:
+            hi = mid
+    cand = get_next(lo, now)
+    if cand is not None and cand < now:
+        return cand
+    return best
+
+
+@router.get("/scheduled")
+def list_scheduled_tasks() -> list[dict]:
+    """定时任务全景:注册表元信息 + 运行中的上次/下次运行时间(供前端倒计时与进度条)。"""
+    now = datetime.now().astimezone()
+    next_runs: dict[str, str | None] = {}
+    prev_runs: dict[str, str | None] = {}
+    for j in scheduler.get_jobs():
+        nr = j.next_run_time
+        next_runs[j.id] = nr.isoformat() if nr else None
+        pr: datetime | None = None
+        if nr:
+            interval = getattr(j.trigger, "interval", None)
+            if interval is not None:
+                pr = nr - interval  # IntervalTrigger 直接反推一个周期
+            else:
+                pr = _prev_fire_time(j.trigger, now)
+        prev_runs[j.id] = pr.isoformat() if pr else None
+    return [
+        {"id": tid, **defn, "next_run": next_runs.get(tid), "prev_run": prev_runs.get(tid)}
+        for tid, defn in SCHEDULED_DEFS.items()
+    ]

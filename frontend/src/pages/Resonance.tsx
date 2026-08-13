@@ -13,6 +13,7 @@ import ResonanceEvidencePanel, { type ResonanceSelection } from '../components/r
 import ResonanceMethodNote from '../components/resonance/ResonanceMethodNote'
 import EtfSelector from '../components/common/EtfSelector'
 import SentimentLineChart from '../components/sentiment/SentimentLineChart'
+import { useChartSync, SENTIMENT_SYNC_GROUP } from '../hooks/useChartSync'
 import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/common/chartZoom'
 import type { ZoneKey } from '../api/types'
 
@@ -33,6 +34,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
 }) {
   const { data, isLoading, error } = useSentiment()
   const isMobile = useIsMobile()
+  const onSentimentReady = useChartSync(SENTIMENT_SYNC_GROUP)
 
   if (error) {
     return (
@@ -84,6 +86,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
             onSelectDate={onSelectDate}
             dateWindow={dateWindow}
             onZoomChange={onZoomChange}
+            onReady={onSentimentReady}
             lines={[
               { name: '成交额', data: turnover.map(p => p.total_amount_yi), color: '#3b82f6', width: 1.5 },
               { name: 'MA5', data: turnover.map(p => p.ma5_yi), color: '#f59e0b', width: 1.2 },
@@ -102,6 +105,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
             onSelectDate={onSelectDate}
             dateWindow={dateWindow}
             onZoomChange={onZoomChange}
+            onReady={onSentimentReady}
             lines={[
               { name: '融资余额', data: marginLine, color: '#a855f7', width: 1.5 },
             ]}
@@ -295,7 +299,7 @@ export default function Resonance() {
         <div className="flex items-center gap-3 mb-2 flex-wrap">
           <h3 className="text-sm font-medium text-gray-300">K线走势（点击K线查看当日依据）</h3>
           <span className="text-[11px] text-gray-600">
-            淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（70%红/50%橙分界） · 最底彩条=交易方向（绿=吸筹/红=出货/灰=中性） · B/S=策略买卖点
+            淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（红→黄→绿渐变，45/35 虚线为吸筹/出货线） · B/S=策略买卖点
           </span>
         </div>
         {history ? (
@@ -322,7 +326,6 @@ export default function Resonance() {
               selectedDate={selected?.date ?? null}
               onSelectDate={selectDate}
               dateWindow={dateWindow}
-              onZoomChange={handleZoom}
             />
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
@@ -332,7 +335,6 @@ export default function Resonance() {
               selectedDate={selected?.date ?? null}
               onSelect={selectCell}
               dateWindow={dateWindow}
-              onZoomChange={handleZoom}
             />
           </div>
         </div>

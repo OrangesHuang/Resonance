@@ -13,12 +13,6 @@ const CHANCE_BAND = 'rgba(34, 197, 94, 0.08)'
 const UP_COLOR = '#ef4444'
 const DOWN_COLOR = '#22c55e'
 
-const DIR_COLORS: Record<string, string> = {
-  ACCUMULATE: '#22c55e',
-  DISTRIBUTE: '#ef4444',
-  NEUTRAL: '#374151',
-}
-
 interface BuildParams {
   kline: KlinePoint[]
   history: ResonanceHistoryPoint[]
@@ -44,10 +38,6 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
     return { value: v, itemStyle: { color: v >= 0 ? DOWN_COLOR : UP_COLOR } }
   })
   const probData = dates.map(d => sigByDate.get(d)?.composite_prob ?? null)
-  const dirData = dates.map(d => {
-    const dir = sigByDate.get(d)?.trade_direction ?? 'NEUTRAL'
-    return { value: 1, itemStyle: { color: DIR_COLORS[dir] ?? '#374151' } }
-  })
 
   const bands = sanitizeBands(
     history
@@ -70,8 +60,8 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
   // 移动端: 不使用 brush(触摸不支持), 改用两次点击选区间
   const brushActive = rangeSel.mode && !isMobile
   const insideZoom = brushActive
-    ? { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: false }
-    : { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: true, preventDefaultMouseMove: true }
+    ? { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3], moveOnMouseMove: false }
+    : { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3], moveOnMouseMove: true, preventDefaultMouseMove: true }
 
   const { markPoint, markLine, markLineTop, probMarkLine } =
     buildMarks(trades, kline, dates, selectedDate)
@@ -110,37 +100,33 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
         formatter: tooltipFormatter as TooltipComponentOption['formatter'],
       },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
-      visualMap: {
-        show: false,
-        seriesIndex: 3,
-        dimension: 1,
-        pieces: [
-          { lte: 50, color: '#22c55e' },
-          { gt: 50, lte: 70, color: '#f59e0b' },
-          { gt: 70, color: '#ef4444' },
-        ],
-        outOfRange: { color: '#6b7280' },
-      },
+      visualMap: [
+        {
+          show: false,
+          seriesIndex: 3,
+          type: 'continuous',
+          min: 0,
+          max: 100,
+          inRange: { color: ['#ef4444', '#f59e0b', '#22c55e'] },
+        },
+      ],
       grid: [
-        { left: 60, right: 20, top: 20, height: '34%' },
-        { left: 60, right: 20, top: '52%', height: '7%' },
-        { left: 60, right: 20, top: '62%', height: '7%' },
-        { left: 60, right: 20, top: '72%', height: '9%' },
-        { left: 60, right: 20, top: '84%', height: '4%' },
+        { left: 60, right: 20, top: 20, height: '36%' },
+        { left: 60, right: 20, top: '58%', height: '7%' },
+        { left: 60, right: 20, top: '67%', height: '7%' },
+        { left: 60, right: 20, top: '76%', height: '10%' },
       ],
       xAxis: [
         { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { color: AXIS_LABEL, fontSize: 10 } },
         { type: 'category', data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { show: false } },
         { type: 'category', data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false } },
         { type: 'category', data: dates, gridIndex: 3, boundaryGap: false, axisLabel: { show: false } },
-        { type: 'category', data: dates, gridIndex: 4, boundaryGap: true, axisLabel: { show: false } },
       ],
       yAxis: [
         { scale: true, gridIndex: 0, boundaryGap: ['8%', '8%'], splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: AXIS_LABEL } },
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
         { scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9 } },
         { min: 0, max: 100, gridIndex: 3, splitNumber: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9, formatter: '{value}%' } },
-        { min: 0, max: 1, gridIndex: 4, splitLine: { show: false }, axisLabel: { show: false } },
       ],
       series: [
         {
@@ -188,21 +174,12 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
           areaStyle: { opacity: 0.08 },
           markLine: probMarkLine,
         },
-        {
-          name: '交易方向',
-          type: 'bar',
-          data: dirData,
-          xAxisIndex: 4,
-          yAxisIndex: 4,
-          barWidth: '60%',
-          markLine,
-        },
       ],
       dataZoom: [
         insideZoom,
         {
           type: 'slider',
-          xAxisIndex: [0, 1, 2, 3, 4],
+          xAxisIndex: [0, 1, 2, 3],
           top: '92%',
           height: 16,
           borderColor: '#374151',

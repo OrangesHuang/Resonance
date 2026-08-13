@@ -1,12 +1,14 @@
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef, useEffect, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts } from 'echarts'
 import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../../api/types'
 import useIsMobile from '../../hooks/useIsMobile'
+import { useChartSync, RESONANCE_SYNC_GROUP } from '../../hooks/useChartSync'
 import { windowToZoom, zoomToWindow, DEFAULT_VISIBLE_BARS, type DateWindow } from '../common/chartZoom'
 import { computeRangeStats } from '../kline/rangeStats'
 import { useRangeSelect, RangeToolbar } from '../kline/rangeSelect'
 import RangeStatsPanel from '../kline/RangeStatsPanel'
+import TradeReasonPanel from './TradeReasonPanel'
 import { buildKlineOption } from './klineOption'
 
 interface ClickParam {
@@ -44,6 +46,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   const onZoomChangeRef = useRef(onZoomChange)
   onSelectDateRef.current = onSelectDate
   onZoomChangeRef.current = onZoomChange
+  const onChartReady = useChartSync(RESONANCE_SYNC_GROUP)
   const isMobile = useIsMobile()
   const mobileRangeStart = useRef<string | null>(null)
   const isMobileRef = useRef(isMobile)
@@ -58,6 +61,12 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     if (!rangeSel.sel.start || !rangeSel.sel.end) return null
     return computeRangeStats(kline, trades, rangeSel.sel.start, rangeSel.sel.end, signals)
   }, [kline, trades, signals, rangeSel])
+
+  // 点击买卖点标记 → 展示该日完整理由(量能/份额/位置证据链)
+  const [selectedTrade, setSelectedTrade] = useState<TradePoint | null>(null)
+  const tradesByDate = useMemo(() => new Map(trades.map(t => [t.date, t])), [trades])
+  const sigByDate = useMemo(() => new Map(signals.map(s => [s.date, s])), [signals])
+  const klineByDate = useMemo(() => new Map(kline.map(k => [k.date, k])), [kline])
 
   // 数据驱动的 option 用 useMemo 缓存: 拖动缩放只改 zoom, 不重建整个图表
   const { option, dates } = useMemo(() =>
@@ -98,11 +107,15 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     click: (params: ClickParam) => {
       try {
         if (params.componentType === 'markPoint' && params.data?.coord) {
-          onSelectDateRef.current(params.data.coord[0])
+          const d = params.data.coord[0]
+          onSelectDateRef.current(d)
+          const t = tradesByDate.get(d)
+          setSelectedTrade(t ?? null)
           return
         }
         const d = params.dataIndex != null ? datesRef.current[params.dataIndex] : undefined
         if (!d) return
+        setSelectedTrade(null)
         // 移动端区间统计: 两次点击选区间(代替桌面端拖拽框选)
         if (isMobileRef.current && rangeSelRef.current.mode) {
           const rs = rangeSelRef.current
@@ -145,7 +158,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
         onZoomChangeRef.current(w)
       }, ZOOM_SYNC_DEBOUNCE_MS)
     },
-  }), [rangeSel])
+  }), [rangeSel, tradesByDate])
 
   if (option === null) {
     return <div className="text-gray-500 text-center py-10">暂无K线数据</div>
@@ -155,6 +168,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     <div>
       <RangeToolbar hook={rangeSel} isMobile={isMobile} />
       <ReactECharts
+        onChartReady={onChartReady}
         ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
         option={option}
         style={{ height: isMobile ? 400 : 620, cursor: 'pointer' }}
@@ -163,6 +177,14 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       />
       {rangeStats && (
         <RangeStatsPanel stats={rangeStats} onClear={rangeSel.clear} />
+      )}
+      {selectedTrade && (
+        <TradeReasonPanel
+          trade={selectedTrade}
+          signal={sigByDate.get(selectedTrade.date)}
+          kline={klineByDate.get(selectedTrade.date)}
+          onClose={() => setSelectedTrade(null)}
+        />
       )}
     </div>
   )

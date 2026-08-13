@@ -1,6 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import type { ResonanceHistoryPoint } from '../../api/types'
-import { windowToZoom, zoomToWindow, type DateWindow } from '../common/chartZoom'
+import { windowToZoom, type DateWindow } from '../common/chartZoom'
+import { useChartSync, RESONANCE_SYNC_GROUP } from '../../hooks/useChartSync'
 
 const AXIS_LABEL = '#6b7280'
 const SPLIT_LINE = '#1f2937'
@@ -16,19 +17,14 @@ interface ClickParam {
   dataIndex?: number
 }
 
-interface DataZoomEvent {
-  start?: number
-  end?: number
-  batch?: Array<{ start: number; end: number }>
-}
-
-export default function ResonanceChart({ history, selectedDate, onSelectDate, dateWindow, onZoomChange }: {
+export default function ResonanceChart({ history, selectedDate, onSelectDate, dateWindow }: {
   history: ResonanceHistoryPoint[]
   selectedDate?: string | null
   onSelectDate?: (date: string) => void
   dateWindow?: DateWindow | null
-  onZoomChange?: (w: DateWindow) => void
 }) {
+  const onChartReady = useChartSync(RESONANCE_SYNC_GROUP)
+
   if (history.length === 0) {
     return <div className="text-gray-500 text-center py-10">暂无数据</div>
   }
@@ -116,17 +112,12 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, da
       const d = dates[params.dataIndex]
       if (d) onSelectDate?.(d)
     },
-    datazoom: (e: DataZoomEvent) => {
-      if (!onZoomChange) return
-      const z = e.batch ? e.batch[0] : e
-      if (z.start == null || z.end == null) return
-      const w = zoomToWindow(dates, z.start, z.end)
-      if (w) onZoomChange(w)
-    },
+    // 缩放由 echarts.connect 原生组分发, 不再上报父级(避免多源状态更新)
   }
 
   return (
     <ReactECharts
+      onChartReady={onChartReady}
       option={{
         ...option,
         series: option.series.map(s => ({

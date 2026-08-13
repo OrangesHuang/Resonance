@@ -1,4 +1,4 @@
-import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse } from './types'
+import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse, ScheduledTaskInfo } from './types'
 
 const BASE = '/api'
 
@@ -107,6 +107,10 @@ export function refreshCalendar(): Promise<CalendarRefreshResult> {
 
 export function fetchDataStatus(): Promise<DataStatus> {
   return get('/data/status')
+}
+
+export function fetchScheduledTasks(): Promise<ScheduledTaskInfo[]> {
+  return get('/data/scheduled')
 }
 
 export function fetchPortfolioBacktest(codes?: string[]): Promise<PortfolioBacktestResponse> {

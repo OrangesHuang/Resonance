@@ -1,17 +1,6 @@
 import type { KlinePoint, DailySignal, TradePoint } from '../../api/types'
 import type { RangeStats } from './rangeStats'
 
-const DIR_COLORS: Record<string, string> = {
-  ACCUMULATE: '#22c55e',
-  DISTRIBUTE: '#ef4444',
-  NEUTRAL: '#374151',
-}
-const DIR_LABELS: Record<string, string> = {
-  ACCUMULATE: '吸筹',
-  DISTRIBUTE: '出货',
-  NEUTRAL: '中性',
-}
-
 function fmtPct(v: number): string {
   return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 }
@@ -45,10 +34,11 @@ export function buildKlineTooltip(kline: KlinePoint[],
     const k = i != null ? kline[i] : undefined
     if (!k) return ''
     const s = sigByDate.get(k.date)
-    const dir = s?.trade_direction ?? 'NEUTRAL'
-    const dirColor = DIR_COLORS[dir] ?? '#9ca3af'
     const delta = s?.shares_delta_yi
     const prob = s?.composite_prob
+    const cpDir =
+      prob == null ? null : prob >= 45 ? '吸筹' : prob <= 35 ? '出货' : '中性'
+    const cpColor = cpDir === '吸筹' ? '#22c55e' : cpDir === '出货' ? '#ef4444' : '#9ca3af'
     const trade = tradesByDate.get(k.date)
     const tradeHtml = trade
       ? `<br/><span style="color:${trade.action === 'BUY' ? '#22c55e' : '#ef4444'};font-weight:bold">` +
@@ -59,8 +49,8 @@ export function buildKlineTooltip(kline: KlinePoint[],
       `开 ${k.open} · 收 ${k.close} · 高 ${k.high} · 低 ${k.low}<br/>` +
       `成交量：${k.volume.toLocaleString('zh-CN')}<br/>` +
       `份额净申赎：${delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 亿份` : '-'}<br/>` +
-      `综合概率：${prob != null ? `${prob.toFixed(1)}%` : '-'}<br/>` +
-      `方向：<span style="color:${dirColor}"><b>${DIR_LABELS[dir] ?? dir}</b></span>` +
+      `综合概率：${prob != null ? `${prob.toFixed(1)}%` : '-'}` +
+      (cpDir != null ? `（<span style="color:${cpColor}"><b>${cpDir}</b></span>）` : '') + `<br/>` +
       tradeHtml +
       (rangeStats ? rangeBlock(rangeStats) : '') +
       `</div>`

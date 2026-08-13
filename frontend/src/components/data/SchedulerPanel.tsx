@@ -2,10 +2,13 @@ import type { SchedulerJobInfo } from '../../api/types'
 
 const JOB_LABELS: Record<string, string> = {
   realtime_poll: '盘中实时轮询',
+  turnover_poll: '盘中成交额轮询',
+  intraday_update: '盘中信号入库',
   preload_kline: '预加载K线',
   daily_analysis: '日度分析',
   fetch_shares: '份额抓取',
   fetch_sentiment: '情绪抓取',
+  fetch_sentiment_night: '晚间融资抓取',
   sync_calendar: '日历同步',
   cleanup: '实时数据清理',
 }

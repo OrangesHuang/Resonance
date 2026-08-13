@@ -18,23 +18,12 @@ export default function SignalHistoryChart({ dates, points, groupId, height = 42
 
   const probs = points.map(p => p?.composite_prob ?? null)
 
-  const DIR_COLORS: Record<string, string> = {
-    ACCUMULATE: '#ef4444',
-    DISTRIBUTE: '#06b6d4',
-    NEUTRAL: '#374151',
-  }
-  const DIR_LABELS: Record<string, string> = {
-    ACCUMULATE: '吸筹',
-    DISTRIBUTE: '出货',
-    NEUTRAL: '中性',
-  }
-
   const positionBars = points.map(p => {
     if (p?.price_position == null) return null
-    const dir = p.trade_direction ?? 'NEUTRAL'
+    const pp = p.price_position
     return {
-      value: p.price_position,
-      itemStyle: { color: DIR_COLORS[dir] || '#374151' },
+      value: pp,
+      itemStyle: { color: pp <= 40 ? '#22c55e' : pp >= 70 ? '#ef4444' : '#4b5563' },
     }
   })
 
@@ -57,11 +46,14 @@ export default function SignalHistoryChart({ dates, points, groupId, height = 42
         const p = params[0]
         const s = points[p.dataIndex]
         if (!s) return `${p.axisValue}<br/>无信号数据`
-        const dir = s.trade_direction ?? 'NEUTRAL'
-        const dirColor = DIR_COLORS[dir] || '#9ca3af'
-        return `${p.axisValue}<br/>综合概率: <b>${s.composite_prob?.toFixed(1) ?? '-'}%</b><br/>信号: ${s.signal_level ?? '-'}<br/>量比: ${s.volume_ratio?.toFixed(2) ?? '-'}` +
-          `<br/>价格位置: ${s.price_position?.toFixed(0) ?? '-'}%` +
-          `<br/>方向: <span style="color:${dirColor}"><b>${DIR_LABELS[dir] || dir}</b></span>`
+        const cp = s.composite_prob
+        const cpDir = cp == null ? '' : cp >= 45 ? '吸筹' : cp <= 35 ? '出货' : '中性'
+        const cpColor = cpDir === '吸筹' ? '#22c55e' : cpDir === '出货' ? '#ef4444' : '#f59e0b'
+        const cpText = cp == null
+          ? '-'
+          : `${cp.toFixed(1)}%${cpDir ? `<span style="color:${cpColor}">（${cpDir}）</span>` : ''}`
+        return `${p.axisValue}<br/>综合概率: <b>${cpText}</b><br/>量比: ${s.volume_ratio?.toFixed(2) ?? '-'}` +
+          `<br/>价格位置: ${s.price_position?.toFixed(0) ?? '-'}%`
       },
     },
     grid: [
@@ -106,9 +98,9 @@ export default function SignalHistoryChart({ dates, points, groupId, height = 42
       seriesIndex: 0,
       dimension: 1,
       pieces: [
-        { lte: 50, color: '#22c55e' },
-        { gt: 50, lte: 70, color: '#f59e0b' },
-        { gt: 70, color: '#ef4444' },
+        { lte: 35, color: '#ef4444' },
+        { gt: 35, lte: 45, color: '#f59e0b' },
+        { gt: 45, color: '#22c55e' },
       ],
       outOfRange: { color: '#6b7280' },
     },
@@ -127,8 +119,8 @@ export default function SignalHistoryChart({ dates, points, groupId, height = 42
           symbol: 'none',
           label: { fontSize: 10 },
           data: [
-            { yAxis: 70, lineStyle: { color: '#ef4444', type: 'dashed' }, label: { formatter: 'HIGH 70%', color: '#ef4444' } },
-            { yAxis: 50, lineStyle: { color: '#f59e0b', type: 'dashed' }, label: { formatter: 'MID 50%', color: '#f59e0b' } },
+            { yAxis: 45, lineStyle: { color: '#22c55e', type: 'dashed' }, label: { formatter: '吸筹 45%', color: '#22c55e' } },
+            { yAxis: 35, lineStyle: { color: '#ef4444', type: 'dashed' }, label: { formatter: '出货 35%', color: '#ef4444' } },
           ],
         },
       },

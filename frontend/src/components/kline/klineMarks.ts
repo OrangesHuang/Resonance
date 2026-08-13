@@ -55,8 +55,8 @@ export function buildMarks(trades: TradePoint[], kline: KlinePoint[],
     symbol: 'none',
     label: { fontSize: 9 },
     data: [
-      { yAxis: 70, lineStyle: { color: '#ef4444', type: 'dashed' }, label: { formatter: 'HIGH 70%', color: '#ef4444' } },
-      { yAxis: 50, lineStyle: { color: '#f59e0b', type: 'dashed' }, label: { formatter: 'MID 50%', color: '#f59e0b' } },
+      { yAxis: 45, lineStyle: { color: '#22c55e', type: 'dashed' }, label: { formatter: '吸筹 45%', color: '#22c55e' } },
+      { yAxis: 35, lineStyle: { color: '#ef4444', type: 'dashed' }, label: { formatter: '出货 35%', color: '#ef4444' } },
       ...(showMarkLine
         ? [{ xAxis: selectedDate, lineStyle: { color: '#38bdf8', type: 'dashed' }, label: { show: false } }]
         : []),

@@ -12,6 +12,7 @@ const AUX_NAV = [
   { to: '/sentiment', label: '市场宏观指标' },
   { to: '/monitor', label: 'ETF流向分析' },
   { to: '/data', label: '数据管理' },
+  { to: '/tasks', label: '定时任务' },
   { to: '/calendar', label: '交易日历' },
 ]
 

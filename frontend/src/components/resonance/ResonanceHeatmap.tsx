@@ -1,6 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import type { ResonanceOverview, LightState } from '../../api/types'
-import { windowToZoom, zoomToWindow, type DateWindow } from '../common/chartZoom'
+import { windowToZoom, type DateWindow } from '../common/chartZoom'
+import { useChartSync, RESONANCE_SYNC_GROUP } from '../../hooks/useChartSync'
 
 const AXIS_LABEL = '#6b7280'
 
@@ -11,19 +12,13 @@ interface HeatmapTooltipParam {
   value: [number, number, number]
 }
 
-interface DataZoomEvent {
-  start?: number
-  end?: number
-  batch?: Array<{ start: number; end: number }>
-}
-
-export default function ResonanceHeatmap({ data, selectedDate, onSelect, dateWindow, onZoomChange }: {
+export default function ResonanceHeatmap({ data, selectedDate, onSelect, dateWindow }: {
   data: ResonanceOverview
   selectedDate?: string | null
   onSelect?: (date: string, indicatorKey: string) => void
   dateWindow?: DateWindow | null
-  onZoomChange?: (w: DateWindow) => void
 }) {
+  const onChartReady = useChartSync(RESONANCE_SYNC_GROUP)
   const history = data.history
   const keys = data.indicators.map(i => i.key)
   const names = data.indicators.map(i => i.name)
@@ -156,17 +151,12 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, dateWin
       const key = keys[y]
       if (date && key) onSelect?.(date, key)
     },
-    datazoom: (e: DataZoomEvent) => {
-      if (!onZoomChange) return
-      const z = e.batch ? e.batch[0] : e
-      if (z.start == null || z.end == null) return
-      const w = zoomToWindow(dates, z.start, z.end)
-      if (w) onZoomChange(w)
-    },
+    // 缩放由 echarts.connect 原生组分发, 不再上报父级
   }
 
   return (
     <ReactECharts
+      onChartReady={onChartReady}
       option={{
         ...option,
         series: option.series.map(s => ({ ...s, cursor: 'pointer' })),
