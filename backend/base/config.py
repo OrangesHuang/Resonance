@@ -104,7 +104,7 @@ SENTIMENT_ZONE_P_LOW = 20.0  # 低分位阈值(≤判为冷清)
 SHARE_PROB_RED = 30.0  # 份额概率≤此值→净赎回(红灯)
 SHARE_PROB_GREEN = 65.0  # 份额概率≥此值→净申购(绿灯)
 COMPOSITE_PROB_RED = 35.0  # 综合概率≤此值→出货信号(红灯)
-COMPOSITE_PROB_GREEN = 65.0  # 综合概率≥此值→吸筹信号(绿灯)
+COMPOSITE_PROB_GREEN = 45.0  # 综合概率≥此值→吸筹信号(绿灯)
 RESONANCE_VERDICT_N = 3  # 同色灯≥此数→共振判定
 
 # 交易日历模块

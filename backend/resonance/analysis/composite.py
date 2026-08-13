@@ -29,8 +29,13 @@ def calc_composite_probability(
     Layer 1: 方向概率作为基调 (dp)
     Layer 2: 量概率调节方向偏离度 — 低量收缩向中性, 高量保持偏离
     Layer 3: 价格位置×量能交互 — 低位放量=吸筹证据, 高位放量=出货证据
-    Layer 4: 份额验证 — 价格位置作为可信度放大器
-      低位放大流入证据(便宜价位买入更可信), 高位放大流出证据(高价抛售更可信)
+    Layer 4: 份额验证 — 价格位置作为可信度放大器(方向不对称)
+      流入: 低位放大(便宜价位买入更可信), 过半反转惩罚(高位申购疑似诱多/傻大户接盘),
+      且 pp≥95 惩罚加倍(极高位仍大额申购几乎必为诱多, 如 589680 2025-08-28 pp99.7
+      申购1.2亿 → 后5日-8.6%; 159780 2024-10-08 pp100 申购11亿 → 后5日-20%)
+      流出: 高位放大(高价抛售更可信), 低位衰减(低位赎回未必真出货)
+      历史案例: 589680 2026-06-29 pp99.8 流入0.6亿 → 旧式75.1吸筹, 实为见顶(后5日-4.4%);
+      反例: 563300 2026-01 连涨期高位流入后继续涨, 反转惩罚会漏掉该类绿灯(可接受: 错过行情被允许)。
     """
     direction_deviation = (dp - 50) / 50
     volume_confidence = vp / 100
@@ -44,7 +49,14 @@ def calc_composite_probability(
     if sp is not None:
         share_deviation = (sp - 50) / 50
         if price_position is not None:
-            position_scale = 0.5 + price_position / 100
+            if share_deviation > 0:
+                # 流入证据: 位置反转惩罚 — 低位(pp=0)全奖励, pp=50归零;
+                # pp≥50 转惩罚且 pp≥95 惩罚加倍(极高位仍大额申购=诱多/傻大户接盘)
+                position_scale = 1.0 - price_position / 50.0
+                if price_position >= 95:
+                    position_scale *= 2.0
+            else:
+                position_scale = 0.5 + price_position / 100
         else:
             position_scale = 1.0
         amplified = share_deviation * position_scale
@@ -70,7 +82,15 @@ def format_composite_formula(
     if price_position is not None:
         expr += f" − ({price_position}−50)/50×({vp}/100)×{COMPOSITE_PP_VOL_MAX:g}"
     if sp is not None:
-        scale = 0.5 + price_position / 100 if price_position is not None else 1.0
+        if price_position is not None:
+            if sp > 50:
+                scale = 1.0 - price_position / 50.0
+                if price_position >= 95:
+                    scale *= 2.0
+            else:
+                scale = 0.5 + price_position / 100
+        else:
+            scale = 1.0
         reward = COMPOSITE_AGREE_REWARD if (sp - 50) * scale > 0 else COMPOSITE_CONFLICT_PENALTY
         expr += f" + ({sp}−50)/50×{scale:.2f}×{reward:g}"
     return f"{expr} → 截断[0,100] = {cp}"
