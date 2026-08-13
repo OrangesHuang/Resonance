@@ -88,15 +88,15 @@ JOB_DEFS: dict[str, dict] = {
         ],
     },
     "recalc_composite": {
-        "label": "重算综合概率(V2对齐)",
+        "label": "重算综合概率(当前算法对齐)",
         "exclusive": False,
         "defaults": {},
         "data_flow": [
             {
                 "step": "offline",
-                "text": "全量读取行内 vol_prob/dir_prob/share_prob/price_position，按当前 V2 四层门控重算",
+                "text": "全量读取行内 change_pct/volume_ratio/idx_chg + 前5日收盘，按当前算法重算 dir_prob → composite_prob",
             },
-            {"step": "write", "text": "仅更新 composite_prob / signal_level 两列（幂等，可重复执行）"},
+            {"step": "write", "text": "更新 dir_prob / composite_prob / signal_level 三列（幂等，可重复执行）"},
         ],
     },
     "rebuild_all": {
