@@ -18,6 +18,7 @@ from base.config import (
     SENTIMENT_FETCH_MIN,
     SENTIMENT_FETCH_NIGHT_HOUR,
     SENTIMENT_FETCH_NIGHT_MIN,
+    SHARE_WINDOW,
     TURNOVER_POLL_INTERVAL_SEC,
 )
 from base.fetch.calendar import fetch_trade_dates
@@ -53,7 +54,7 @@ from base.store.sentiment_repo import (
     upsert_turnover,
 )
 from resonance.analysis.composite import analyze_single_etf
-from resonance.analysis.factors import calc_share_probability
+from resonance.analysis.factors import calc_share_probability_dual
 from resonance.analysis.intraday import (
     calc_intraday_signal,
     estimate_full_day_turnover,
@@ -275,6 +276,13 @@ def task_fetch_shares() -> dict:
     if deltas:
         shares_date = next(iter(deltas.values()))["date"]
         _share_delta_cache = deltas
+        # 双基准取强: 加载各 code 前10日份额序列(持续吸筹放大)
+        window_by_code: dict[str, list[float]] = {}
+        for code in deltas:
+            from base.store.daily_repo import get_by_code
+            rows = get_by_code(code)
+            hist = [r["shares_yi"] for r in rows if r.get("shares_yi") is not None][:SHARE_WINDOW]
+            window_by_code[code] = hist
         for code, info in deltas.items():
             update_share_data(
                 info["date"],
@@ -282,7 +290,9 @@ def task_fetch_shares() -> dict:
                 info["shares_yi"],
                 info.get("delta_yi"),
                 info.get("delta_pct"),
-                calc_share_probability(info.get("delta_pct")),
+                calc_share_probability_dual(
+                    info.get("delta_pct"), info["shares_yi"], window_by_code.get(code, []), SHARE_WINDOW
+                ),
             )
         print(f"[SCHEDULER] shares updated for {len(deltas)} ETFs (date {shares_date})")
         return {"status": "updated", "shares_date": shares_date}

@@ -4,6 +4,7 @@ from base.analysis.sentiment.core import pct_rank_parts, turnover_value
 from base.config import (
     COMPOSITE_PROB_GREEN,
     COMPOSITE_PROB_RED,
+    DEFENSIVE_ETFS,
     ETFS,
     POSITION_HIGH,
     POSITION_LOW,
@@ -161,26 +162,36 @@ def _evidence_composite(etf_row, state):
     }
 
 
-def _pct_reason(label, p, state):
+def _pct_reason(label, p, state, invert=False):
     if p is None:
         return f"无{label}分位数据 → 灰灯"
     if state == RED:
+        if invert:
+            return f"{label} {p}%分位 ≤ {SENTIMENT_ZONE_P_LOW:.0f} → 避险资金流出/冷清 → 红灯"
         return f"{label} {p}%分位 ≥ {SENTIMENT_ZONE_P_HIGH:.0f} → 过热 → 红灯"
     if state == GREEN:
+        if invert:
+            return f"{label} {p}%分位 ≥ {SENTIMENT_ZONE_P_HIGH:.0f} → 避险资金涌入 → 绿灯"
         return f"{label} {p}%分位 ≤ {SENTIMENT_ZONE_P_LOW:.0f} → 冷清 → 绿灯"
     return f"{SENTIMENT_ZONE_P_LOW:.0f} < {label} {p}%分位 < {SENTIMENT_ZONE_P_HIGH:.0f} → 中性 → 灰灯"
 
 
-def _evidence_pct(label, method, det, state):
-    thresholds = (
-        f"≥{SENTIMENT_ZONE_P_HIGH:.0f} 判过热(红灯)；≤{SENTIMENT_ZONE_P_LOW:.0f} 判冷清(绿灯)；其间为中性(灰灯)"
-    )
+def _evidence_pct(label, method, det, state, invert=False):
+    if invert:
+        thresholds = (
+            f"防御资产反转: ≥{SENTIMENT_ZONE_P_HIGH:.0f} 判避险流入(绿灯)；"
+            f"≤{SENTIMENT_ZONE_P_LOW:.0f} 判避险流出(红灯)；其间为中性(灰灯)"
+        )
+    else:
+        thresholds = (
+            f"≥{SENTIMENT_ZONE_P_HIGH:.0f} 判过热(红灯)；≤{SENTIMENT_ZONE_P_LOW:.0f} 判冷清(绿灯)；其间为中性(灰灯)"
+        )
     if det is None:
         return {
             "method": method,
             "formula": "当日无分位数据（样本不足或非交易日）",
             "thresholds": thresholds,
-            "reason": _pct_reason(label, None, state),
+            "reason": _pct_reason(label, None, state, invert),
             "value": None,
             "inputs": {},
         }
@@ -189,7 +200,7 @@ def _evidence_pct(label, method, det, state):
         "method": method,
         "formula": (f"({det['below']} + 0.5×{det['equal']}) / {det['count']} × 100 = {p}%分位"),
         "thresholds": thresholds,
-        "reason": _pct_reason(label, p, state),
+        "reason": _pct_reason(label, p, state, invert),
         "value": p,
         "inputs": {
             "当日值(亿元)": det["value"],
@@ -229,7 +240,9 @@ def build_day_indicators(
     mp = _margin_detail(margin_rows, date, window, min_pts)
     turn_p = tp["percentile"] if tp else None
     margin_p = mp["percentile"] if mp else None
-    states = eval_day(etf_row, turn_p, margin_p)
+    code = etf_row.get("code")
+    states = eval_day(etf_row, turn_p, margin_p, code)
+    invert = code in DEFENSIVE_ETFS if code else False
 
     pp = etf_row.get("price_position")
     sp = etf_row.get("share_prob")
@@ -254,8 +267,8 @@ def build_day_indicators(
         "price_position": _evidence_position(etf_row, states["price_position"]),
         "share_flow": _evidence_share(etf_row, states["share_flow"]),
         "composite_signal": _evidence_composite(etf_row, states["composite_signal"]),
-        "turnover": _evidence_pct("成交额", turn_method, tp, states["turnover"]),
-        "margin": _evidence_pct("融资余额", margin_method, mp, states["margin"]),
+        "turnover": _evidence_pct("成交额", turn_method, tp, states["turnover"], invert),
+        "margin": _evidence_pct("融资余额", margin_method, mp, states["margin"], invert),
     }
     out = []
     for ind in INDICATORS:

@@ -17,6 +17,7 @@ from base.config import (
     FETCH_SLEEP_SEC,
     SEED_MIN_BARS,
     SENTIMENT_BACKFILL_DAYS,
+    SHARE_WINDOW,
     SHARES_FAIL_PAUSE_AFTER,
     SHARES_FAIL_PAUSE_SEC,
 )
@@ -51,7 +52,7 @@ from base.store.sentiment_repo import (
     upsert_turnover,
 )
 from resonance.analysis.composite import analyze_single_etf
-from resonance.analysis.factors import calc_share_probability
+from resonance.analysis.factors import calc_share_probability, calc_share_probability_dual
 
 
 def job_sync_calendar(progress: ProgressFn) -> dict:
@@ -127,19 +128,31 @@ def job_backfill_etf_daily(
     return {"etfs": len(codes), "records": total_records, "skipped": skipped, "days": days}
 
 
-def _load_prev_shares(date: str, prev_shares: dict) -> None:
+def _load_prev_shares(date: str, prev_shares: dict, prev_window: dict[str, list[float]]) -> None:
     for r in get_by_date(date):
         if r.get("shares_yi") is not None:
             prev_shares[r["code"]] = r["shares_yi"]
+            hist = prev_window.setdefault(r["code"], [])
+            hist.append(r["shares_yi"])
+            if len(hist) > SHARE_WINDOW:
+                hist.pop(0)
 
 
 def _missing_share_etfs(date: str) -> list[str]:
-    """该日期在库中缺份额数据的 ETF (仅考虑当日已有 K 线行的 ETF)。"""
+    """该日期在库中缺份额数据或缺 delta 的 ETF (仅考虑当日已有 K 线行的 ETF)。
+
+    缺 delta 也算缺失: 后补份额时 prev 可能未入库导致 delta 留空
+    (如 159352 2026-08-10 shares_yi 有值但 sd None, 需重算)。
+    """
     rows = {r["code"]: r for r in get_by_date(date)}
-    return [c for c, r in rows.items() if r.get("shares_yi") is None]
+    return [
+        c for c, r in rows.items()
+        if r.get("shares_yi") is None or r.get("shares_delta_yi") is None
+    ]
 
 
-def _write_shares_date(date: str, prev_shares: dict, codes: list[str]) -> int:
+def _write_shares_date(date: str, prev_shares: dict, codes: list[str],
+                       prev_window: dict[str, list[float]] | None = None) -> int:
     shares = fetch_shares_for_date(date)
     if not shares:
         return 0
@@ -154,8 +167,16 @@ def _write_shares_date(date: str, prev_shares: dict, codes: list[str]) -> int:
         if prev is not None and prev > 0:
             delta_yi = round(shares_yi - prev, 4)
             delta_pct = round(delta_yi / prev * 100, 3)
-        update_share_data(date, code, shares_yi, delta_yi, delta_pct, calc_share_probability(delta_pct))
+        # 双基准取强: 当日vs昨日 与 当日vs前N日均值(持续吸筹放大, 如12月底+3.8亿)
+        hist = prev_window.get(code, []) if prev_window else []
+        sp = calc_share_probability_dual(delta_pct, shares_yi, hist, SHARE_WINDOW)
+        update_share_data(date, code, shares_yi, delta_yi, delta_pct, sp)
         prev_shares[code] = shares_yi
+        if prev_window is not None:
+            hist = prev_window.setdefault(code, [])
+            hist.append(shares_yi)
+            if len(hist) > SHARE_WINDOW:
+                hist.pop(0)
         n += 1
     return n
 
@@ -175,18 +196,19 @@ def job_backfill_shares(
     if not dates:
         raise RuntimeError("etf_daily 无交易日,请先回填ETF日度数据")
     prev_shares: dict = {}
+    prev_window: dict[str, list[float]] = {}
     written = 0
     fetched_dates = 0
     fail_streak = 0
     for i, date in enumerate(dates, 1):
         missing = _missing_share_etfs(date)
         if not force and not missing:
-            _load_prev_shares(date, prev_shares)
+            _load_prev_shares(date, prev_shares, prev_window)
             progress(i, len(dates), f"{date} 已完整")
             continue
         targets = [r["code"] for r in get_by_date(date)] if force else missing
         progress(i, len(dates), f"{date} 补 {len(targets)} 只: {','.join(targets[:3])}")
-        wrote = _write_shares_date(date, prev_shares, targets)
+        wrote = _write_shares_date(date, prev_shares, targets, prev_window)
         if wrote == 0:
             # 整日拉取失败 → 可能被限流, 连续失败则暂停给远端喘息
             fail_streak += 1
@@ -213,14 +235,15 @@ def job_backfill_missing_shares(progress: ProgressFn) -> dict:
         progress(1, 1, "份额无缺失")
         return {"dates": 0, "written": 0, "fetched_dates": 0}
     prev_shares: dict = {}
+    prev_window: dict[str, list[float]] = {}
     written = 0
     fetched_dates = 0
     fail_streak = 0
     for i, date in enumerate(dates, 1):
-        _load_prev_shares(date, prev_shares)
+        _load_prev_shares(date, prev_shares, prev_window)
         targets = _missing_share_etfs(date)
         progress(i, len(dates), f"{date} 补 {len(targets)} 只: {','.join(targets[:3])}")
-        wrote = _write_shares_date(date, prev_shares, targets)
+        wrote = _write_shares_date(date, prev_shares, targets, prev_window)
         if wrote == 0:
             fail_streak += 1
             if fail_streak >= SHARES_FAIL_PAUSE_AFTER:

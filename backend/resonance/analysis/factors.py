@@ -130,6 +130,35 @@ def calc_share_probability(share_delta_pct: float | None) -> float | None:
         return max(0.0, 5 + (x + 5) / 5 * 5)
 
 
+def calc_share_probability_dual(
+    share_delta_pct: float | None,
+    shares_yi: float | None,
+    prev_shares: list[float],
+    window: int = 10,
+) -> float | None:
+    """份额概率(双基准取强): 当日vs昨日 与 当日vs前N日均值 取更强信号。
+
+    背景: 单日 delta 只反映一天动量, 噪音大; 而持续吸筹(如 12-24~12-31
+    连续6天+3.8亿)在"当日vs10日均"下显著放大(+7.9%→+33%), 更贴近
+    "近两周资金关注度"。取强兼顾单日突变(国家队单日进场)与持续趋势。
+    """
+    if share_delta_pct is None:
+        return None
+    sp_1d = calc_share_probability(share_delta_pct)
+    if shares_yi is None or len(prev_shares) < 3:
+        return sp_1d
+    avg = sum(prev_shares) / len(prev_shares)
+    if avg <= 0:
+        return sp_1d
+    pct_10d = (shares_yi - avg) / avg * 100
+    sp_10d = calc_share_probability(pct_10d)
+    if sp_10d is None:
+        return sp_1d
+    if sp_1d is not None and sp_1d >= sp_10d:
+        return sp_1d
+    return sp_10d
+
+
 def calc_share_probability_sigmoid(
     share_delta_pct: float | None,
     k: float = 0.5,

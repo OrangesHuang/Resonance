@@ -80,6 +80,7 @@ FETCH_SLEEP_SEC = 0.3  # 相邻 ETF 拉取间隔(秒)
 REFRESH_MIN_INTERVAL_SEC = 120  # 手动刷新接口最小间隔(秒)
 SHARES_RETRY = 2  # 份额单日拉取失败重试次数
 SHARES_RETRY_BACKOFF_SEC = 5  # 份额重试递进间隔基数(秒, 每次×递增)
+SHARE_WINDOW = 10  # 份额概率双基准窗口: 当日 vs 前N日均值取强(持续吸筹放大)
 SHARES_FAIL_PAUSE_AFTER = 3  # 连续失败达到此数后暂停
 SHARES_FAIL_PAUSE_SEC = 60  # 连续失败暂停时长(秒, 给远端喘息)
 
@@ -99,6 +100,10 @@ SENTIMENT_ZONE_WINDOW = 60  # 分位数滚动窗口(交易日)
 SENTIMENT_ZONE_MIN_PTS = 20  # 分位数计算最少样本数
 SENTIMENT_ZONE_P_HIGH = 80.0  # 高分位阈值(≥判为过热)
 SENTIMENT_ZONE_P_LOW = 20.0  # 低分位阈值(≤判为冷清)
+
+# 防御型资产: 市场情绪两盏灯反转(成交额越热/融资越高→绿灯避险流入, 越冷→红灯)
+# 中证红利(515080): 防御属性, 资金越涌向红利=避险情绪越强, 高热度是正面信号
+DEFENSIVE_ETFS = {"515080"}
 
 # 多指标共振模块
 SHARE_PROB_RED = 30.0  # 份额概率≤此值→净赎回(红灯)

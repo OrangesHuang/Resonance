@@ -4,6 +4,7 @@ from base.analysis.sentiment.core import percentile_series, turnover_value
 from base.config import (
     COMPOSITE_PROB_GREEN,
     COMPOSITE_PROB_RED,
+    DEFENSIVE_ETFS,
     ETFS,
     POSITION_HIGH,
     POSITION_LOW,
@@ -79,23 +80,25 @@ def _composite_state(v):
     return GRAY
 
 
-def _pct_state(p):
+def _pct_state(p, invert: bool = False):
     if p is None:
         return GRAY
     if p >= SENTIMENT_ZONE_P_HIGH:
-        return RED
+        return GREEN if invert else RED
     if p <= SENTIMENT_ZONE_P_LOW:
-        return GREEN
+        return RED if invert else GREEN
     return GRAY
 
 
-def eval_day(etf_row: dict, turn_p, margin_p) -> dict:
+def eval_day(etf_row: dict, turn_p, margin_p, code: str | None = None) -> dict:
+    # 防御型资产(中证红利等): 成交额热/融资高 = 避险资金流入 = 绿灯
+    invert = code in DEFENSIVE_ETFS if code else False
     return {
         "price_position": _position_state(etf_row.get("price_position")),
         "share_flow": _share_state(etf_row.get("share_prob"), etf_row.get("price_position")),
         "composite_signal": _composite_state(etf_row.get("composite_prob")),
-        "turnover": _pct_state(turn_p),
-        "margin": _pct_state(margin_p),
+        "turnover": _pct_state(turn_p, invert),
+        "margin": _pct_state(margin_p, invert),
     }
 
 
@@ -159,7 +162,7 @@ def compute_resonance(
             continue
         tp = t_pct.get(d, {}).get("percentile")
         mp = m_pct.get(d, {}).get("percentile")
-        states = eval_day(etf_by_date[d], tp, mp)
+        states = eval_day(etf_by_date[d], tp, mp, code)
         red = sum(1 for s in states.values() if s == RED)
         green = sum(1 for s in states.values() if s == GREEN)
         history.append({"date": d, "red": red, "green": green, "states": states})
