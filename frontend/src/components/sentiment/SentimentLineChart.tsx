@@ -1,6 +1,7 @@
+import { useEffect, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsType } from 'echarts'
-import { windowToZoom, zoomToWindow, type DateWindow } from '../common/chartZoom'
+import { windowToZoom, type DateWindow } from '../common/chartZoom'
 
 interface LineSpec {
   name: string
@@ -29,6 +30,12 @@ interface Props {
   onSelectDate?: (date: string) => void
   dateWindow?: DateWindow | null
   onZoomChange?: (w: DateWindow) => void
+  /** 五图白线联动: 注册实例 + hover 上报 + 接收广播 */
+  bridge?: {
+    register: (inst: EChartsType, getDates: () => string[]) => void
+    show: (date: string | null) => void
+    zoom: (start: number, end: number, source: EChartsType | null) => void
+  }
 }
 
 interface ClickParam {
@@ -52,7 +59,18 @@ interface TooltipParam {
 const AXIS_LABEL = '#6b7280'
 const SPLIT_LINE = '#1f2937'
 
-export default function SentimentLineChart({ dates, lines, bars, height = 320, yFormatter, barFormatter, lineTip, barTip, onReady, selectedDate, onSelectDate, dateWindow, onZoomChange }: Props) {
+export default function SentimentLineChart({ dates, lines, bars, height = 320, yFormatter, barFormatter, lineTip, barTip, onReady, selectedDate, onSelectDate, dateWindow, onZoomChange, bridge }: Props) {
+  const chartRef = useRef<EChartsType | null>(null)
+  const datesRef = useRef(dates)
+  datesRef.current = dates
+
+  // 外部 hover 日期广播 → 白线跟随(按日期值定位, 与自身 dates 无关)
+  useEffect(() => {
+    const inst = chartRef.current
+    if (!inst) return
+    inst.dispatchAction({ type: 'hideTip' })
+  }, [selectedDate])
+
   if (dates.length === 0) {
     return <div className="text-gray-500 text-center py-10">暂无数据</div>
   }
@@ -180,20 +198,31 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
     ],
   }
 
-  const onEvents: Record<string, (params: ClickParam & DataZoomEvent) => void> | undefined =
-    onSelectDate || onZoomChange
+  const onEvents: Record<string, (params: ClickParam & DataZoomEvent & { x?: number }) => void> | undefined =
+    onSelectDate || onZoomChange || bridge
       ? {
           click: params => {
             if (!onSelectDate || params.dataIndex == null) return
             const d = dates[params.dataIndex]
             if (d) onSelectDate(d)
           },
+          updateAxisPointer: params => {
+            if (!bridge || params.x == null) return
+            try {
+              const px = chartRef.current?.convertFromPixel({ xAxisIndex: 0 }, params.x) as number | null
+              const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
+              if (idx >= 0 && idx < dates.length) bridge.show(dates[idx])
+            } catch {
+              // 忽略
+            }
+          },
           datazoom: e => {
-            if (!onZoomChange) return
             const z = e.batch ? e.batch[0] : e
             if (z.start == null || z.end == null) return
-            const w = zoomToWindow(dates, z.start, z.end)
-            if (w) onZoomChange(w)
+            // 即时广播缩放百分比到所有图(含 K线/红绿灯/热力图)
+            bridge?.zoom(z.start, z.end, chartRef.current)
+            // 不再 onZoomChange 上报: dateWindow 仅由 K线维护,
+            // 市场日期与 ETF 日期序列不同, 双写上报告导致窗口横跳死循环
           },
         }
       : undefined
@@ -205,13 +234,14 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
         series: option.series.map((s, i) => ({
           ...s,
           ...(onSelectDate ? { cursor: 'pointer' } : {}),
-          ...(selectedDate
+          ...(selectedDate && dates.includes(selectedDate)
             ? {
                 markLine: {
                   symbol: 'none',
                   silent: true,
                   animation: false,
-                  data: [{ xAxis: selectedDate }],
+                  // 索引定位: 与K线/红绿灯/热力图竖线严格对齐(类别中心)
+                  data: [{ xAxis: dates.indexOf(selectedDate) }],
                   lineStyle: { color: '#38bdf8', type: 'dashed', width: 1 },
                   label: { show: i === 0, position: 'start', color: '#38bdf8', fontSize: 9 },
                 },
@@ -223,7 +253,11 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
       style={{ height }}
       notMerge
       lazyUpdate
-      onChartReady={onReady}
+      onChartReady={inst => {
+        chartRef.current = inst
+        onReady?.(inst)
+        bridge?.register(inst, () => datesRef.current)
+      }}
     />
   )
 }

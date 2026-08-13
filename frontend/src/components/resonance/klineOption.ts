@@ -111,10 +111,10 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
         },
       ],
       grid: [
-        { left: 60, right: 20, top: 20, height: '36%' },
-        { left: 60, right: 20, top: '58%', height: '7%' },
-        { left: 60, right: 20, top: '67%', height: '7%' },
-        { left: 60, right: 20, top: '76%', height: '10%' },
+        { left: 60, right: 20, top: 20, height: '38%' },
+        { left: 60, right: 20, top: '59%', height: '6%' },
+        { left: 60, right: 20, top: '66%', height: '6%' },
+        { left: 60, right: 20, top: '73%', height: '11%' },
       ],
       xAxis: [
         { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { color: AXIS_LABEL, fontSize: 10 } },
@@ -123,7 +123,7 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
         { type: 'category', data: dates, gridIndex: 3, boundaryGap: false, axisLabel: { show: false } },
       ],
       yAxis: [
-        { scale: true, gridIndex: 0, boundaryGap: ['8%', '8%'], splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: AXIS_LABEL } },
+        { scale: true, gridIndex: 0, boundaryGap: ['3%', '3%'], splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: AXIS_LABEL } },
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
         { scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9 } },
         { min: 0, max: 100, gridIndex: 3, splitNumber: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9, formatter: '{value}%' } },

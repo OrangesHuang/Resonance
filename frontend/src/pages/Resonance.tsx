@@ -14,6 +14,7 @@ import ResonanceMethodNote from '../components/resonance/ResonanceMethodNote'
 import EtfSelector from '../components/common/EtfSelector'
 import SentimentLineChart from '../components/sentiment/SentimentLineChart'
 import { useChartSync, SENTIMENT_SYNC_GROUP } from '../hooks/useChartSync'
+import { useAxisPointerBridge } from '../hooks/useAxisPointerBridge'
 import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/common/chartZoom'
 import type { ZoneKey } from '../api/types'
 
@@ -25,8 +26,9 @@ const ZONE_TEXT: Record<ZoneKey, string> = {
   safe: 'text-green-400',
 }
 
-function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoomChange, minDate }: {
+function MarketSentimentSection({ selectedDate, bridge, onSelectDate, dateWindow, onZoomChange, minDate }: {
   selectedDate: string | null
+  bridge: ReturnType<typeof useAxisPointerBridge>
   onSelectDate: (date: string) => void
   dateWindow: DateWindow | null
   onZoomChange: (w: DateWindow) => void
@@ -83,6 +85,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
             yFormatter={v => (v / 10000).toFixed(4)}
             lineTip={v => `${(v / 10000).toFixed(4)} 万亿`}
             selectedDate={selectedDate}
+            bridge={bridge}
             onSelectDate={onSelectDate}
             dateWindow={dateWindow}
             onZoomChange={onZoomChange}
@@ -102,6 +105,7 @@ function MarketSentimentSection({ selectedDate, onSelectDate, dateWindow, onZoom
             lineTip={v => `${(v / 10000).toFixed(4)} 万亿`}
             barFormatter={v => v.toFixed(0)}
             selectedDate={selectedDate}
+            bridge={bridge}
             onSelectDate={onSelectDate}
             dateWindow={dateWindow}
             onZoomChange={onZoomChange}
@@ -126,6 +130,7 @@ export default function Resonance() {
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const bridge = useAxisPointerBridge()
   const queryClient = useQueryClient()
 
   const { data, isLoading, error, refetch } = useResonance(code)
@@ -181,6 +186,17 @@ export default function Resonance() {
     return () => window.removeEventListener('keydown', onKey)
   }, [stepDay])
 
+  // useMemo 缓存: 避免每次渲染新引用导致子图表高频 setOption
+  // ("setOption should not be called during main process" 根因之一)
+  const resonanceHistory = useMemo(
+    () => (klineStart && data ? data.history.filter(h => h.date >= klineStart) : (data?.history ?? [])),
+    [data, klineStart],
+  )
+  const heatmapData = useMemo(
+    () => (data ? { ...data, history: resonanceHistory } : null),
+    [data, resonanceHistory],
+  )
+
   if (error) {
     return (
       <div className="text-red-400 text-center py-20">
@@ -223,8 +239,6 @@ export default function Resonance() {
       setRefreshing(false)
     }
   }
-
-  const resonanceHistory = klineStart && data ? data.history.filter(h => h.date >= klineStart) : (data?.history ?? [])
 
   return (
     <div className="space-y-4">
@@ -289,6 +303,7 @@ export default function Resonance() {
 
       <MarketSentimentSection
         selectedDate={selected?.date ?? null}
+        bridge={bridge}
         onSelectDate={selectDate}
         dateWindow={dateWindow}
         onZoomChange={handleZoom}
@@ -312,6 +327,7 @@ export default function Resonance() {
             onSelectDate={selectDate}
             dateWindow={dateWindow}
             onZoomChange={handleZoom}
+            bridge={bridge}
           />
         ) : (
           <div className="text-gray-500 text-center py-16">K线加载中...</div>
@@ -325,16 +341,16 @@ export default function Resonance() {
               history={resonanceHistory}
               selectedDate={selected?.date ?? null}
               onSelectDate={selectDate}
-              dateWindow={dateWindow}
+              bridge={bridge}
             />
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <h3 className="text-sm font-medium text-gray-300 mb-2">指标状态热力图（点击单元格查看依据）</h3>
             <ResonanceHeatmap
-              data={{ ...data!, history: resonanceHistory }}
+              data={heatmapData!}
               selectedDate={selected?.date ?? null}
               onSelect={selectCell}
-              dateWindow={dateWindow}
+              bridge={bridge}
             />
           </div>
         </div>

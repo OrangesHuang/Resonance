@@ -4,6 +4,7 @@ import type { ECharts } from 'echarts'
 import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../../api/types'
 import useIsMobile from '../../hooks/useIsMobile'
 import { useChartSync, RESONANCE_SYNC_GROUP } from '../../hooks/useChartSync'
+import type { AxisPointerBridge } from '../../hooks/useAxisPointerBridge'
 import { windowToZoom, zoomToWindow, DEFAULT_VISIBLE_BARS, type DateWindow } from '../common/chartZoom'
 import { computeRangeStats } from '../kline/rangeStats'
 import { useRangeSelect, RangeToolbar } from '../kline/rangeSelect'
@@ -14,6 +15,8 @@ import { buildKlineOption } from './klineOption'
 interface ClickParam {
   dataIndex?: number
   componentType?: string
+  offsetX?: number
+  event?: { offsetX?: number; offsetY?: number }
   data?: { coord?: [string, number] }
 }
 
@@ -29,7 +32,7 @@ interface BrushEvent {
 
 const ZOOM_SYNC_DEBOUNCE_MS = 250
 
-export default function ResonanceKline({ kline, history, signals, trades, selectedDate, onSelectDate, dateWindow, onZoomChange }: {
+export default function ResonanceKline({ kline, history, signals, trades, selectedDate, onSelectDate, dateWindow, onZoomChange, bridge }: {
   kline: KlinePoint[]
   history: ResonanceHistoryPoint[]
   signals: DailySignal[]
@@ -38,15 +41,68 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   onSelectDate: (date: string) => void
   dateWindow: DateWindow | null
   onZoomChange: (w: DateWindow) => void
+  bridge?: AxisPointerBridge
 }) {
   const chartRef = useRef<ECharts | null>(null)
   const zoomTimer = useRef<number | null>(null)
   const datesRef = useRef<string[]>([])
   const onSelectDateRef = useRef(onSelectDate)
   const onZoomChangeRef = useRef(onZoomChange)
+  const bridgeRef = useRef(bridge)
   onSelectDateRef.current = onSelectDate
   onZoomChangeRef.current = onZoomChange
-  const onChartReady = useChartSync(RESONANCE_SYNC_GROUP)
+  bridgeRef.current = bridge
+  const connectReady = useChartSync(RESONANCE_SYNC_GROUP)
+  const boundZrRef = useRef<unknown>(null)
+  const onChartReady = (inst: ECharts) => {
+    connectReady(inst)
+    bridgeRef.current?.register(inst, () => datesRef.current)
+    // zr 事件必须在 onChartReady 绑定: echarts-for-react 首渲染的 ref
+    // 回调拿到的是临时实例(随即 dispose), mount effect 绑定会失效
+    const zr = inst.getZr()
+    if (!zr || boundZrRef.current === zr) return
+    boundZrRef.current = zr
+    const zrClick = (e: { offsetX?: number }) => {
+      try {
+        if (e.offsetX == null) return
+        // 单值形式: 二维形式在 y 超出 grid 时返回 NaN
+        const px = inst.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number | null
+        const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
+        if (idx < 0 || idx >= datesRef.current.length) return
+        const d = datesRef.current[idx]
+        if (!d) return
+        setSelectedTrade(null)
+        if (isMobileRef.current && rangeSelRef.current.mode) {
+          const rs = rangeSelRef.current
+          if (mobileRangeStart.current == null) {
+            mobileRangeStart.current = d
+            onSelectDateRef.current(d)
+          } else {
+            rs.setRange(mobileRangeStart.current, d)
+            mobileRangeStart.current = null
+          }
+          return
+        }
+        onSelectDateRef.current(d)
+      } catch (err) {
+        console.warn('[Kline] zr click ignored:', err)
+      }
+    }
+    const zrMove = (e: { offsetX?: number }) => {
+      const br = bridgeRef.current
+      if (!br || e.offsetX == null) return
+      try {
+        const px = inst.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number | null
+        const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
+        const d = idx >= 0 && idx < datesRef.current.length ? datesRef.current[idx] : null
+        br.show(d)
+      } catch {
+        // 忽略坐标转换异常
+      }
+    }
+    zr.on('click', zrClick)
+    zr.on('mousemove', zrMove)
+  }
   const isMobile = useIsMobile()
   const mobileRangeStart = useRef<string | null>(null)
   const isMobileRef = useRef(isMobile)
@@ -106,6 +162,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   const onEvents = useMemo(() => ({
     click: (params: ClickParam) => {
       try {
+        // 买卖点标记点击 → 展示理由面板(普通点击由 zr 层处理, 任意位置可选中)
         if (params.componentType === 'markPoint' && params.data?.coord) {
           const d = params.data.coord[0]
           onSelectDateRef.current(d)
@@ -114,21 +171,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
           return
         }
         const d = params.dataIndex != null ? datesRef.current[params.dataIndex] : undefined
-        if (!d) return
-        setSelectedTrade(null)
-        // 移动端区间统计: 两次点击选区间(代替桌面端拖拽框选)
-        if (isMobileRef.current && rangeSelRef.current.mode) {
-          const rs = rangeSelRef.current
-          if (mobileRangeStart.current == null) {
-            mobileRangeStart.current = d
-            onSelectDateRef.current(d)
-          } else {
-            rs.setRange(mobileRangeStart.current, d)
-            mobileRangeStart.current = null
-          }
-          return
-        }
-        onSelectDateRef.current(d)
+        if (d) onSelectDateRef.current(d)
       } catch (e) {
         console.warn('[Kline] click handler ignored:', e)
       }
@@ -146,9 +189,35 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       if (a < 0 || b < 0 || a >= dates.length || b >= dates.length) return
       rangeSel.setRange(dates[a], dates[b])
     },
+    updateAxisPointer: (e: { x?: number; axisValue?: string }) => {
+      // 鼠标白线悬停 → 像素转日期 → 广播到五图(按日期值对齐)
+      const inst = chartRef.current
+      const br = bridgeRef.current
+      if (!inst || !br) return
+      try {
+        // 优先用 axisValue(已有日期), 否则像素转换(单值形式)
+        if (e.axisValue) {
+          br.show(e.axisValue)
+          return
+        }
+        if (e.x == null) return
+        const px = inst.convertFromPixel({ xAxisIndex: 0 }, e.x) as number | null
+        const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
+        const d = idx >= 0 && idx < datesRef.current.length ? datesRef.current[idx] : null
+        br.show(d)
+      } catch {
+        // 忽略坐标转换异常
+      }
+    },
+    globalout: () => {
+      // 鼠标移出图表 → 清除五图白线(热力图 Rect 也依赖此广播隐藏)
+      bridgeRef.current?.show(null)
+    },
     datazoom: (e: ZoomEvent) => {
       const z = e.batch ? e.batch[0] : e
       if (z.start == null || z.end == null) return
+      // 即时广播缩放百分比到所有图(原生手感, 无 React 延迟)
+      bridgeRef.current?.zoom(z.start, z.end, chartRef.current)
       const w = zoomToWindow(datesRef.current, z.start, z.end)
       if (!w) return
       // 防抖: 拖动期间只更新一次父级状态, 避免每帧重建 React 层
@@ -158,7 +227,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
         onZoomChangeRef.current(w)
       }, ZOOM_SYNC_DEBOUNCE_MS)
     },
-  }), [rangeSel, tradesByDate])
+  }), [rangeSel, tradesByDate, setSelectedTrade])
 
   if (option === null) {
     return <div className="text-gray-500 text-center py-10">暂无K线数据</div>

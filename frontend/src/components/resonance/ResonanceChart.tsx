@@ -1,7 +1,9 @@
+import { useMemo, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
+import type { ECharts } from 'echarts'
 import type { ResonanceHistoryPoint } from '../../api/types'
-import { windowToZoom, type DateWindow } from '../common/chartZoom'
 import { useChartSync, RESONANCE_SYNC_GROUP } from '../../hooks/useChartSync'
+import type { AxisPointerBridge } from '../../hooks/useAxisPointerBridge'
 
 const AXIS_LABEL = '#6b7280'
 const SPLIT_LINE = '#1f2937'
@@ -17,94 +19,146 @@ interface ClickParam {
   dataIndex?: number
 }
 
-export default function ResonanceChart({ history, selectedDate, onSelectDate, dateWindow }: {
+export default function ResonanceChart({ history, selectedDate, onSelectDate, bridge }: {
   history: ResonanceHistoryPoint[]
   selectedDate?: string | null
   onSelectDate?: (date: string) => void
-  dateWindow?: DateWindow | null
+  bridge?: AxisPointerBridge
 }) {
-  const onChartReady = useChartSync(RESONANCE_SYNC_GROUP)
+  const connectReady = useChartSync(RESONANCE_SYNC_GROUP)
+  const instRef = useRef<ECharts | null>(null)
+  const boundZrRef = useRef<unknown>(null)
+  const dates = useMemo(() => history.map(h => h.date), [history])
+  const datesRef = useRef(dates)
+  datesRef.current = dates
 
-  if (history.length === 0) {
-    return <div className="text-gray-500 text-center py-10">暂无数据</div>
+  const onChartReady = (inst: ECharts) => {
+    instRef.current = inst
+    connectReady(inst)
+    bridge?.register(inst, () => datesRef.current)
+    // zr 层点击: 任意位置(白线所在列)点击都选中该日, 无需点中柱子
+    const zr = inst.getZr()
+    if (!zr || boundZrRef.current === zr) return
+    boundZrRef.current = zr
+    zr.on('click', (e: { offsetX?: number }) => {
+      try {
+        if (e.offsetX == null) return
+        const px = inst.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number | null
+        const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
+        if (idx < 0 || idx >= datesRef.current.length) return
+        const d = datesRef.current[idx]
+        if (d) onSelectDate?.(d)
+      } catch {
+        // 忽略
+      }
+    })
   }
 
-  const dates = history.map(h => h.date)
-  const redData = history.map(h => h.red)
-  const greenData = history.map(h => -h.green)
-  const zoom = windowToZoom(dates, dateWindow ?? null)
-
-  const option = {
-    backgroundColor: 'transparent',
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: '#111827',
-      borderColor: '#374151',
-      textStyle: { color: '#e5e7eb' },
-      formatter: (params: TooltipParam[]) => {
-        const date = params[0]?.axisValue ?? ''
-        const idx = dates.indexOf(date)
-        if (idx < 0) return date
-        const p = history[idx]
-        return `${date}<br/>红灯 ${p.red} 盏<br/>绿灯 ${p.green} 盏`
-      },
-    },
-    legend: {
-      data: ['红灯数', '绿灯数'],
-      textStyle: { color: AXIS_LABEL, fontSize: 10 },
-      top: 0,
-      right: 20,
-    },
-    grid: { left: 40, right: 20, top: 30, bottom: 60 },
-    xAxis: {
-      type: 'category',
-      data: dates,
-      boundaryGap: true,
-      axisLabel: { color: AXIS_LABEL, fontSize: 10 },
-    },
-    yAxis: {
-      type: 'value',
-      min: -5,
-      max: 5,
-      interval: 1,
-      splitLine: { lineStyle: { color: SPLIT_LINE } },
-      axisLabel: { color: AXIS_LABEL, formatter: (v: number) => `${Math.abs(v)}` },
-    },
-    series: [
-      {
-        name: '红灯数',
-        type: 'bar',
-        data: redData,
-        stack: 'resonance',
-        barMaxWidth: 10,
-        itemStyle: { color: '#ef4444' },
-      },
-      {
-        name: '绿灯数',
-        type: 'bar',
-        data: greenData,
-        stack: 'resonance',
-        barMaxWidth: 10,
-        itemStyle: { color: '#22c55e' },
-      },
-    ],
-    dataZoom: [
-      { type: 'inside', start: zoom.start, end: zoom.end },
-      {
-        type: 'slider',
-        start: zoom.start,
-        end: zoom.end,
-        bottom: 8,
-        height: 18,
-        borderColor: '#374151',
+  // option 用 useMemo 缓存: dateWindow 变化不重建 option(避免缩放期间
+  // 高频 setOption 触发 "setOption during main process" 报错)
+  const option = useMemo(() => {
+    const redData = history.map(h => h.red)
+    const greenData = history.map(h => -h.green)
+    // notMerge 重建会重置 dataZoom: 从实例实时读当前缩放回填
+    const dz = instRef.current?.getOption().dataZoom as
+      | Array<{ start?: number; end?: number }>
+      | undefined
+    const zStart = dz?.[0]?.start ?? 0
+    const zEnd = dz?.[0]?.end ?? 100
+    return {
+      backgroundColor: 'transparent',
+      animation: false,
+      tooltip: {
+        trigger: 'axis',
         backgroundColor: '#111827',
-        fillerColor: 'rgba(75, 85, 99, 0.3)',
-        handleStyle: { color: '#6b7280' },
-        textStyle: { color: '#6b7280' },
+        borderColor: '#374151',
+        textStyle: { color: '#e5e7eb' },
+        axisPointer: {
+          type: 'line',
+          lineStyle: { color: '#9ca3af', type: 'dashed', width: 1 },
+        },
+        formatter: (params: TooltipParam[]) => {
+          const date = params[0]?.axisValue ?? ''
+          const idx = dates.indexOf(date)
+          if (idx < 0) return date
+          const p = history[idx]
+          return `${date}<br/>红灯 ${p.red} 盏<br/>绿灯 ${p.green} 盏`
+        },
       },
-    ],
-  }
+      axisPointer: { link: [{ xAxisIndex: 'all' }] },
+      legend: {
+        data: ['红灯数', '绿灯数'],
+        textStyle: { color: AXIS_LABEL, fontSize: 10 },
+        top: 0,
+        right: 20,
+      },
+      grid: { left: 40, right: 20, top: 30, bottom: 60 },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        boundaryGap: true,
+        axisLabel: { color: AXIS_LABEL, fontSize: 10 },
+      },
+      yAxis: {
+        type: 'value',
+        min: -5,
+        max: 5,
+        interval: 1,
+        splitLine: { lineStyle: { color: SPLIT_LINE } },
+        axisLabel: { color: AXIS_LABEL, formatter: (v: number) => `${Math.abs(v)}` },
+      },
+      series: [
+        {
+          name: '红灯数',
+          type: 'bar',
+          data: redData,
+          stack: 'resonance',
+          barMaxWidth: 10,
+          itemStyle: { color: '#ef4444' },
+          cursor: 'pointer',
+          ...(selectedDate && dates.includes(selectedDate)
+            ? {
+                markLine: {
+                  symbol: 'none',
+                  silent: true,
+                  animation: false,
+                  data: [{ xAxis: dates.indexOf(selectedDate) }],
+                  lineStyle: { color: '#38bdf8', type: 'dashed', width: 1 },
+                  label: { show: false },
+                },
+              }
+            : {}),
+        },
+        {
+          name: '绿灯数',
+          type: 'bar',
+          data: greenData,
+          stack: 'resonance',
+          barMaxWidth: 10,
+          itemStyle: { color: '#22c55e' },
+          cursor: 'pointer',
+        },
+      ],
+      dataZoom: [
+        { type: 'inside', start: zStart, end: zEnd },
+        {
+          type: 'slider',
+          start: zStart,
+          end: zEnd,
+          bottom: 8,
+          height: 18,
+          borderColor: '#374151',
+          backgroundColor: '#111827',
+          fillerColor: 'rgba(75, 85, 99, 0.3)',
+          handleStyle: { color: '#6b7280' },
+          textStyle: { color: '#6b7280' },
+        },
+      ],
+    }
+  }, [history, dates, selectedDate])
+
+  // 缩放同步: 靠 connect 组(同 dates 图)+ K线 bridge.zoom 广播;
+  // 不再自行 dispatch dateWindow(避免窗口横跳循环)
 
   const onEvents = {
     click: (params: ClickParam) => {
@@ -112,31 +166,27 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, da
       const d = dates[params.dataIndex]
       if (d) onSelectDate?.(d)
     },
+    updateAxisPointer: (e: { x?: number }) => {
+      if (!bridge || e.x == null) return
+      try {
+        const px = instRef.current?.convertFromPixel({ xAxisIndex: 0 }, e.x) as number | null
+        const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
+        if (idx >= 0 && idx < dates.length) bridge.show(dates[idx])
+      } catch {
+        // 忽略
+      }
+    },
     // 缩放由 echarts.connect 原生组分发, 不再上报父级(避免多源状态更新)
+  }
+
+  if (history.length === 0) {
+    return <div className="text-gray-500 text-center py-10">暂无数据</div>
   }
 
   return (
     <ReactECharts
       onChartReady={onChartReady}
-      option={{
-        ...option,
-        series: option.series.map(s => ({
-          ...s,
-          cursor: 'pointer',
-          ...(selectedDate
-            ? {
-                markLine: {
-                  symbol: 'none',
-                  silent: true,
-                  animation: false,
-                  data: [{ xAxis: selectedDate }],
-                  lineStyle: { color: '#38bdf8', type: 'dashed', width: 1 },
-                  label: { show: false },
-                },
-              }
-            : {}),
-        })),
-      }}
+      option={option}
       onEvents={onEvents}
       style={{ height: 260 }}
       notMerge

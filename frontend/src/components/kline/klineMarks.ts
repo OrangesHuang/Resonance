@@ -43,8 +43,10 @@ export function buildMarks(trades: TradePoint[], kline: KlinePoint[],
     lineStyle: { color: '#38bdf8', type: 'dashed' as const, width: 1 },
     label: { show: false },
   }
+  // 用日期索引定位: category 轴数值索引始终画在类别中心(boundaryGap 无关),
+  // 保证与红绿灯/热力图/情绪图的竖线严格对齐
   const markLine = showMarkLine
-    ? { ...baseMarkLine, data: [{ xAxis: selectedDate }] }
+    ? { ...baseMarkLine, data: [{ xAxis: dates.indexOf(selectedDate) }] }
     : { ...baseMarkLine, data: [] }
   const markLineTop = showMarkLine
     ? { ...markLine, label: { show: true, formatter: selectedDate ?? '', color: '#38bdf8', fontSize: 10, position: 'insideEndTop' as const } }
