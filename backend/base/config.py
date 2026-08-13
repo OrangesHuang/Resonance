@@ -103,6 +103,8 @@ SENTIMENT_ZONE_P_LOW = 20.0  # 低分位阈值(≤判为冷清)
 # 多指标共振模块
 SHARE_PROB_RED = 30.0  # 份额概率≤此值→净赎回(红灯)
 SHARE_PROB_GREEN = 65.0  # 份额概率≥此值→净申购(绿灯)
+SHARE_LOW_FLIP_PP = 50.0  # 低位流出诱空翻转阈值: pp≤此值且净赎回→转吸筹灯(与composite一致)
+SHARE_HIGH_FLIP_PP = 70.0  # 高位申购诱多翻转阈值: pp≥此值且净申购→转出货灯(后10日上涨仅46-50%, pp65-70仍72%真吸筹)
 COMPOSITE_PROB_RED = 35.0  # 综合概率≤此值→出货信号(红灯)
 COMPOSITE_PROB_GREEN = 45.0  # 综合概率≥此值→吸筹信号(绿灯)
 RESONANCE_VERDICT_N = 3  # 同色灯≥此数→共振判定

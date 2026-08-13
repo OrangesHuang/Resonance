@@ -105,6 +105,25 @@ def update_composite_signal(date: str, code: str, composite_prob: float, signal_
         conn.close()
 
 
+def update_direction_signal(date: str, code: str, dir_prob: float,
+                            composite_prob: float, signal_level: str) -> None:
+    """重算对齐(方向概率修正后): 更新方向概率+综合概率+信号等级三列。"""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE etf_daily
+            SET dir_prob=?, composite_prob=?, signal_level=?,
+                updated_at=datetime('now','localtime')
+            WHERE date=? AND code=?
+            """,
+            (dir_prob, composite_prob, signal_level, date, code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_latest_date_for(code: str) -> str | None:
     """单只 ETF 在库中的最新日期 (无数据返回 None)。"""
     conn = get_connection()

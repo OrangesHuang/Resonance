@@ -30,10 +30,19 @@ def calc_volume_probability(volume_ratio: float) -> float:
         return min(100.0, 98 + (r - 5.0) / 5.0 * 2)
 
 
-RALLY_DISCOUNTS = [(2.0, 0.60), (1.5, 0.70), (1.0, 0.80), (0.5, 0.90)]
+RALLY_DISCOUNTS = [(2.0, 0.80), (1.5, 0.85), (1.0, 0.90), (0.5, 0.95)]
 
 
-def _rally_discount(idx_chg: float) -> float:
+def _rally_discount(idx_chg: float, price_position: float | None = None) -> float:
+    """指数大涨日对方向概率的打折(跟随上涨无超额, 不判强吸筹)。
+
+    只在高位生效: pp≤50 低位/中位不打折(低位跟随指数大涨=反弹启动,
+    后5日上涨63-70%, 打折会误杀底部信号, 如 512100 2026-07-21 pp23.8
+    连跌-7.4%后指数+2.3%反弹日, 旧式打折致 dp16.8 误判出货红灯)。
+    高位(pp>50)打折但放宽: 数据仅支持小幅下调(后5日上涨57%, 原0.6重折无依据)。
+    """
+    if price_position is not None and price_position <= 50:
+        return 1.0
     for threshold, discount in RALLY_DISCOUNTS:
         if idx_chg > threshold:
             return discount
@@ -46,6 +55,7 @@ def calc_direction_probability(
     t5_idx: float,
     volume_ratio: float,
     idx_chg: float,
+    price_position: float | None = None,
 ) -> float:
     # f1: 逆市护盘检测 (40%)
     if chg > 0.3 and t5_idx < -1:
@@ -53,7 +63,12 @@ def calc_direction_probability(
     elif chg > 0 and idx_chg < -0.5:
         f1 = 85.0
     elif chg > 0 and idx_chg > 0.5:
-        f1 = 35.0
+        # 指数大涨日 ETF 跟随上涨: 低位反弹启动(pp≤50且前5日跌)为强买入
+        # (后5日上涨86%), 高位跟随才需警惕冲顶
+        if price_position is not None and price_position <= 50 and t5_etf < 0:
+            f1 = 65.0
+        else:
+            f1 = 35.0
     elif chg < -1 and idx_chg < -1:
         f1 = 10.0
     else:
@@ -90,7 +105,7 @@ def calc_direction_probability(
     f4 = 35.0
 
     raw = f1 * 0.4 + f2 * 0.3 + f3 * 0.2 + f4 * 0.1
-    return round(raw * _rally_discount(idx_chg), 1)
+    return round(raw * _rally_discount(idx_chg, price_position), 1)
 
 
 def calc_share_probability(share_delta_pct: float | None) -> float | None:

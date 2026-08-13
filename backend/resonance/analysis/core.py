@@ -12,6 +12,8 @@ from base.config import (
     SENTIMENT_ZONE_P_HIGH,
     SENTIMENT_ZONE_P_LOW,
     SENTIMENT_ZONE_WINDOW,
+    SHARE_HIGH_FLIP_PP,
+    SHARE_LOW_FLIP_PP,
     SHARE_PROB_GREEN,
     SHARE_PROB_RED,
 )
@@ -39,12 +41,22 @@ def _position_state(v):
     return GRAY
 
 
-def _share_state(v):
+def _share_state(v, pp=None):
+    """份额流向灯: 结合价格位置双向修正 —
+    pp≤50 低位流出(诱空/洗盘)转吸筹灯; pp≥85 高位申购(诱多陷阱)转出货灯。
+    与 composite Layer4 逻辑一致(低位流出翻转/高位申购惩罚):
+    低位流出后10日上涨60-90%; 高位申购(pp85-95)后10日上涨仅31%
+    (案例 589680 2025-08-28 pp99.7申购1.2亿→后5日-8.6%)。
+    """
     if v is None:
         return GRAY
     if v <= SHARE_PROB_RED:
+        if pp is not None and pp <= SHARE_LOW_FLIP_PP:
+            return GREEN
         return RED
     if v >= SHARE_PROB_GREEN:
+        if pp is not None and pp >= SHARE_HIGH_FLIP_PP:
+            return RED
         return GREEN
     return GRAY
 
@@ -80,7 +92,7 @@ def _pct_state(p):
 def eval_day(etf_row: dict, turn_p, margin_p) -> dict:
     return {
         "price_position": _position_state(etf_row.get("price_position")),
-        "share_flow": _share_state(etf_row.get("share_prob")),
+        "share_flow": _share_state(etf_row.get("share_prob"), etf_row.get("price_position")),
         "composite_signal": _composite_state(etf_row.get("composite_prob")),
         "turnover": _pct_state(turn_p),
         "margin": _pct_state(margin_p),

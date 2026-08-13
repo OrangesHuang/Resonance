@@ -133,16 +133,17 @@ def calc_intraday_signal(
         if recent5[0]["close"] > 0:
             t5_etf = (recent5[-1]["close"] - recent5[0]["close"]) / recent5[0]["close"] * 100
 
+    price_position = calc_price_position_from_price(quote.price, kline_history)
     dp = calc_direction_probability(
         chg=chg,
         t5_etf=t5_etf,
         t5_idx=t5_idx,
         volume_ratio=intraday_vr,
         idx_chg=idx_chg,
+        price_position=price_position,
     )
 
     sp = calc_share_probability(latest_share_delta_pct)
-    price_position = calc_price_position_from_price(quote.price, kline_history)
     trade_direction = classify_trade_direction(price_position, intraday_vr)
     cp = calc_composite_probability(vp, dp, sp, price_position)
     signal_level = classify_signal(cp)

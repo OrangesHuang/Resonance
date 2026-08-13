@@ -13,6 +13,8 @@ from base.config import (
     SENTIMENT_ZONE_P_HIGH,
     SENTIMENT_ZONE_P_LOW,
     SENTIMENT_ZONE_WINDOW,
+    SHARE_HIGH_FLIP_PP,
+    SHARE_LOW_FLIP_PP,
     SHARE_PROB_GREEN,
     SHARE_PROB_RED,
 )
@@ -83,10 +85,14 @@ def _evidence_position(etf_row, state):
     }
 
 
-def _share_reason(sp, state):
+def _share_reason(sp, state, pp=None):
     if state == RED:
+        if pp is not None and pp >= SHARE_HIGH_FLIP_PP and sp >= SHARE_PROB_GREEN:
+            return f"{sp:.0f} ≥ {SHARE_PROB_GREEN:.0f} 且 pp{pp:.0f} ≥ {SHARE_HIGH_FLIP_PP:.0f} → 高位申购=诱多陷阱 → 转出货灯"
         return f"{sp:.0f} ≤ {SHARE_PROB_RED:.0f} → 净赎回 → 红灯"
     if state == GREEN:
+        if pp is not None and pp <= SHARE_LOW_FLIP_PP and sp <= SHARE_PROB_RED:
+            return f"{sp:.0f} ≤ {SHARE_PROB_RED:.0f} 且 pp{pp:.0f} ≤ {SHARE_LOW_FLIP_PP:.0f} → 低位流出=诱空/恐慌盘 → 转吸筹灯"
         return f"{sp:.0f} ≥ {SHARE_PROB_GREEN:.0f} → 净申购 → 绿灯"
     return f"{SHARE_PROB_RED:.0f} < {sp:.0f} < {SHARE_PROB_GREEN:.0f} → 中性 → 灰灯"
 
@@ -118,7 +124,7 @@ def _evidence_share(etf_row, state):
         "method": method,
         "formula": f"份额变动率 {sdp}% → share_prob = {sp:.0f}",
         "thresholds": thresholds,
-        "reason": _share_reason(sp, state),
+        "reason": _share_reason(sp, state, etf_row.get("price_position")),
         "value": sp,
         "inputs": inputs,
     }

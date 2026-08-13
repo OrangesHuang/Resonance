@@ -37,6 +37,10 @@ BUY_PP_EXTREME = 10  # 买入: 极低位阈值
 SHARE_PROB_MIN = 65  # 买入: 份额净申购概率阈值
 TP_COLD_MAX = 10  # 买入: 成交额极冷分位阈值
 CP_HIGH_MIN = 50  # 买入: 综合概率阈值
+BUY_PP_PANIC = 15  # 买入: 恐慌吸筹路径 pp 上限
+# P5 恐慌吸筹: 极端低位+ACCUMULATE(无需等份额/概率确认, 后10日上涨69%)
+# 案例: 510300 2026-03-23 pp5.5+ACCUMULATE+净申购8.3亿(旧式cp46.3<50漏买,
+# 3-23买@4.430→4-29卖@4.821 +8.8%)
 
 
 def _run_default(rows: list[dict], t_pct: dict, m_pct: dict) -> dict:
@@ -78,6 +82,8 @@ def _run_default(rows: list[dict], t_pct: dict, m_pct: dict) -> dict:
                 action, reason = "BUY", "价格低位+吸筹+成交额极冷"
             elif pp_extreme and td_green and cp_high:
                 action, reason = "BUY", "价格极低位+吸筹+概率>50%"
+            elif pp is not None and pp <= BUY_PP_PANIC and td_green:
+                action, reason = "BUY", "恐慌吸筹: 极低位+吸筹信号"
 
         if position == 1:
             hold_days += 1

@@ -33,8 +33,9 @@ def calc_composite_probability(
       流入: 低位放大(便宜价位买入更可信), 过半反转惩罚(高位申购疑似诱多/傻大户接盘),
       且 pp≥95 惩罚加倍(极高位仍大额申购几乎必为诱多, 如 589680 2025-08-28 pp99.7
       申购1.2亿 → 后5日-8.6%; 159780 2024-10-08 pp100 申购11亿 → 后5日-20%)
-      流出: 高位放大(高价抛售更可信), 低位衰减(低位赎回未必真出货)
-      历史案例: 589680 2026-06-29 pp99.8 流入0.6亿 → 旧式75.1吸筹, 实为见顶(后5日-4.4%);
+      流出: pp≤50 低位流出=诱空/洗盘, 符号翻转(流出强度作吸筹证据, 后10日上涨
+      60-90%; 案例: 589680 2025-04-07 pp14流出0.5亿→后10日+12.4%, 159352
+      2025-04-07 pp3流出7.9亿→+7.7%); pp>50 高位流出放大出货
       反例: 563300 2026-01 连涨期高位流入后继续涨, 反转惩罚会漏掉该类绿灯(可接受: 错过行情被允许)。
     """
     direction_deviation = (dp - 50) / 50
@@ -51,11 +52,19 @@ def calc_composite_probability(
         if price_position is not None:
             if share_deviation > 0:
                 # 流入证据: 位置反转惩罚 — 低位(pp=0)全奖励, pp=50归零;
-                # pp≥50 转惩罚且 pp≥95 惩罚加倍(极高位仍大额申购=诱多/傻大户接盘)
+                # pp≥95 惩罚加倍(极高位仍大额申购=诱多/傻大户接盘)
                 position_scale = 1.0 - price_position / 50.0
                 if price_position >= 95:
                     position_scale *= 2.0
+            elif price_position <= 50:
+                # 低位流出 = 诱空/洗盘: 流出越极端越看多(后10日上涨60-90%),
+                # 符号翻转 — 流出强度(50-sp)作为吸筹证据(正向奖励)
+                # 案例: 589680 2025-04-07 pp14流出0.5亿→后10日+12.4%,
+                # 159352 2025-04-07 pp3流出7.9亿→+7.7%
+                share_deviation = (50.0 - sp) / 50.0
+                position_scale = (50.0 - price_position) / 50.0
             else:
+                # 高位流出: 放大出货(高价抛售更可信)
                 position_scale = 0.5 + price_position / 100
         else:
             position_scale = 1.0
@@ -87,6 +96,10 @@ def format_composite_formula(
                 scale = 1.0 - price_position / 50.0
                 if price_position >= 95:
                     scale *= 2.0
+            elif price_position <= 50:
+                # 低位流出: 诱空翻转, 用流出强度作吸筹证据
+                sp = 100.0 - sp
+                scale = (50.0 - price_position) / 50.0
             else:
                 scale = 0.5 + price_position / 100
         else:
@@ -136,16 +149,16 @@ def analyze_single_etf(
         if idx_bar["open"]:
             idx_chg = (idx_bar["close"] - idx_bar["open"]) / idx_bar["open"] * 100
 
+    sp = calc_share_probability(shares_delta_pct)
+    price_position = calc_price_position(kline, target_idx)
     dp = calc_direction_probability(
         chg=chg,
         t5_etf=t5_etf or 0,
         t5_idx=t5_idx or 0,
         volume_ratio=volume_ratio,
         idx_chg=idx_chg,
+        price_position=price_position,
     )
-
-    sp = calc_share_probability(shares_delta_pct)
-    price_position = calc_price_position(kline, target_idx)
     trade_direction = classify_trade_direction(price_position, volume_ratio)
     cp = calc_composite_probability(vp, dp, sp, price_position)
     signal_level = classify_signal(cp)
