@@ -6,7 +6,7 @@
 ## 1. 总体架构（4 层）
 
 ```
-L0 远端数据源（9 个）──▶ L1 SQLite 落库（7 张表）──▶ L2 领域加工 ──▶ L3 API ──▶ L4 前端展示
+L0 远端数据源（7 个）──▶ L1 SQLite 落库（6 张表）──▶ L2 领域加工 ──▶ L3 API ──▶ L4 前端展示
 ```
 
 ```mermaid
@@ -19,8 +19,6 @@ flowchart TB
         A5["交易日历<br/>trade_dates"]
         A6["腾讯实时行情<br/>price/change_pct/volume_hand/open/high/low/prev_close"]
         A7["盘中两市成交额<br/>amount_yi（当日累计）"]
-        A8["期权PCR(akshare)<br/>pcr/call_volume/put_volume/call_oi/put_oi"]
-        A9["股指期货基差(akshare)<br/>fut_close/spot_close/basis/basis_pct/volume/hold"]
     end
 
     subgraph L1["L1 SQLite（原始 + 部分加工混合落库）"]
@@ -30,7 +28,6 @@ flowchart TB
         B4["margin_trading"]
         B5["trade_calendar"]
         B6["intraday_turnover<br/>amount_yi原始 + est_amount_yi加工"]
-        B7["option_pcr / futures_basis"]
     end
 
     subgraph L2["L2 领域加工（纯函数）"]
@@ -39,15 +36,13 @@ flowchart TB
         C3["sentiment/core.py<br/>ma5_yi/vol_ratio/net_fin_buy_yi/分位/情绪区"]
         C4["intraday.py<br/>盘中量比(修正)/全天成交额预估/溢价/分位"]
         C5["strategy/router.py<br/>各ETF买卖点 trades"]
-        C6["derivatives/divergence.py<br/>三维背离信号"]
         C7["portfolio/simulator.py<br/>净值曲线/交易记录"]
     end
 
-    subgraph L4["L4 前端展示（9 页面）"]
+    subgraph L4["L4 前端展示（8 页面）"]
         D1["Dashboard 大盘监控"]
         D2["Resonance 共振页"]
         D3["Sentiment 情绪页"]
-        D4["Derivatives 衍生品页"]
         D5["PortfolioBacktest 回测页"]
         D6["KlineCompare/EtfDetail K线页"]
         D7["TradeCalendar/DataManage"]
@@ -60,14 +55,11 @@ flowchart TB
     A5 --> B5
     A6 --> B2
     A7 --> B6
-    A8 --> B7
-    A9 --> B7
     B1 --> C1 --> C2
     B3 --> C3
     B4 --> C3
     B1 --> C4
     B6 --> C4
-    B7 --> C6
     C2 --> C5
     C5 --> C7
     B1 --> C5
@@ -75,7 +67,6 @@ flowchart TB
     C5 --> D5
     C5 --> D6
     C7 --> D5
-    C6 --> D4
     C3 --> D3
     C3 --> D2
     C4 --> D1
@@ -121,23 +112,16 @@ flowchart TB
 | 融资曲线 | fin_balance_yi, net_fin_buy_yi | 原始 + 差分 |
 | 情绪区（安全/中性/危险） | zone/score | 成交额分位+融资分位→`compute_zone`（两级分位得分相加） |
 
-### 2.4 Derivatives 衍生品页 → `/api/derivatives/*`
+### 2.4 PortfolioBacktest 回测页 → `/api/portfolio/backtest`
 
 | 前端元素 | 数据 | 血缘链 |
 |---|---|---|
-| PCR/基差曲线 | option_pcr/futures_basis 全字段 | 原始，直接展示 |
-| 背离信号 | TOP/BOT + score/grade/rules | K线+PCR+基差→`divergence.py`（5日变化率/120日分位/10规则打分≥2.0） |
-
-### 2.5 PortfolioBacktest 回测页 → `/api/portfolio/backtest`
-
-| 前端元素 | 数据 | 血缘链 |
-|---|---|---|
-| 净值曲线/仓位 | curve[] | 买卖点+收盘价+交易日历→`simulator.py` 模拟（每份金额=资金/标的数） |
-| 交易记录 | trades[] | 同上模拟器输出 |
+| 净值曲线/仓位 | curve[] | 买卖点+收盘价+交易日历→`simulator.py` 等权满仓调度(TRIM→建仓→REFILL) |
+| 交易记录 | trades[] | 同上模拟器输出(BUY/SELL/TRIM/REFILL + 权重) |
 | 单 ETF 净值/份额申赎 | etf_series | 收盘价归一化 + shares_delta_yi |
 | 买卖点输入 | trades_by_code | **与共振页共用** `strategy/router.py` |
 
-### 2.6 K线对比/详情页 → `/api/etf/*`
+### 2.5 K线对比/详情页 → `/api/etf/*`
 
 | 前端元素 | 数据 | 血缘链 |
 |---|---|---|

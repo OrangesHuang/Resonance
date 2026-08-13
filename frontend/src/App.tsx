@@ -8,7 +8,6 @@ import Resonance from './pages/Resonance'
 import KlineCompare from './pages/KlineCompare'
 import PortfolioBacktest from './pages/PortfolioBacktest'
 import DataManage from './pages/DataManage'
-import Derivatives from './pages/Derivatives'
 
 export default function App() {
   return (
@@ -24,7 +23,6 @@ export default function App() {
           <Route path="/sentiment" element={<Sentiment />} />
           <Route path="/calendar" element={<TradeCalendar />} />
           <Route path="/data" element={<DataManage />} />
-          <Route path="/derivatives" element={<Derivatives />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -11,7 +11,6 @@ const TOP_NAV = [
 const AUX_NAV = [
   { to: '/sentiment', label: '市场宏观指标' },
   { to: '/monitor', label: 'ETF流向分析' },
-  { to: '/derivatives', label: '衍生品数据' },
   { to: '/data', label: '数据管理' },
   { to: '/calendar', label: '交易日历' },
 ]

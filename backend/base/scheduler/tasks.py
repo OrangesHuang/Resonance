@@ -21,7 +21,6 @@ from base.config import (
     TURNOVER_POLL_INTERVAL_SEC,
 )
 from base.fetch.calendar import fetch_trade_dates
-from base.fetch.derivatives import fetch_futures_basis, fetch_option_pcr
 from base.fetch.kline import fetch_index_kline, fetch_kline
 from base.fetch.realtime import fetch_market_turnover_intraday, fetch_realtime_quotes
 from base.fetch.sentiment import fetch_margin_series, fetch_market_turnover
@@ -41,11 +40,6 @@ from base.store.daily_repo import (
     upsert_daily,
 )
 from base.store.database import init_db
-from base.store.derivatives_repo import (
-    get_pcr_latest_date,
-    upsert_basis,
-    upsert_pcr,
-)
 from base.store.realtime_repo import (
     cleanup_old_snapshots,
     insert_intraday_turnover,
@@ -355,30 +349,6 @@ def task_sync_calendar() -> dict:
     return {"count": get_calendar_count(), "range": get_range()}
 
 
-def task_fetch_derivatives(backfill: bool = False) -> dict:
-    """采集期权PCR + 股指期货基差。backfill=True 时回溯190天。"""
-    print(f"[SCHEDULER] fetching derivatives (backfill={backfill})...")
-
-    pcr_start = None
-    if backfill:
-        pcr_start = (datetime.now() - timedelta(days=280)).strftime("%Y-%m-%d")
-    else:
-        latest = get_pcr_latest_date()
-        if latest:
-            pcr_start = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-
-    pcr_rows = fetch_option_pcr(start_date=pcr_start, on_row=lambda r: upsert_pcr([r]))
-    if pcr_rows:
-        print(f"[SCHEDULER] PCR upserted: {len(pcr_rows)} rows")
-
-    basis_rows = fetch_futures_basis()
-    if basis_rows:
-        upsert_basis(basis_rows)
-        print(f"[SCHEDULER] basis upserted: {len(basis_rows)} rows")
-
-    return {"pcr": len(pcr_rows), "basis": len(basis_rows)}
-
-
 def start_scheduler() -> None:
     init_db()
     reload_cache()
@@ -401,9 +371,6 @@ def start_scheduler() -> None:
 
     if get_turnover_count() == 0 or get_margin_count() == 0:
         task_fetch_sentiment(backfill=True)
-
-    if get_pcr_latest_date() is None:
-        task_fetch_derivatives(backfill=True)
 
     scheduler.add_job(
         task_realtime_poll,
@@ -457,12 +424,6 @@ def start_scheduler() -> None:
         trading_day_guard(task_fetch_sentiment),
         CronTrigger(hour=SENTIMENT_FETCH_NIGHT_HOUR, minute=SENTIMENT_FETCH_NIGHT_MIN, day_of_week="mon-fri"),
         id="fetch_sentiment_night",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        trading_day_guard(task_fetch_derivatives),
-        CronTrigger(hour=17, minute=0, day_of_week="mon-fri"),
-        id="fetch_derivatives",
         replace_existing=True,
     )
     scheduler.add_job(

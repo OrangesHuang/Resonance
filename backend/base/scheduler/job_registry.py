@@ -13,7 +13,6 @@ from base.scheduler.data_jobs import (
     job_backfill_etf_daily,
     job_backfill_missing_shares,
     job_backfill_shares,
-    job_fetch_derivatives,
     job_fetch_etf_latest,
     job_fetch_sentiment,
     job_sync_calendar,
@@ -88,15 +87,6 @@ JOB_DEFS: dict[str, dict] = {
             {"step": "write", "text": "upsert 当日行到 etf_daily"},
         ],
     },
-    "fetch_derivatives": {
-        "label": "拉取衍生品数据",
-        "exclusive": False,
-        "defaults": {},
-        "data_flow": [
-            {"step": "fetch", "text": "拉取期权 PCR（增量回溯）+ 股指期货基差"},
-            {"step": "write", "text": "写入 PCR/基差表，供衍生品页三维背离（K线+PCR+基差）"},
-        ],
-    },
     "recalc_composite": {
         "label": "重算综合概率(V2对齐)",
         "exclusive": False,
@@ -135,7 +125,6 @@ JOB_FNS: dict[str, Callable[..., dict]] = {
     "backfill_missing_shares": job_backfill_missing_shares,
     "fetch_sentiment": job_fetch_sentiment,
     "fetch_etf_latest": job_fetch_etf_latest,
-    "fetch_derivatives": job_fetch_derivatives,
     "recalc_composite": job_recalc_composite,
     "rebuild_all": job_rebuild_all,
 }

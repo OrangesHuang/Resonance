@@ -13,7 +13,6 @@ from api.stats import router as stats_router
 from base.api.etf import router as etf_router
 from base.api.sentiment import router as sentiment_router
 from base.scheduler.tasks import start_scheduler, stop_scheduler
-from derivatives.api import router as derivatives_router
 from portfolio.api import router as portfolio_router
 from resonance.api import router as resonance_router
 
@@ -49,7 +48,6 @@ app.include_router(calendar_router)
 app.include_router(resonance_router)
 app.include_router(data_router)
 app.include_router(portfolio_router)
-app.include_router(derivatives_router)
 
 
 @app.get("/api/health")

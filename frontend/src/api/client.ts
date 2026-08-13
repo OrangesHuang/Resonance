@@ -1,4 +1,4 @@
-import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse, DerivativesOverview, DivergenceResponse } from './types'
+import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse } from './types'
 
 const BASE = '/api'
 
@@ -120,18 +120,4 @@ export function fetchDataJobs(): Promise<JobState[]> {
 
 export function startDataJob(req: StartJobRequest): Promise<StartJobResponse> {
   return post('/data/jobs', req)
-}
-
-// ========== 衍生品数据 ==========
-
-export function fetchDerivativesOverview(): Promise<DerivativesOverview> {
-  return get('/derivatives/overview')
-}
-
-export function fetchDivergenceSignals(code = '588000'): Promise<DivergenceResponse> {
-  return get(`/derivatives/divergence?code=${code}`)
-}
-
-export function refreshDerivatives(): Promise<{ status: string; pcr: number; basis: number }> {
-  return post('/derivatives/refresh')
 }

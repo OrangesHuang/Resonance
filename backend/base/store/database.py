@@ -99,37 +99,6 @@ def init_db() -> None:
                 est_amount_yi REAL,
                 created_at  TEXT DEFAULT (datetime('now','localtime'))
             );
-
-            CREATE TABLE IF NOT EXISTS option_pcr (
-                date            TEXT NOT NULL,
-                underlying_code TEXT NOT NULL,
-                underlying_name TEXT,
-                pcr             REAL,
-                call_volume     INTEGER,
-                put_volume      INTEGER,
-                call_oi         INTEGER,
-                put_oi          INTEGER,
-                created_at      TEXT DEFAULT (datetime('now','localtime')),
-                PRIMARY KEY (date, underlying_code)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_pcr_date ON option_pcr(date);
-
-            CREATE TABLE IF NOT EXISTS futures_basis (
-                date            TEXT NOT NULL,
-                futures_code    TEXT NOT NULL,
-                futures_name    TEXT,
-                fut_close       REAL,
-                spot_close      REAL,
-                basis           REAL,
-                basis_pct       REAL,
-                volume          INTEGER,
-                hold            INTEGER,
-                created_at      TEXT DEFAULT (datetime('now','localtime')),
-                PRIMARY KEY (date, futures_code)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_basis_date ON futures_basis(date);
         """)
         _migrate_add_direction_columns(conn)
         _migrate_add_ohlc_columns(conn)

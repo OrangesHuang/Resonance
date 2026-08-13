@@ -33,9 +33,6 @@ backend/
 ├── portfolio/       # 组合回测页面领域
 │   ├── analysis/    # simulator.py 净值模拟（纯函数）
 │   └── api.py       # /api/portfolio 路由（backtest，买卖点复用 base/analysis/strategy）
-├── derivatives/     # 衍生品数据页面领域（三维背离算法）
-│   ├── analysis/    # divergence.py 三维背离（K线 + 期权PCR + 股指期货基差）
-│   └── api.py       # /api/derivatives 路由（overview/divergence/refresh）
 ├── api/             # 其余页面接口（calendar/data/realtime/signals/stats，迁移完成前暂存）
 
 # 注意: K线对比页(EtfDetail/KlineCompare)无专属后端代码,
@@ -61,7 +58,6 @@ backend/
 | `components/kline/` | K线/对比图（`KlineChart`、`CompareKline`、`SignalHistoryChart` 及 option 构建、区间统计/标记工具） |
 | `components/portfolio/` | 组合回测（`PortfolioChart`、`TradePopups`） |
 | `components/sentiment/` | 市场情绪（`SentimentLineChart`） |
-| `components/derivatives/` | 衍生品（`DivergenceSignals`） |
 | `components/calendar/` | 交易日历（`MiniMonth`） |
 | `components/data/` | 数据管理（`JobsPanel`、`SchedulerPanel`、`SourceCard`） |
 | `hooks/` | 业务 hooks（数据请求、状态逻辑） |
