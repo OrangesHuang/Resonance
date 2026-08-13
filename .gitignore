@@ -21,3 +21,6 @@ dist/
 
 # Qoder session
 .qoder/
+
+# IDE
+.idea/
