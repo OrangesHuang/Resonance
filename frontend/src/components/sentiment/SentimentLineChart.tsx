@@ -33,7 +33,7 @@ interface Props {
   /** 五图白线联动: 注册实例 + hover 上报 + 接收广播 */
   bridge?: {
     register: (inst: EChartsType, getDates: () => string[]) => void
-    show: (date: string | null) => void
+    show: (date: string | null, source?: EChartsType | null) => void
     zoom: (start: number, end: number, source: EChartsType | null) => void
   }
 }
@@ -211,7 +211,7 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
             try {
               const px = chartRef.current?.convertFromPixel({ xAxisIndex: 0 }, params.x) as number | null
               const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
-              if (idx >= 0 && idx < dates.length) bridge.show(dates[idx])
+              if (idx >= 0 && idx < dates.length) bridge.show(dates[idx], chartRef.current)
             } catch {
               // 忽略
             }

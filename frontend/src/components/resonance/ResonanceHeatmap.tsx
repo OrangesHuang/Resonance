@@ -253,7 +253,7 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
       try {
         const px = instRef.current?.convertFromPixel({ xAxisIndex: 0 }, e.x) as number | null
         const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
-        if (idx >= 0 && idx < dates.length) bridge.show(dates[idx])
+        if (idx >= 0 && idx < dates.length) bridge.show(dates[idx], instRef.current)
       } catch {
         // 忽略
       }

@@ -95,7 +95,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
         const px = inst.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number | null
         const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
         const d = idx >= 0 && idx < datesRef.current.length ? datesRef.current[idx] : null
-        br.show(d)
+        br.show(d, inst)
       } catch {
         // 忽略坐标转换异常
       }
@@ -197,14 +197,14 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       try {
         // 优先用 axisValue(已有日期), 否则像素转换(单值形式)
         if (e.axisValue) {
-          br.show(e.axisValue)
+          br.show(e.axisValue, inst)
           return
         }
         if (e.x == null) return
         const px = inst.convertFromPixel({ xAxisIndex: 0 }, e.x) as number | null
         const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
         const d = idx >= 0 && idx < datesRef.current.length ? datesRef.current[idx] : null
-        br.show(d)
+        br.show(d, inst)
       } catch {
         // 忽略坐标转换异常
       }

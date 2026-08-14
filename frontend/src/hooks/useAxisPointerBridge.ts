@@ -69,8 +69,10 @@ export function useAxisPointerBridge() {
     }
   }, [])
 
-  /** 广播 hover 日期: 所有已注册图显示白线 + 通知订阅者 */
-  const show = useCallback((date: string | null) => {
+  /** 广播 hover 日期: 除来源图外所有图显示白线 + 通知订阅者。
+   *  跳过来源图: 来源图由原生 axisPointer 定位 tooltip, 广播回来的
+   *  showTip(图表中心 y)会与鼠标位置交替覆盖导致 tooltip 飘移。 */
+  const show = useCallback((date: string | null, source: ECharts | null = null) => {
     // 清理已 dispose 的实例(dispose 后 getZr 抛错)
     charts.current = charts.current.filter(c => {
       try {
@@ -81,6 +83,7 @@ export function useAxisPointerBridge() {
       }
     })
     for (const { inst, getDates } of charts.current) {
+      if (inst === source) continue
       try {
         if (!date) {
           inst.dispatchAction({ type: 'hideTip' })
