@@ -43,7 +43,7 @@ base/fetch → 领域 analysis → base/store → 领域 api
   `state.py`（共享内存缓存）、`job_manager.py`（后台任务引擎 + 进度注册表）、
   `job_registry.py`（任务元信息）、`data_jobs.py` + `sentiment_jobs.py`（回填任务实现）、
   `rebuild.py`（一键重建流水线）、`recalc.py`（重算综合概率）、`time_guard.py`（交易时段守卫）。
-- `main.py` — App 组装（lifespan/CORS/路由注册），≤50 行。
+- `main.py` — App 组装（lifespan/CORS/路由注册/静态托管），仅组装无业务逻辑。
 
 **Rebuild data pipeline** (weighted phases for progress): trade calendar → ETF daily seed → shares backfill → sentiment.
 

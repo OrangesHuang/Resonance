@@ -106,7 +106,7 @@ HTTP与原始解析     纯函数无I/O       封装SQLite         请求解析�
 ```
 etf-monitor/
 ├── backend/
-│   ├── main.py            # FastAPI 组装入口（≤50行）
+│   ├── main.py            # FastAPI 组装入口（仅组装）
 │   ├── base/              # 跨页共用（页面领域间下沉）
 │   │   ├── config.py      # 全部可调常量（ETF清单/阈值/窗口/限流）
 │   │   ├── fetch/         # 数据源请求与解析（腾讯/akshare）
@@ -197,32 +197,3 @@ cd etf-monitor
 将 `cli/qoderwork-prompt.md` 的内容交给 Qoderwork，它即可定期巡检并在触发共振时通过 IM 通知。
 
 ---
-
-## 八、定时任务
-
-| 任务 | 时间 | 说明 |
-|---|---|---|
-| realtime_poll | 盘中每 30s | 实时信号轮询 |
-| preload_kline | 周一至周五 09:00 | 预加载 K线 |
-| daily_analysis | 周一至周五 15:30 | 收盘日线分析入库 |
-| fetch_shares | 周一至周五 19:30 | 份额数据（交易所披露较晚） |
-| fetch_sentiment | 周一至周五 16:00 | 成交额 + 融资余额 |
-| sync_calendar | 每周日 20:00 | 交易日历 |
-| cleanup | 每日 02:00 | 清理 7 天前实时快照 |
-
----
-
-## 九、开发规范（详见 AGENTS.md）
-
-- 单文件 ≤300 行；Python 函数 <50 行。
-- 后端分层单向依赖，禁止跨层；`analysis/` 为纯函数。
-- TypeScript strict，禁用 `any`（ECharts option 除外）。
-- 魔法数字一律提取到 `base/config.py`；网络请求必须设 timeout 并优雅降级。
-- 日期内部 `YYYY-MM-DD`，akshare 边界处转 `YYYYMMDD`。
-
----
-
-## 十、免责声明
-
-本项目仅用于学习与研究，所有数据来自公开渠道，输出为量化信号而非投资建议。
-据此操作，风险自负。
