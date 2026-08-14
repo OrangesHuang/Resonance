@@ -68,20 +68,25 @@
 ### 后端分层（严格单向依赖，禁止跨层）
 
 ```
-fetch/      →  analysis/  →  store/      →  api/
-HTTP与原始解析   纯函数无I/O     封装SQLite       请求解析与响应格式化
-                     ↑
-              scheduler/  编排定时任务，组合各层
-              main.py     仅做 app 组装
+base/fetch/   →  领域 analysis  →  base/store/   →  领域 api/
+HTTP与原始解析     纯函数无I/O       封装SQLite         请求解析与响应格式化
+                       ↑
+              base/scheduler/  编排定时任务与后台任务，组合各层
+              main.py          仅做 app 组装
 ```
 
-- `fetch/`：kline / realtime / shares / sentiment / calendar，只做请求与解析。
-- `analysis/`：composite（三因子合成）、factors、intraday、sentiment（分位数）、
-  resonance（共振判定）、resonance_evidence（逐指标依据）。全部为纯函数。
-- `store/`：database（连接/建表/迁移）+ 各表 repo。
-- `api/`：signals / etf / realtime / stats / sentiment / calendar / resonance / data。
-- `scheduler/`：tasks（定时任务）、job_manager（后台任务引擎）、data_jobs、rebuild、
-  job_registry、time_guard（交易时段守卫）。
+按前端页面领域聚合：页面私有逻辑进领域目录（`resonance/`、`portfolio/`），跨页共用下沉 `base/`。
+
+- `base/fetch/`：kline / realtime / shares / sentiment / calendar，只做请求与解析。
+- `base/analysis/`：sentiment（分位数/情绪分区）、strategy（每只 ETF 独立策略 + router 分派 + 共用轮次指标）。
+- `resonance/analysis/`：core（五灯判定）、composite（综合概率 V2 门控）、factors、intraday（盘中信号）、
+  evidence + evidence_indicators（逐指标依据）。全部为纯函数。
+- `portfolio/analysis/`：simulator（组合回测等权满仓调度，纯函数）。
+- `base/store/`：database（连接/建表/迁移）+ 各表 repo。
+- `api/` + `base/api/`：signals / etf / realtime / stats / sentiment / calendar / resonance / data / portfolio。
+- `base/scheduler/`：tasks（注册层，阻塞任务经 asyncio.to_thread 派发）、intraday_tasks / daily_tasks（任务实现）、
+  state（共享内存缓存）、job_manager（后台任务引擎）、data_jobs + sentiment_jobs（回填任务）、rebuild、
+  job_registry、recalc、time_guard（交易时段守卫）。
 
 ### 后台任务引擎
 阻塞式拉取通过 `asyncio.to_thread` 丢到工作线程，事件循环保持空闲以响应进度轮询；
@@ -101,26 +106,35 @@ HTTP与原始解析   纯函数无I/O     封装SQLite       请求解析与响�
 ```
 etf-monitor/
 ├── backend/
-│   ├── main.py            # FastAPI 组装入口
-│   ├── config.py          # 全部可调常量（阈值/窗口/调度时间）
-│   ├── fetch/             # 数据源请求与解析
-│   ├── analysis/          # 纯函数分析逻辑
-│   ├── store/             # SQLite 访问层
-│   ├── api/               # REST 路由
-│   └── scheduler/         # 定时任务 + 后台任务引擎
+│   ├── main.py            # FastAPI 组装入口（≤50行）
+│   ├── base/              # 跨页共用（页面领域间下沉）
+│   │   ├── config.py      # 全部可调常量（ETF清单/阈值/窗口/限流）
+│   │   ├── fetch/         # 数据源请求与解析（腾讯/akshare）
+│   │   ├── analysis/      # 纯函数：sentiment/ + strategy/（8只ETF策略+router）
+│   │   ├── store/         # SQLite 访问层（database + 各表 repo）
+│   │   ├── scheduler/     # tasks/intraday_tasks/daily_tasks/state/job_manager/
+│   │   │                  #   job_registry/data_jobs/sentiment_jobs/rebuild/recalc/time_guard
+│   │   └── api/           # 跨页共用接口（etf / sentiment）
+│   ├── resonance/         # 多指标共振页领域（analysis/ + api.py）
+│   ├── portfolio/         # 组合回测页领域（analysis/ + api.py）
+│   ├── api/               # 其余页面接口（calendar/data/realtime/signals/stats）
+│   └── tests/             # pytest 单测（策略/信号/组合）
 ├── frontend/
 │   └── src/
 │       ├── pages/         # Dashboard / Resonance / Sentiment / DataManage ...
-│       ├── components/    # 图表与可复用 UI
-│       ├── api/           # client.ts + types.ts
-│       └── hooks/         # React Query hooks
+│       ├── components/    # 按域聚合：common/resonance/monitor/kline/portfolio/sentiment/calendar/data
+│       ├── api/           # client.ts（HTTP封装）+ types.ts（领域类型聚合出口，见 types/）
+│       └── hooks/         # React Query hooks + 图表联动
 ├── cli/
 │   ├── resonance.py       # 共振 CLI（供外部 Agent 调用）
 │   └── qoderwork-prompt.md# 交给 Qoderwork 的使用说明
-└── scripts/
-    ├── seed_db.py         # ETF 日度历史回填（薄壳）
-    └── backfill_shares.py # 份额历史回填（薄壳）
+├── scripts/
+│   ├── seed_db.py         # ETF 日度历史回填（薄壳）
+│   └── backfill_shares.py # 份额历史回填（薄壳）
+└── docs/                  # algorithm_technical / data_lineage / strategy_algorithms
 ```
+
+---
 
 ---
 
@@ -203,7 +217,7 @@ cd etf-monitor
 - 单文件 ≤300 行；Python 函数 <50 行。
 - 后端分层单向依赖，禁止跨层；`analysis/` 为纯函数。
 - TypeScript strict，禁用 `any`（ECharts option 除外）。
-- 魔法数字一律提取到 `config.py`；网络请求必须设 timeout 并优雅降级。
+- 魔法数字一律提取到 `base/config.py`；网络请求必须设 timeout 并优雅降级。
 - 日期内部 `YYYY-MM-DD`，akshare 边界处转 `YYYYMMDD`。
 
 ---
