@@ -55,6 +55,9 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   const connectReady = useChartSync(RESONANCE_SYNC_GROUP)
   const boundZrRef = useRef<unknown>(null)
   const onChartReady = (inst: ECharts) => {
+    // chartRef 必须在 onChartReady 设置: React ref 回调在 echarts init 前
+    // 执行(拿到 null), 首次缩放时 source 为空导致 K线自广播
+    chartRef.current = inst
     connectReady(inst)
     bridgeRef.current?.register(inst, () => datesRef.current)
     // zr 事件必须在 onChartReady 绑定: echarts-for-react 首渲染的 ref
@@ -238,7 +241,6 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       <RangeToolbar hook={rangeSel} isMobile={isMobile} />
       <ReactECharts
         onChartReady={onChartReady}
-        ref={inst => { chartRef.current = inst?.getEchartsInstance?.() ?? null }}
         option={option}
         style={{ height: isMobile ? 400 : 620, cursor: 'pointer' }}
         lazyUpdate

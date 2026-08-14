@@ -190,7 +190,6 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, br
       onEvents={onEvents}
       style={{ height: 260 }}
       notMerge
-      lazyUpdate
     />
   )
 }

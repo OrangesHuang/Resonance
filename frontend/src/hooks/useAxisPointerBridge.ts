@@ -23,8 +23,15 @@ export function useAxisPointerBridge() {
   const zooming = useRef(false)
   const lastZoom = useRef<[number, number, number] | null>(null)
 
-  /** getDates 为 getter: 切换标的/数据更新后取最新日期序列 */
+  /** getDates 为 getter: 切换标的/数据更新后取最新日期序列。
+   *  已 dispose 的实例(StrictMode 双挂载/echarts-for-react 临时实例
+   *  竞态残留)直接拒绝, 避免广播打到死实例上。 */
   const register = useCallback((inst: ECharts, getDates: () => string[]) => {
+    try {
+      inst.getZr()
+    } catch {
+      return
+    }
     if (!charts.current.some(c => c.inst === inst)) {
       charts.current.push({ inst, getDates })
     }
@@ -45,6 +52,15 @@ export function useAxisPointerBridge() {
   /** 缩放百分比即时广播: 除来源图外所有图同步 dataZoom(防环标志)。 */
   const zoom = useCallback((start: number, end: number, source: ECharts | null) => {
     if (zooming.current) return
+    // 清理已 dispose 的实例(与 show 一致): 死实例 dispatchAction 静默失效
+    charts.current = charts.current.filter(c => {
+      try {
+        c.inst.getZr()
+        return true
+      } catch {
+        return false
+      }
+    })
     // 去重: 相同缩放值短时间内重复广播直接忽略(防异步链循环)
     const now = Date.now()
     if (lastZoom.current) {
