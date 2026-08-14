@@ -4,7 +4,8 @@ from datetime import datetime
 
 from fastapi import APIRouter
 
-from base.scheduler.tasks import get_last_update, get_latest_signals, is_trading_time
+from base.scheduler.state import get_last_update, get_latest_signals
+from base.scheduler.time_guard import is_trading_time
 from base.store.daily_repo import get_by_date, get_latest_date
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])

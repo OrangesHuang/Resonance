@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Query
 
-from base.scheduler.tasks import task_sync_calendar
+from base.scheduler.daily_tasks import task_sync_calendar
 from base.store.calendar_repo import get_last_sync, get_range, get_trade_days
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])

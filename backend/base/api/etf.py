@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 
 from base.config import ETFS
-from base.scheduler.tasks import task_manual_refresh
+from base.scheduler.daily_tasks import task_manual_refresh
 from base.store.daily_repo import get_by_code
 from base.store.realtime_repo import get_today_snapshots
 

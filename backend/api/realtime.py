@@ -6,7 +6,8 @@ from fastapi import APIRouter
 
 from base.config import ETFS
 from base.fetch.realtime import fetch_market_turnover_intraday, fetch_realtime_quotes
-from base.scheduler.tasks import get_last_update, get_latest_signals, is_trading_time
+from base.scheduler.state import get_last_update, get_latest_signals
+from base.scheduler.time_guard import is_trading_time
 from base.store.realtime_repo import (
     get_latest_intraday_turnover,
     get_today_intraday_turnover,

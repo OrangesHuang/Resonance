@@ -13,12 +13,11 @@ from base.scheduler.data_jobs import (
     job_backfill_etf_daily,
     job_backfill_missing_shares,
     job_backfill_shares,
-    job_fetch_etf_latest,
-    job_fetch_sentiment,
     job_sync_calendar,
 )
 from base.scheduler.rebuild import job_rebuild_all
 from base.scheduler.recalc import job_recalc_composite
+from base.scheduler.sentiment_jobs import job_fetch_etf_latest, job_fetch_sentiment
 
 JOB_DEFS: dict[str, dict] = {
     "sync_calendar": {

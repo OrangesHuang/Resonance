@@ -14,10 +14,10 @@ from base.config import (
 from base.scheduler.data_jobs import (
     job_backfill_etf_daily,
     job_backfill_shares,
-    job_fetch_sentiment,
     job_sync_calendar,
 )
 from base.scheduler.job_manager import ProgressFn
+from base.scheduler.sentiment_jobs import job_fetch_sentiment
 
 _W_CALENDAR = 5
 _W_ETF = 45

@@ -9,7 +9,7 @@ from base.analysis.sentiment.core import (
     margin_summary,
     turnover_summary,
 )
-from base.scheduler.tasks import task_fetch_sentiment
+from base.scheduler.daily_tasks import task_fetch_sentiment
 from base.store.sentiment_repo import get_margin_series, get_turnover_series
 
 router = APIRouter(prefix="/api/sentiment", tags=["sentiment"])
