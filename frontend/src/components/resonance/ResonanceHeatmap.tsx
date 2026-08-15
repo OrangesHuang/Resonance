@@ -3,7 +3,6 @@ import ReactECharts from 'echarts-for-react'
 import type { ECharts } from 'echarts'
 import { Rect as ZRect } from 'zrender'
 import type { ResonanceOverview, LightState } from '../../api/types'
-import { useChartSync, RESONANCE_SYNC_GROUP } from '../../hooks/useChartSync'
 import type { AxisPointerBridge } from '../../hooks/useAxisPointerBridge'
 
 const AXIS_LABEL = '#6b7280'
@@ -28,7 +27,6 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
   onSelect?: (date: string, indicatorKey: string) => void
   bridge?: AxisPointerBridge
 }) {
-  const connectReady = useChartSync(RESONANCE_SYNC_GROUP)
   const instRef = useRef<ECharts | null>(null)
   const hoverLineRef = useRef<ZRect | null>(null)
   const history = data.history
@@ -90,7 +88,6 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
     // 实例重建(dispose 后新实例)时旧 Rect 已随旧 zr 销毁: 重置引用,
     // 否则后续 attr 操作死元素且永不重建(白线消失)
     hoverLineRef.current = null
-    connectReady(inst)
     bridge?.register(inst, () => datesRef.current)
   }
 
@@ -249,9 +246,16 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
       const key = keys[y]
       if (date && key) onSelect?.(date, key)
     },
-    updateAxisPointer: (e: { x?: number }) => {
-      if (!bridge || e.x == null) return
+    updateAxisPointer: (e: { x?: number; axesInfo?: Array<{ axisDim?: string; value?: unknown }> }) => {
+      if (!bridge) return
       try {
+        // 事件不带像素 x: 用 axesInfo 的 x 轴索引取日期(与 K线日期序列对齐)
+        const axisVal = e.axesInfo?.find(a => a.axisDim === 'x')?.value
+        if (typeof axisVal === 'number' && axisVal >= 0 && axisVal < dates.length) {
+          bridge.show(dates[axisVal], instRef.current)
+          return
+        }
+        if (e.x == null) return
         const px = instRef.current?.convertFromPixel({ xAxisIndex: 0 }, e.x) as number | null
         const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
         if (idx >= 0 && idx < dates.length) bridge.show(dates[idx], instRef.current)
@@ -259,7 +263,16 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
         // 忽略
       }
     },
-    // 缩放由 echarts.connect 原生组分发, 不再上报父级
+    datazoom: (e: { start?: number; end?: number; batch?: Array<{ start?: number; end?: number }> }) => {
+      const z = e.batch ? e.batch[0] : e
+      if (z.start == null || z.end == null) return
+      // 缩放即时广播到所有图(按百分比, 与 K线/情绪图一致)
+      bridge?.zoom(z.start, z.end, instRef.current)
+    },
+    globalout: () => {
+      // 移出图表 → 清除全图白线(与 K线一致, 防止粗线残留)
+      bridge?.show(null)
+    },
   }
 
   if (history.length === 0 || keys.length === 0) {

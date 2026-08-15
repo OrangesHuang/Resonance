@@ -208,6 +208,9 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
             if (d) onSelectDate(d)
           },
           updateAxisPointer: params => {
+            // 情绪图在 SENTIMENT_SYNC_GROUP connect 组内: 这里再广播会与
+            // connect 的组内传播形成回路(卡死), 且事件不带像素 x 本就无法
+            // 按日期对齐 — 保持不广播(白线联动由 K线/红绿灯/热力图方向提供)
             if (!bridge || params.x == null) return
             try {
               const px = chartRef.current?.convertFromPixel({ xAxisIndex: 0 }, params.x) as number | null
@@ -224,6 +227,10 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
             bridge?.zoom(z.start, z.end, chartRef.current)
             // 不再 onZoomChange 上报: dateWindow 仅由 K线维护,
             // 市场日期与 ETF 日期序列不同, 双写上报告导致窗口横跳死循环
+          },
+          globalout: () => {
+            // 移出图表 → 清除全图白线(与 K线一致, 防止残留)
+            bridge?.show(null)
           },
         }
       : undefined

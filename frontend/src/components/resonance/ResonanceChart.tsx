@@ -2,7 +2,6 @@ import { useMemo, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts } from 'echarts'
 import type { ResonanceHistoryPoint } from '../../api/types'
-import { useChartSync, RESONANCE_SYNC_GROUP } from '../../hooks/useChartSync'
 import type { AxisPointerBridge } from '../../hooks/useAxisPointerBridge'
 
 const AXIS_LABEL = '#6b7280'
@@ -25,7 +24,6 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, br
   onSelectDate?: (date: string) => void
   bridge?: AxisPointerBridge
 }) {
-  const connectReady = useChartSync(RESONANCE_SYNC_GROUP)
   const instRef = useRef<ECharts | null>(null)
   const boundZrRef = useRef<unknown>(null)
   const dates = useMemo(() => history.map(h => h.date), [history])
@@ -34,7 +32,6 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, br
 
   const onChartReady = (inst: ECharts) => {
     instRef.current = inst
-    connectReady(inst)
     bridge?.register(inst, () => datesRef.current)
     // zr 层点击: 任意位置(白线所在列)点击都选中该日, 无需点中柱子
     const zr = inst.getZr()
@@ -167,9 +164,16 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, br
       const d = dates[params.dataIndex]
       if (d) onSelectDate?.(d)
     },
-    updateAxisPointer: (e: { x?: number }) => {
-      if (!bridge || e.x == null) return
+    updateAxisPointer: (e: { x?: number; axesInfo?: Array<{ axisDim?: string; value?: unknown }> }) => {
+      if (!bridge) return
       try {
+        // 事件不带像素 x: 用 axesInfo 的 x 轴索引取日期(与 K线日期序列对齐)
+        const axisVal = e.axesInfo?.find(a => a.axisDim === 'x')?.value
+        if (typeof axisVal === 'number' && axisVal >= 0 && axisVal < dates.length) {
+          bridge.show(dates[axisVal], instRef.current)
+          return
+        }
+        if (e.x == null) return
         const px = instRef.current?.convertFromPixel({ xAxisIndex: 0 }, e.x) as number | null
         const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
         if (idx >= 0 && idx < dates.length) bridge.show(dates[idx], instRef.current)
@@ -177,7 +181,16 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, br
         // 忽略
       }
     },
-    // 缩放由 echarts.connect 原生组分发, 不再上报父级(避免多源状态更新)
+    datazoom: (e: { start?: number; end?: number; batch?: Array<{ start?: number; end?: number }> }) => {
+      const z = e.batch ? e.batch[0] : e
+      if (z.start == null || z.end == null) return
+      // 缩放即时广播到所有图(按百分比, 与 K线/情绪图一致)
+      bridge?.zoom(z.start, z.end, instRef.current)
+    },
+    globalout: () => {
+      // 移出图表 → 清除全图白线(与 K线一致, 防止热力图粗线残留)
+      bridge?.show(null)
+    },
   }
 
   if (history.length === 0) {

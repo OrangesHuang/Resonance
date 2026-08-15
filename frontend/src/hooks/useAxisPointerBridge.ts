@@ -109,7 +109,10 @@ export function useAxisPointerBridge() {
         if (inst === source) continue
         try {
           if (!date) {
+            // hideTip 只隐藏 tooltip; 全局 axisPointer 需显式 leave 才隐藏
+            // (此前由 echarts.connect 组传播 leave 触发, 现统一由 bridge 处理)
             inst.dispatchAction({ type: 'hideTip' })
+            inst.dispatchAction({ type: 'updateAxisPointer', currTrigger: 'leave' })
             continue
           }
           const dates = getDates()
@@ -117,8 +120,10 @@ export function useAxisPointerBridge() {
           if (idx < 0) continue
           const px = (inst.convertToPixel({ xAxisIndex: 0 }, idx) as number) ?? 0
           if (Number.isNaN(px)) continue
-          // y 取图表垂直中心: 固定值可能落在 grid 外导致 showTip 无效
-          inst.dispatchAction({ type: 'showTip', x: px, y: (inst.getHeight?.() ?? 100) / 2 })
+          // y 取图表高度 20%: 高度中点在多 grid 图(如 K线 4 格)上落在
+          // 网格间隙, containPoint=false 导致 showTip 无效; 首格通常从
+          // ~10% 高度开始, 20% 保证落在所有图的第一个网格内
+          inst.dispatchAction({ type: 'showTip', x: px, y: (inst.getHeight?.() ?? 100) * 0.2 })
         } catch {
           // 忽略实例未就绪/坐标转换异常
         }
