@@ -12,6 +12,12 @@ const LEGEND = [
   { label: '今日', cls: 'bg-gray-900 border-gray-800 ring-2 ring-blue-500' },
 ]
 
+const COV_LEGEND = [
+  { label: '数据完整(4源)', cls: 'bg-green-400' },
+  { label: '部分覆盖', cls: 'bg-amber-400' },
+  { label: '槽位无数据', cls: 'bg-red-400' },
+]
+
 const BIG_KIND: Record<string, string> = {
   trading: 'bg-gray-900 border-gray-800 text-gray-200',
   weekend: 'bg-gray-900/40 border-gray-800/40 text-gray-600',
@@ -49,6 +55,19 @@ export default function TradeCalendar() {
   const [lo, hi] = data.range
   const tradingSet = new Set(data.days)
   const todayStr = data.today
+  const coverage = data.coverage ?? {}
+  const slotStart = data.slot_start ?? null
+
+  // 槽位覆盖点样式: 仅槽位区间(起始日后、今天前)展示
+  const dotCls = (dateStr: string) => {
+    const c = coverage[dateStr]
+    if (c == null) return null
+    if (dateStr > todayStr) return null
+    if (slotStart && dateStr < slotStart) return null
+    if (c >= 4) return 'bg-green-400'
+    if (c >= 1) return 'bg-amber-400'
+    return 'bg-red-400'
+  }
   const todayYear = Number(todayStr.slice(0, 4))
 
   const loYear = lo ? Number(lo.slice(0, 4)) : null
@@ -171,6 +190,8 @@ export default function TradeCalendar() {
               todayStr={todayStr}
               lo={lo}
               hi={hi}
+              coverage={coverage}
+              slotStart={slotStart}
               onSelect={openMonth}
             />
           ))}
@@ -191,14 +212,16 @@ export default function TradeCalendar() {
               const kind = classifyDay(dateStr, dow, tradingSet, lo, hi)
               const isToday = dateStr === todayStr
               const label = KIND_LABEL[kind]
+              const dc = dotCls(dateStr)
               return (
                 <div
                   key={dateStr}
-                  title={label ? `${dateStr} · ${label}` : dateStr}
-                  className={`aspect-square flex flex-col items-center justify-center rounded-md border font-mono text-sm ${BIG_KIND[kind]} ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+                  title={`${dateStr}${dc ? ` · 数据覆盖 ${coverage[dateStr]}/4` : ''}${label ? ` · ${label}` : ''}`}
+                  className={`relative aspect-square flex flex-col items-center justify-center rounded-md border font-mono text-sm ${BIG_KIND[kind]} ${isToday ? 'ring-2 ring-blue-500' : ''}`}
                 >
                   <span>{day}</span>
                   {kind === 'holiday' && <span className="text-[10px] leading-none mt-0.5">休</span>}
+                  {dc && <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${dc}`} />}
                 </div>
               )
             })}
@@ -208,6 +231,13 @@ export default function TradeCalendar() {
             {LEGEND.map(item => (
               <div key={item.label} className="flex items-center gap-1.5">
                 <span className={`inline-block w-3 h-3 rounded border ${item.cls}`} />
+                <span className="text-xs text-gray-500">{item.label}</span>
+              </div>
+            ))}
+            <span className="text-gray-800">|</span>
+            {COV_LEGEND.map(item => (
+              <div key={item.label} className="flex items-center gap-1.5">
+                <span className={`inline-block w-3 h-3 rounded-full ${item.cls}`} />
                 <span className="text-xs text-gray-500">{item.label}</span>
               </div>
             ))}

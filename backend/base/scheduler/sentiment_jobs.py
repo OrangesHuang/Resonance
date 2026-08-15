@@ -12,6 +12,7 @@ from base.config import ETFS, SENTIMENT_BACKFILL_DAYS
 from base.fetch.kline import fetch_index_kline, fetch_kline
 from base.fetch.sentiment import fetch_margin_series, fetch_market_turnover
 from base.fetch.shares import calc_share_delta
+from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.job_manager import ProgressFn
 from base.store.calendar_repo import get_last_trading_day
 from base.store.daily_repo import (
@@ -86,6 +87,7 @@ def job_fetch_sentiment(
             upsert_margin(margin)
 
     progress(1, 1, "完成")
+    job_refresh_calendar_slots(progress)  # 刷新日历槽位台账(成交额/融资覆盖)
     return {
         "turnover": len(turnover),
         "margin": len(margin),

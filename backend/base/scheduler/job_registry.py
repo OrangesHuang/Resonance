@@ -10,6 +10,7 @@ from base.config import (
     DEFAULT_SHARES_BACKFILL_DAYS,
     SENTIMENT_BACKFILL_DAYS,
 )
+from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.data_jobs import job_sync_calendar
 from base.scheduler.etf_daily_jobs import job_backfill_etf_daily, job_backfill_missing_etf_daily
 from base.scheduler.rebuild import job_rebuild_all
@@ -46,6 +47,15 @@ JOB_DEFS: dict[str, dict] = {
             },
             {"step": "derive", "text": "综合概率 composite_prob → signal_level（V2 四层门控）"},
             {"step": "write", "text": "upsert 写入 etf_daily，已存在的日期跳过（勾选强制则覆盖）"},
+        ],
+    },
+    "refresh_calendar_slots": {
+        "label": "刷新数据槽位台账",
+        "exclusive": False,
+        "defaults": {},
+        "data_flow": [
+            {"step": "derive", "text": "以交易日历为填充槽, 扫描 etf_daily/份额/成交额/融资 四源覆盖"},
+            {"step": "write", "text": "回写 trade_calendar 四列覆盖属性(幂等), 交易日历页按覆盖着色"},
         ],
     },
     "backfill_missing_etf_daily": {
@@ -145,6 +155,7 @@ JOB_FNS: dict[str, Callable[..., dict]] = {
     "sync_calendar": job_sync_calendar,
     "backfill_etf_daily": job_backfill_etf_daily,
     "backfill_missing_etf_daily": job_backfill_missing_etf_daily,
+    "refresh_calendar_slots": job_refresh_calendar_slots,
     "backfill_shares": job_backfill_shares,
     "backfill_missing_shares": job_backfill_missing_shares,
     "fetch_sentiment": job_fetch_sentiment,

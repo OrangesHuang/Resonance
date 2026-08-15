@@ -23,6 +23,7 @@ from base.config import (
     SEED_MIN_BARS,
 )
 from base.fetch.kline import fetch_index_kline, fetch_kline
+from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.job_manager import ProgressFn
 from base.store.calendar_repo import get_last_trading_day, get_trade_days
 from base.store.daily_repo import get_by_code, get_latest_date_for, upsert_daily
@@ -240,6 +241,8 @@ def job_backfill_etf_daily(
         total_records += cnt
         time.sleep(FETCH_SLEEP_SEC)
     progress(total_chunks, total_chunks, f"完成 {total_records} 行 (跳过 {skipped} 只)")
+    # 回填后刷新日历槽位台账(交易日历即填充槽, 保持覆盖属性新鲜)
+    job_refresh_calendar_slots(progress)
     return {
         "etfs": len(codes),
         "records": total_records,

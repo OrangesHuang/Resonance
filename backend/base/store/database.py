@@ -90,7 +90,17 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS trade_calendar (
                 date        TEXT PRIMARY KEY,
-                created_at  TEXT DEFAULT (datetime('now','localtime'))
+                created_at  TEXT DEFAULT (datetime('now','localtime')),
+                etf_daily_ok INTEGER NOT NULL DEFAULT 0,
+                shares_ok    INTEGER NOT NULL DEFAULT 0,
+                turnover_ok  INTEGER NOT NULL DEFAULT 0,
+                margin_ok    INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key        TEXT PRIMARY KEY,
+                value      TEXT NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
 
             CREATE TABLE IF NOT EXISTS intraday_turnover (
@@ -102,6 +112,7 @@ def init_db() -> None:
         """)
         _migrate_add_direction_columns(conn)
         _migrate_add_ohlc_columns(conn)
+        _migrate_add_calendar_slot_columns(conn)
         _migrate_drop_etf_kline(conn)
         conn.commit()
     finally:
@@ -123,6 +134,15 @@ def _migrate_add_ohlc_columns(conn: sqlite3.Connection) -> None:
     for col in ("open_price", "high_price", "low_price"):
         if col not in existing:
             conn.execute(f"ALTER TABLE etf_daily ADD COLUMN {col} REAL")
+
+
+def _migrate_add_calendar_slot_columns(conn: sqlite3.Connection) -> None:
+    """trade_calendar 增加数据槽位覆盖属性列(交易日历即填充槽: 每天标注四个
+    数据源是否已覆盖, 见 scheduler/calendar_slots.py)。"""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(trade_calendar)")}
+    for col in ("etf_daily_ok", "shares_ok", "turnover_ok", "margin_ok"):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE trade_calendar ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
 
 
 def _migrate_drop_etf_kline(conn: sqlite3.Connection) -> None:

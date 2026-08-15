@@ -5,7 +5,8 @@ from datetime import datetime
 from fastapi import APIRouter, Query
 
 from base.scheduler.daily_tasks import task_sync_calendar
-from base.store.calendar_repo import get_last_sync, get_range, get_trade_days
+from base.store.calendar_repo import get_coverage, get_last_sync, get_range, get_trade_days
+from base.store.settings_repo import get_setting
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -22,6 +23,9 @@ def calendar_days(year: int | None = Query(default=None)):
         "range": get_range(),
         "updated_at": get_last_sync(),
         "today": datetime.now().strftime("%Y-%m-%d"),
+        # 数据槽位台账: {date: 0-4}(etf_daily/份额/成交额/融资 覆盖数) + 槽位起始
+        "coverage": get_coverage(f"{year}-01-01", f"{year}-12-31"),
+        "slot_start": get_setting("data_slot_start"),
     }
 
 

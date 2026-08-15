@@ -79,6 +79,44 @@ def get_last_sync() -> str | None:
         conn.close()
 
 
+def get_coverage(start: str | None = None, end: str | None = None) -> dict[str, int]:
+    """交易日历覆盖属性: {date: 0-4} — 四源(etf_daily/份额/成交额/融资)已覆盖数。
+    交易日历即数据槽位台账, 覆盖属性由 scheduler/calendar_slots.py 刷新。"""
+    conn = get_connection()
+    try:
+        sql = "SELECT date, etf_daily_ok, shares_ok, turnover_ok, margin_ok FROM trade_calendar"
+        clauses: list[str] = []
+        params: list[str] = []
+        if start:
+            clauses.append("date >= ?")
+            params.append(start)
+        if end:
+            clauses.append("date <= ?")
+            params.append(end)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        rows = conn.execute(sql, params).fetchall()
+        return {
+            r["date"]: int(r["etf_daily_ok"]) + int(r["shares_ok"]) + int(r["turnover_ok"]) + int(r["margin_ok"])
+            for r in rows
+        }
+    finally:
+        conn.close()
+
+
+def update_coverage(rows: list[tuple[int, int, int, int, str]]) -> None:
+    """批量更新覆盖属性: rows = [(etf_daily_ok, shares_ok, turnover_ok, margin_ok, date)]。"""
+    conn = get_connection()
+    try:
+        conn.executemany(
+            "UPDATE trade_calendar SET etf_daily_ok=?, shares_ok=?, turnover_ok=?, margin_ok=? WHERE date=?",
+            rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def reload_cache() -> None:
     global _trade_dates
     conn = get_connection()

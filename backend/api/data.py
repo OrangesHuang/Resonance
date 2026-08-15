@@ -28,6 +28,7 @@ from base.store.sentiment_repo import (
     get_turnover_count,
     get_turnover_series,
 )
+from base.store.settings_repo import get_setting, set_setting
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -37,10 +38,48 @@ class StartJobRequest(BaseModel):
     params: dict = {}
 
 
+class SettingsUpdate(BaseModel):
+    data_slot_start: str | None = None
+
+
 def _series_range(rows: list[dict]) -> list:
     if not rows:
         return [None, None]
     return [rows[0].get("date"), rows[-1].get("date")]
+
+
+def _slot_stats() -> dict:
+    """数据槽位汇总: 交易日历为填充槽, 槽位区间 = [数据起始设置, 最新数据日]。
+
+    控制"数据起始日期"设置即可控制系统应有数据的"总量"(槽位 = 起始日至今的
+    交易日), 缺口 = 槽位中实际缺失的交易日。
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    stats = get_stats()
+    lo_data = stats["date_range"][0]
+    hi_data = stats["date_range"][1] or today
+    slot_start = get_setting("data_slot_start") or lo_data or today
+    expected = get_trade_days(slot_start, hi_data)
+    actual = set(get_distinct_dates())
+    missing = [d for d in expected if d not in actual]
+    runs: list[list[str]] = []
+    cur: list[str] = []
+    for d in expected:
+        if d in actual:
+            if cur:
+                runs.append(cur)
+                cur = []
+        else:
+            cur.append(d)
+    if cur:
+        runs.append(cur)
+    return {
+        "slot_start": slot_start,
+        "slot_total": len(expected),
+        "covered_days": len(expected) - len(missing),
+        "missing_days": len(missing),
+        "missing_ranges": [[r[0], r[-1]] for r in runs],
+    }
 
 
 def _etf_daily_gaps() -> tuple[list[list[str]], int]:
@@ -77,14 +116,19 @@ def data_status():
     for j in scheduler.get_jobs():
         nr = j.next_run_time
         sched.append({"id": j.id, "next_run": nr.isoformat() if nr else None})
-    missing_ranges, missing_days = _etf_daily_gaps()
+    slots = _slot_stats()
     return {
         "sources": {
-            "etf_daily": {**get_stats(), "missing_days": missing_days, "missing_ranges": missing_ranges},
+            "etf_daily": {
+                **get_stats(),
+                "missing_days": slots["missing_days"],
+                "missing_ranges": slots["missing_ranges"],
+            },
             "turnover": {"count": get_turnover_count(), "range": _series_range(turnover)},
             "margin": {"count": get_margin_count(), "range": _series_range(margin)},
             "calendar": {"count": get_calendar_count(), "range": get_range(), "last_sync": get_last_sync()},
         },
+        "slots": slots,
         "jobs": [
             {"task": k, "label": v["label"], "defaults": v["defaults"], "data_flow": v.get("data_flow", [])}
             for k, v in JOB_DEFS.items()
@@ -142,6 +186,24 @@ async def start_job(req: StartJobRequest):
     job_id = job_manager.submit(req.task, params, defn["exclusive"])
     asyncio.create_task(run_job(job_id, partial(JOB_FNS[req.task], **params)))
     return {"job_id": job_id}
+
+
+@router.get("/settings")
+def read_settings():
+    """数据槽位设置: data_slot_start 定义"从哪天起应该有数据"(控制数据总量)。"""
+    return {"data_slot_start": get_setting("data_slot_start")}
+
+
+@router.put("/settings")
+def write_settings(body: SettingsUpdate):
+    value = (body.data_slot_start or "").strip()
+    if value:
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="data_slot_start 格式必须为 YYYY-MM-DD")
+    set_setting("data_slot_start", value)
+    return {"data_slot_start": get_setting("data_slot_start")}
 
 
 @router.get("/jobs")

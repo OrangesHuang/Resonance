@@ -74,12 +74,25 @@ export interface ScheduledTaskInfo {
   prev_run: string | null
 }
 
+export interface SlotStats {
+  slot_start: string
+  slot_total: number
+  covered_days: number
+  missing_days: number
+  missing_ranges: [string, string][]
+}
+
 export interface DataStatus {
   sources: DataSources
   jobs: JobDef[]
   running: JobState[]
   scheduler: SchedulerJobInfo[]
   defaults: { etf_days: number; shares_days: number; sentiment_days: number }
+  slots?: SlotStats
+}
+
+export interface DataSettings {
+  data_slot_start: string | null
 }
 
 export interface StartJobRequest {

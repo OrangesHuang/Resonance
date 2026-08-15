@@ -1,4 +1,4 @@
-import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse, ScheduledTaskInfo } from './types'
+import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, DataSettings, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse, ScheduledTaskInfo } from './types'
 
 const BASE = '/api'
 
@@ -120,6 +120,18 @@ export function fetchPortfolioBacktest(codes?: string[]): Promise<PortfolioBackt
 
 export function fetchDataJobs(): Promise<JobState[]> {
   return get('/data/jobs')
+}
+
+export function fetchDataSettings(): Promise<DataSettings> {
+  return get('/data/settings')
+}
+
+export function updateDataSettings(body: DataSettings): Promise<DataSettings> {
+  return request<DataSettings>('/data/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }
 
 export function startDataJob(req: StartJobRequest): Promise<StartJobResponse> {

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchDataStatus, fetchDataJobs, fetchScheduledTasks, startDataJob } from '../api/client'
-import type { StartJobRequest } from '../api/types'
+import { fetchDataStatus, fetchDataJobs, fetchDataSettings, fetchScheduledTasks, startDataJob, updateDataSettings } from '../api/client'
+import type { DataSettings, StartJobRequest } from '../api/types'
 
 export function useScheduledTasks() {
   return useQuery({
@@ -37,4 +37,20 @@ export function useStartJob() {
       queryClient.invalidateQueries({ queryKey: ['data'] })
     },
   })
+}
+
+export function useDataSettings() {
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    queryKey: ['data', 'settings'],
+    queryFn: fetchDataSettings,
+  })
+  const update = useMutation({
+    mutationFn: (body: DataSettings) => updateDataSettings(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['data', 'status'] })
+      queryClient.invalidateQueries({ queryKey: ['data', 'settings'] })
+    },
+  })
+  return { query, update }
 }

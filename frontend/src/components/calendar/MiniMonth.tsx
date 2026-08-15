@@ -15,10 +15,12 @@ interface Props {
   todayStr: string
   lo: string | null
   hi: string | null
+  coverage?: Record<string, number>
+  slotStart?: string | null
   onSelect: (month: number) => void
 }
 
-export default function MiniMonth({ year, month, tradingSet, todayStr, lo, hi, onSelect }: Props) {
+export default function MiniMonth({ year, month, tradingSet, todayStr, lo, hi, coverage, slotStart, onSelect }: Props) {
   const cells = buildMonthCells(year, month)
   const tradingCount = cells.filter(d => d != null && tradingSet.has(toKey(year, month, d))).length
 
@@ -49,13 +51,19 @@ export default function MiniMonth({ year, month, tradingSet, todayStr, lo, hi, o
           const kind = classifyDay(dateStr, dow, tradingSet, lo, hi)
           const isToday = dateStr === todayStr
           const label = KIND_LABEL[kind]
+          // 数据槽位覆盖点: 绿=四源全, 黄=部分, 红=槽位日无数据(仅槽位区间内展示)
+          const c = coverage?.[dateStr]
+          const showDot = kind === 'trading' && dateStr <= todayStr
+            && (!slotStart || dateStr >= slotStart) && c != null
+          const dotCls = showDot ? (c >= 4 ? 'bg-green-400' : c >= 1 ? 'bg-amber-400' : 'bg-red-400') : ''
           return (
             <div
               key={dateStr}
-              title={label ? `${dateStr} · ${label}` : dateStr}
-              className={`flex h-5 items-center justify-center rounded font-mono text-[11px] ${MINI_KIND[kind]} ${isToday ? 'ring-1 ring-blue-500' : ''}`}
+              title={`${dateStr}${showDot ? ` · 数据覆盖 ${c}/4` : ''}${label ? ` · ${label}` : ''}`}
+              className={`relative flex h-5 items-center justify-center rounded font-mono text-[11px] ${MINI_KIND[kind]} ${isToday ? 'ring-1 ring-blue-500' : ''}`}
             >
               {day}
+              {dotCls && <span className={`absolute bottom-0.5 w-1 h-1 rounded-full ${dotCls}`} />}
             </div>
           )
         })}

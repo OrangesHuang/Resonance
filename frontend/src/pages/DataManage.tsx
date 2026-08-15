@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useDataStatus, useDataJobs, useStartJob } from '../hooks/useData'
+import { useEffect, useRef, useState } from 'react'
+import { useDataStatus, useDataJobs, useDataSettings, useStartJob } from '../hooks/useData'
 import SourceCard from '../components/data/SourceCard'
 import RecalcCard from '../components/data/RecalcCard'
 import FlowSteps from '../components/data/FlowSteps'
@@ -29,10 +29,23 @@ export default function DataManage() {
   const [error, setError] = useState<string | null>(null)
   const [range, setRange] = useState(defaultRange)
   const [force, setForce] = useState(false)
+  const [slotStart, setSlotStart] = useState<string>('')
+  const [slotSaved, setSlotSaved] = useState(true)
+  const rangeTouched = useRef(false)
 
   const status = useDataStatus(polling)
   const jobs = useDataJobs(polling)
   const startJob = useStartJob()
+  const settings = useDataSettings()
+
+  // 数据槽位起始日期设置加载 → 初始化输入 + 回填默认拉取范围
+  useEffect(() => {
+    const v = settings.query.data?.data_slot_start ?? ''
+    setSlotStart(v)
+    if (v && !rangeTouched.current) {
+      setRange(r => ({ ...r, start: v }))
+    }
+  }, [settings.query.data])
 
   const allJobs: JobState[] = jobs.data ?? status.data?.running ?? []
   const active = allJobs.filter(j => j.status === 'running' || j.status === 'pending')
@@ -60,6 +73,14 @@ export default function DataManage() {
   }
 
   const rangeParams = { start_date: range.start, end_date: range.end, force }
+
+  const saveSlotStart = () => {
+    settings.update.mutate({ data_slot_start: slotStart || '' }, {
+      onSuccess: () => setSlotSaved(true),
+      onError: (e: Error) => setError(e.message),
+    })
+  }
+  const slots = status.data?.slots
   const progressFor = (task: string) => {
     const j = active.find(x => x.task === task)
     return j ? { current: j.current, total: j.total, message: j.message } : null
@@ -132,15 +153,49 @@ export default function DataManage() {
         首次使用（空数据库）请点击「一键重建全部数据」，系统按 交易日历 → ETF日度 → 份额 → 市场情绪 顺序自动拉取全量数据；日常增量由内置定时任务在收盘后自动完成。
       </div>
 
+      {/* 数据槽位控制: 交易日历即填充槽, 控制起始日期 = 控制系统应有数据的总量 */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h3 className="text-sm font-semibold text-white">数据槽位（交易日历即填充槽）</h3>
+          <span className="text-xs text-gray-500">起始日期决定系统应有数据的「总量」，缺口由交易日历精确定位</span>
+        </div>
+        <div className="flex items-center gap-4 mt-3 flex-wrap text-xs text-gray-400">
+          <label className="flex items-center gap-1">数据起始日期
+            <input type="date" value={slotStart} max={toISO(new Date())}
+              onChange={e => { setSlotStart(e.target.value); setSlotSaved(false) }} className={DATE_CLS} />
+          </label>
+          <button
+            onClick={saveSlotStart}
+            disabled={slotSaved || settings.update.isPending}
+            className="px-3 py-1.5 rounded text-sm bg-sky-500/15 text-sky-300 border border-sky-500/40 hover:border-sky-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {settings.update.isPending ? '保存中…' : slotSaved ? '已保存' : '保存'}
+          </button>
+          <span className="text-gray-600">槽位总量 <b className="text-white font-mono">{slots?.slot_total ?? '-'}</b> 天（{slots?.slot_start ?? '-'} 起）</span>
+          <span>已覆盖 <b className="text-green-400 font-mono">{slots?.covered_days ?? '-'}</b></span>
+          <span>缺失 <b className="text-red-400 font-mono">{slots?.missing_days ?? '-'}</b></span>
+          {slots && slots.missing_days > 0 && slots.missing_ranges.length > 0 && (
+            <span className="text-red-400/80">{slots.missing_ranges.map(r => `${r[0]}~${r[1]}`).join(' / ')}</span>
+          )}
+          <button
+            onClick={() => run('refresh_calendar_slots')}
+            disabled={runningTasks.has('refresh_calendar_slots') || anyRunning}
+            className="ml-auto px-3 py-1.5 rounded text-sm bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {runningTasks.has('refresh_calendar_slots') ? '刷新中…' : '刷新槽位台账'}
+          </button>
+        </div>
+      </div>
+
       <div className="flex items-center gap-4 mb-4 flex-wrap text-xs text-gray-500">
         <span>拉取时间范围：</span>
         <label className="flex items-center gap-1">开始
           <input type="date" value={range.start} max={range.end}
-            onChange={e => setRange(r => ({ ...r, start: e.target.value }))} className={DATE_CLS} />
+            onChange={e => { rangeTouched.current = true; setRange(r => ({ ...r, start: e.target.value })) }} className={DATE_CLS} />
         </label>
         <label className="flex items-center gap-1">结束
           <input type="date" value={range.end} min={range.start} max={toISO(new Date())}
-            onChange={e => setRange(r => ({ ...r, end: e.target.value }))} className={DATE_CLS} />
+            onChange={e => { rangeTouched.current = true; setRange(r => ({ ...r, end: e.target.value })) }} className={DATE_CLS} />
         </label>
         <label className="flex items-center gap-1.5 text-gray-400 cursor-pointer" title="勾选后忽略已有数据，强制重新拉取并覆盖">
           <input type="checkbox" checked={force} onChange={e => setForce(e.target.checked)}

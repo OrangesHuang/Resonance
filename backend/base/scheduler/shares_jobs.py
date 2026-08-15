@@ -20,6 +20,7 @@ from base.config import (
     SHARES_FAIL_PAUSE_SEC,
 )
 from base.fetch.shares import fetch_shares_for_date
+from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.job_manager import ProgressFn
 from base.store.daily_repo import (
     get_by_date,
@@ -125,6 +126,7 @@ def job_backfill_shares(
             written += wrote
         time.sleep(BACKFILL_SLEEP_SEC)
     progress(total_chunks, total_chunks, f"完成 {written} 行 ({fetched_dates} 天)")
+    job_refresh_calendar_slots(progress)  # 刷新日历槽位台账(份额覆盖)
     return {"dates": len(dates), "written": written, "fetched_dates": fetched_dates, "days": days}
 
 
