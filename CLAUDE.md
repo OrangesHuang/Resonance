@@ -41,7 +41,7 @@ base/fetch → 领域 analysis → base/store → 领域 api
   `tasks.py`（注册层，阻塞任务经 `asyncio.to_thread` 派发，勿在事件循环上做同步网络 I/O）、
   `intraday_tasks.py`（盘中轮询/信号入库）、`daily_tasks.py`（收盘分析/份额/情绪/日历）、
   `state.py`（共享内存缓存）、`job_manager.py`（后台任务引擎 + 进度注册表）、
-  `job_registry.py`（任务元信息）、`data_jobs.py` + `sentiment_jobs.py`（回填任务实现）、
+  `job_registry.py`（任务元信息）、`data_jobs.py`（日历）+ `etf_daily_jobs.py`/`shares_jobs.py`（渐进式分批回填）+ `sentiment_jobs.py`、
   `rebuild.py`（一键重建流水线）、`recalc.py`（重算综合概率）、`time_guard.py`（交易时段守卫）。
 - `main.py` — App 组装（lifespan/CORS/路由注册/静态托管），仅组装无业务逻辑。
 

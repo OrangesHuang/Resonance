@@ -1,10 +1,10 @@
-"""回填历史 ETF 日度数据到 etf_monitor.db(薄壳,逻辑在 scheduler/data_jobs.py)"""
+"""回填历史 ETF 日度数据到 etf_monitor.db(薄壳,逻辑在 scheduler/etf_daily_jobs.py)"""
 import sys
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent / "backend"))
 
 from base.config import DEFAULT_ETF_SEED_DAYS
 from base.store.database import init_db
-from base.scheduler.data_jobs import job_backfill_etf_daily
+from base.scheduler.etf_daily_jobs import job_backfill_etf_daily
 
 
 def _print_progress(current: int, total: int, message: str) -> None:

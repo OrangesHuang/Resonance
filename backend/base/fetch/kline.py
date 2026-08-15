@@ -12,15 +12,16 @@ from base.config import (
     KLINE_FAIL_COOLDOWN_SEC,
     KLINE_LIMIT,
     KLINE_URL,
+    KLINE_URL_RANGE,
     SINA_KLINE_URL,
 )
 
-_CACHE: dict[tuple[str, int], tuple[float, list[dict] | None]] = {}
+_CACHE: dict[tuple, tuple[float, list[dict] | None]] = {}
 
 
-def _cached(code: str, limit: int):
+def _cached(code: str, limit: int, start_date: str | None = None, end_date: str | None = None):
     """内存 TTL 缓存: 有效期内直接返回, 失败也冷却缓存避免重试风暴。"""
-    key = (code, limit)
+    key = (code, limit, start_date, end_date)
     now = time.time()
     hit = _CACHE.get(key)
     if hit is None:
@@ -35,8 +36,10 @@ def _cached(code: str, limit: int):
     return None
 
 
-def _store(code: str, limit: int, data: list[dict] | None) -> None:
-    _CACHE[(code, limit)] = (time.time(), data)
+def _store(
+    code: str, limit: int, data: list[dict] | None, start_date: str | None = None, end_date: str | None = None
+) -> None:
+    _CACHE[(code, limit, start_date, end_date)] = (time.time(), data)
 
 
 def _market_prefix(code: str) -> tuple[str, str]:
@@ -80,14 +83,28 @@ def _fetch_sina(code: str, limit: int) -> list[dict] | None:
     return result or None
 
 
-def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
-    cached = _cached(code, limit)
+def fetch_kline(
+    code: str,
+    limit: int = KLINE_LIMIT,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict]:
+    """拉取日K线(前复权)。
+
+    不带日期: 返回最近 limit 根(腾讯接口上限约 640 根, 单次拉不到更早历史);
+    带日期: 返回 [start_date, end_date] 区间内全部K线(limit 需 ≥ 区间根数),
+    供 2021 等历史回填使用。新浪降级源不支持日期区间, 仅无日期路径可用。
+    """
+    cached = _cached(code, limit, start_date, end_date)
     if cached is not None:
         return cached
 
     prefix, num_code = _market_prefix(code)
     symbol = f"{prefix}{num_code}"
-    url = KLINE_URL.format(symbol=symbol, limit=limit)
+    if start_date or end_date:
+        url = KLINE_URL_RANGE.format(symbol=symbol, start=start_date or "", end=end_date or "", limit=limit)
+    else:
+        url = KLINE_URL.format(symbol=symbol, limit=limit)
 
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
@@ -95,11 +112,12 @@ def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         print(f"[FETCH] kline {code} failed: {e}")
-        result = _fetch_sina(code, limit)  # 降级新浪
-        if result:
-            _store(code, limit, result)
-            return result
-        _store(code, limit, None)
+        if not (start_date or end_date):
+            result = _fetch_sina(code, limit)  # 降级新浪
+            if result:
+                _store(code, limit, result)
+                return result
+        _store(code, limit, None, start_date, end_date)
         return []
 
     node = data.get("data", {}).get(symbol, {})
@@ -119,14 +137,16 @@ def fetch_kline(code: str, limit: int = KLINE_LIMIT) -> list[dict]:
                 "volume": float(r[5]),
             }
         )
-    if not result:
+    if not result and not (start_date or end_date):
         result = _fetch_sina(code, limit) or []
-    _store(code, limit, result)
+    _store(code, limit, result, start_date, end_date)
     return result
 
 
-def fetch_index_kline(limit: int = KLINE_LIMIT) -> list[dict]:
-    return fetch_kline(INDEX_CODE, limit)
+def fetch_index_kline(
+    limit: int = KLINE_LIMIT, start_date: str | None = None, end_date: str | None = None
+) -> list[dict]:
+    return fetch_kline(INDEX_CODE, limit, start_date, end_date)
 
 
 def calc_volume_ma(kline: list[dict], window: int = 20) -> float | None:

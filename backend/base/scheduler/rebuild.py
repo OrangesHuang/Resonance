@@ -7,17 +7,16 @@
 from __future__ import annotations
 
 from base.config import (
+    DEFAULT_CHUNK_DAYS,
     DEFAULT_ETF_SEED_DAYS,
     DEFAULT_SHARES_BACKFILL_DAYS,
     SENTIMENT_BACKFILL_DAYS,
 )
-from base.scheduler.data_jobs import (
-    job_backfill_etf_daily,
-    job_backfill_shares,
-    job_sync_calendar,
-)
+from base.scheduler.data_jobs import job_sync_calendar
+from base.scheduler.etf_daily_jobs import job_backfill_etf_daily
 from base.scheduler.job_manager import ProgressFn
 from base.scheduler.sentiment_jobs import job_fetch_sentiment
+from base.scheduler.shares_jobs import job_backfill_shares
 
 _W_CALENDAR = 5
 _W_ETF = 45
@@ -41,16 +40,21 @@ def job_rebuild_all(
     force: bool = False,
     start_date: str | None = None,
     end_date: str | None = None,
+    chunk_days: int = DEFAULT_CHUNK_DAYS,
 ) -> dict:
     progress(0, 100, "阶段1/4 交易日历")
     calendar = job_sync_calendar(_scaled(progress, 0, _W_CALENDAR))
 
     progress(_W_CALENDAR, 100, "阶段2/4 ETF日度数据")
-    etf = job_backfill_etf_daily(_scaled(progress, _W_CALENDAR, _W_ETF), etf_days, start_date, end_date, force)
+    etf = job_backfill_etf_daily(
+        _scaled(progress, _W_CALENDAR, _W_ETF), etf_days, start_date, end_date, force, chunk_days
+    )
 
     shares_start = _W_CALENDAR + _W_ETF
     progress(shares_start, 100, "阶段3/4 份额数据")
-    shares = job_backfill_shares(_scaled(progress, shares_start, _W_SHARES), shares_days, force, start_date, end_date)
+    shares = job_backfill_shares(
+        _scaled(progress, shares_start, _W_SHARES), shares_days, force, start_date, end_date, chunk_days
+    )
 
     sentiment_start = shares_start + _W_SHARES
     progress(sentiment_start, 100, "阶段4/4 市场情绪")

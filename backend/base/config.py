@@ -66,6 +66,7 @@ MARKET_TURNOVER_SYMBOLS = "sh000001,sz399001"  # 上证指数+深证成指
 TURNOVER_POLL_INTERVAL_SEC = 300  # 5 分钟一次
 
 KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,{limit},qfq"
+KLINE_URL_RANGE = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,{start},{end},{limit},qfq"  # 日期区间拉取(回填历史用)
 REALTIME_URL = "http://qt.gtimg.cn/q={symbols}"
 SINA_KLINE_URL = (
     "https://quotes.sina.cn/cn/api/json_v2.php/"
@@ -127,3 +128,4 @@ BACKFILL_SLEEP_SEC = 0.15  # 份额逐日回填间隔(秒)
 TURNOVER_FETCH_SLEEP_SEC = 0.1  # 成交额逐日akshare间隔(秒,限流保护)
 JOB_LIST_LIMIT = 30  # /api/data/jobs 返回的最大历史条数
 JOB_DAYS_MAX = 1000  # 回填深度参数上限
+DEFAULT_CHUNK_DAYS = 10  # 渐进式回填: 每批处理的交易日数(分批入库 + 按批上报进度)

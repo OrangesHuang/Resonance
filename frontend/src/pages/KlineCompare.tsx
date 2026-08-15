@@ -8,7 +8,7 @@ import type { ZoomRange } from '../components/kline/CompareKline'
 import type { TradePoint } from '../api/types'
 import { usePinnedEtfs } from '../hooks/usePinnedEtfs'
 
-const KLINE_DAYS = 640
+const KLINE_DAYS = 2000  // 覆盖 2021 至今历史
 // 原生联动组: echarts.connect 让同组图在同一渲染批次内同步 dataZoom,
 // 相比手动 dispatchAction 转发(事后异步)能真正做到"一起滚动"
 const CHART_GROUP = 'klineCompare'

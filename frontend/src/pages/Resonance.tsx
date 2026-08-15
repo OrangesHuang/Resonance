@@ -14,7 +14,7 @@ import { useAxisPointerBridge } from '../hooks/useAxisPointerBridge'
 import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/common/chartZoom'
 import { unionDates, alignKlineToDates, alignResonanceHistoryToDates } from '../components/resonance/alignChartDates'
 
-const KLINE_DAYS = 640
+const KLINE_DAYS = 2000  // 覆盖 2021 至今历史(2021-01 起约 1370 个交易日)
 
 export default function Resonance() {
   const [code, setCode] = useState('159352')

@@ -1,3 +1,6 @@
+# ruff: noqa
+# mypy: ignore-errors
+# 临时回测分析脚本 — 不纳入 ruff/mypy 门槛
 from datetime import datetime
 from base.store.daily_repo import get_by_code
 from base.store.sentiment_repo import get_turnover_series, get_margin_series
@@ -5,13 +8,25 @@ from base.analysis.sentiment.core import enrich_turnover, percentile_series, tur
 from base.config import SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS
 from base.analysis.strategy.router import compute_trades
 
+
 def days(a, b):
     return (datetime.strptime(b, "%Y-%m-%d") - datetime.strptime(a, "%Y-%m-%d")).days
 
+
 turnover = enrich_turnover(get_turnover_series())
 margin = get_margin_series()
-t_pct = percentile_series([r.get("date") for r in turnover], [turnover_value(r) for r in turnover], SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
-m_pct = percentile_series([r.get("date") for r in margin], [r.get("fin_balance_yi") for r in margin], SENTIMENT_ZONE_WINDOW, SENTIMENT_ZONE_MIN_PTS)
+t_pct = percentile_series(
+    [r.get("date") for r in turnover],
+    [turnover_value(r) for r in turnover],
+    SENTIMENT_ZONE_WINDOW,
+    SENTIMENT_ZONE_MIN_PTS,
+)
+m_pct = percentile_series(
+    [r.get("date") for r in margin],
+    [r.get("fin_balance_yi") for r in margin],
+    SENTIMENT_ZONE_WINDOW,
+    SENTIMENT_ZONE_MIN_PTS,
+)
 kc_idx = get_by_code("589680")[::-1]
 hs300 = get_by_code("510300")[::-1]
 
@@ -57,6 +72,7 @@ for code in codes:
 common = sorted(set.intersection(*[set(v) for v in navs.values()]))
 combined = [(d, sum(navs[c][d] for c in codes) / len(codes)) for d in common]
 
+
 # 3) 最大回撤分析
 def drawdown_metrics(series):
     peak = -1
@@ -89,10 +105,11 @@ def drawdown_metrics(series):
         results.append(("open", cur_dd_start, series[-1][0]))
     return max_dd, trough_date, results
 
+
 md, td, recs = drawdown_metrics(combined)
 print(f"==== 组合(红利+A500+科创综指等权) 净值回撤 ====")
 print(f"数据范围: {common[0]} ~ {common[-1]} ({len(common)}交易日)")
-print(f"最深回撤: {md*100:.1f}% (谷底日 {td})")
+print(f"最深回撤: {md * 100:.1f}% (谷底日 {td})")
 print(f"回撤段(起点->恢复/未恢复):")
 for kind, s, e in recs:
     tag = "未恢复" if kind == "open" else ""
@@ -125,7 +142,9 @@ for code in codes:
                 if low < min_low:
                     min_low = low
             if back_date:
-                print(f"  {names[code]} {buy['date']}买@{cost:.3f}: 最深浮亏{min_low*100:+.1f}%, {days(buy['date'], back_date)}天后回本(次日或当日)")
+                print(
+                    f"  {names[code]} {buy['date']}买@{cost:.3f}: 最深浮亏{min_low * 100:+.1f}%, {days(buy['date'], back_date)}天后回本(次日或当日)"
+                )
             else:
-                print(f"  {names[code]} {buy['date']}买@{cost:.3f}: 最深浮亏{min_low*100:+.1f}%, 至今未回本")
+                print(f"  {names[code]} {buy['date']}买@{cost:.3f}: 最深浮亏{min_low * 100:+.1f}%, 至今未回本")
             buy = None

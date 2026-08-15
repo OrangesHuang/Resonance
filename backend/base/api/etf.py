@@ -28,7 +28,7 @@ def etf_list():
 
 
 @router.get("/{code}/history")
-def etf_history(code: str, days: int = Query(default=640, ge=1, le=640)):
+def etf_history(code: str, days: int = Query(default=640, ge=1, le=2000)):
     if code not in ETFS:
         return {"error": f"unknown ETF code: {code}"}
 

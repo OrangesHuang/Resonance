@@ -5,19 +5,17 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from base.config import (
+    DEFAULT_CHUNK_DAYS,
     DEFAULT_ETF_SEED_DAYS,
     DEFAULT_SHARES_BACKFILL_DAYS,
     SENTIMENT_BACKFILL_DAYS,
 )
-from base.scheduler.data_jobs import (
-    job_backfill_etf_daily,
-    job_backfill_missing_shares,
-    job_backfill_shares,
-    job_sync_calendar,
-)
+from base.scheduler.data_jobs import job_sync_calendar
+from base.scheduler.etf_daily_jobs import job_backfill_etf_daily
 from base.scheduler.rebuild import job_rebuild_all
 from base.scheduler.recalc import job_recalc_composite
 from base.scheduler.sentiment_jobs import job_fetch_etf_latest, job_fetch_sentiment
+from base.scheduler.shares_jobs import job_backfill_missing_shares, job_backfill_shares
 
 JOB_DEFS: dict[str, dict] = {
     "sync_calendar": {
@@ -32,7 +30,13 @@ JOB_DEFS: dict[str, dict] = {
     "backfill_etf_daily": {
         "label": "回填ETF日度数据",
         "exclusive": False,
-        "defaults": {"days": DEFAULT_ETF_SEED_DAYS, "force": False, "start_date": None, "end_date": None},
+        "defaults": {
+            "days": DEFAULT_ETF_SEED_DAYS,
+            "force": False,
+            "start_date": None,
+            "end_date": None,
+            "chunk_days": DEFAULT_CHUNK_DAYS,
+        },
         "data_flow": [
             {"step": "fetch", "text": "拉取监控 ETF 与基准指数日 K 线（前复权 OHLCV）"},
             {"step": "derive", "text": "量能链 volume_ma20 → volume_ratio → vol_prob"},
@@ -47,7 +51,13 @@ JOB_DEFS: dict[str, dict] = {
     "backfill_shares": {
         "label": "回填份额数据",
         "exclusive": False,
-        "defaults": {"days": DEFAULT_SHARES_BACKFILL_DAYS, "force": False, "start_date": None, "end_date": None},
+        "defaults": {
+            "days": DEFAULT_SHARES_BACKFILL_DAYS,
+            "force": False,
+            "start_date": None,
+            "end_date": None,
+            "chunk_days": DEFAULT_CHUNK_DAYS,
+        },
         "data_flow": [
             {"step": "fetch", "text": "拉取上交所（官方接口）+ 深交所（akshare）ETF 份额"},
             {"step": "derive", "text": "与前一交易日差分 → delta_yi / delta_pct → share_prob"},
@@ -108,6 +118,7 @@ JOB_DEFS: dict[str, dict] = {
             "force": False,
             "start_date": None,
             "end_date": None,
+            "chunk_days": DEFAULT_CHUNK_DAYS,
         },
         "data_flow": [
             {"step": "fetch", "text": "按 交易日历 → ETF日度 → 份额 → 市场情绪 顺序全量拉取"},

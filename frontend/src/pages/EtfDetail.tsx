@@ -8,7 +8,7 @@ import SignalHistoryChart from '../components/kline/SignalHistoryChart'
 import useIsMobile from '../hooks/useIsMobile'
 import type { ZoomWindow } from '../api/types'
 
-const HISTORY_DAYS = 640
+const HISTORY_DAYS = 2000  // 覆盖 2021 至今历史
 const SYNC_GROUP = 'etf-detail-sync'
 const DEFAULT_START_DATE = '2025-12-31'
 

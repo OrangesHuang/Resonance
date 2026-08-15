@@ -22,7 +22,7 @@ backend/
 │   ├── config.py    # 系统级命名常量
 │   ├── fetch/       # HTTP 请求与原始数据解析
 │   ├── store/       # 全部 SQLite 操作（参数化查询）
-│   ├── scheduler/   # 任务编排（data_jobs/tasks/job_registry/rebuild）
+│   ├── scheduler/   # 任务编排（data_jobs/tasks/job_registry/rebuild、etf_daily_jobs/shares_jobs 回填）
 │   ├── analysis/    # 共用纯函数计算
 │   │   ├── sentiment/   # 市场情绪（共振页 + 情绪页共用）
 │   │   └── strategy/    # 各 ETF 专属买卖点（共振页 + 组合回测共用）
@@ -137,6 +137,8 @@ npm run build    # tsc && vite build
 - **upsert 不得用 NULL 覆盖已有值**：新数据缺字段时用 `COALESCE(excluded.x, 原值)`（参考 `daily_repo.upsert_daily`，曾因回填日度清空全部份额）。
 - **按标的补齐粒度**：份额等回填只写缺失的 ETF，不影响其他标的（`_missing_share_etfs`）。
 - **边拉边写**：逐日任务每拉到一天立即入库（`on_row` 回调），中断不丢已拉数据；重跑自动跳过已完成日期。
+- **渐进式分批回填**：带 `start_date` 的日度/份额回填按 `chunk_days`（默认 10）个交易日一批处理并上报进度；区间完整覆盖才跳过（`_range_covered`，后向扩展免强制重拉），逐日跳过已入库日期，重跑只补缺失段（`_seed_one_etf`）。
+- **K线历史拉取**：腾讯接口单次 limit 上限约 640 根，更早历史必须用日期区间（`KLINE_URL_RANGE` + `fetch_kline(start_date=…, end_date=…)`）；前端 `KLINE_DAYS` 与 `/etf/{code}/history` 上限需同步放大才能看到更长历史。
 - **非交易日不拉取**：回溯跳过周末，目标日期用 `get_last_trading_day`。
 - 手动刷新接口限速（`REFRESH_MIN_INTERVAL_SEC`）。
 
