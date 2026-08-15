@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useCalendarDays, useRefreshCalendar } from '../hooks/useCalendar'
 import MiniMonth from '../components/calendar/MiniMonth'
 import { buildMonthCells, classifyDay, toKey, pad, WEEK_HEADERS, KIND_LABEL } from '../utils/calendar'
@@ -57,6 +58,8 @@ export default function TradeCalendar() {
   const todayStr = data.today
   const coverage = data.coverage ?? {}
   const slotStart = data.slot_start ?? null
+  const ss = data.slot_stats
+  const coverPct = ss && ss.slot_total > 0 ? Math.round((ss.covered_days / ss.slot_total) * 100) : null
 
   // 槽位覆盖点样式: 仅槽位区间(起始日后、今天前)展示
   const dotCls = (dateStr: string) => {
@@ -68,8 +71,6 @@ export default function TradeCalendar() {
     if (c >= 1) return 'bg-amber-400'
     return 'bg-red-400'
   }
-  const todayYear = Number(todayStr.slice(0, 4))
-
   const loYear = lo ? Number(lo.slice(0, 4)) : null
   const hiYear = hi ? Number(hi.slice(0, 4)) : null
   const loYM = lo ? ym(Number(lo.slice(0, 4)), Number(lo.slice(5, 7))) : null
@@ -84,11 +85,6 @@ export default function TradeCalendar() {
 
   const monthPrefix = `${view.year}-${pad(view.month)}`
   const monthTrading = data.days.filter(d => d.startsWith(monthPrefix)).length
-  const before = data.days.filter(d => d < todayStr)
-  const after = data.days.filter(d => d > todayStr)
-  const prevDay = before.length ? before[before.length - 1] : null
-  const nextDay = after.length ? after[0] : null
-  const showTodayStats = view.year === todayYear
 
   const goPrev = () =>
     setView(v =>
@@ -127,7 +123,7 @@ export default function TradeCalendar() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
         <StatCard title={`本月交易日（${view.month}月）`}>
           <span className="text-2xl font-mono text-white">{monthTrading}</span>
           <span className="text-xs text-gray-500 ml-1">天</span>
@@ -136,13 +132,37 @@ export default function TradeCalendar() {
           <span className="text-2xl font-mono text-white">{data.total}</span>
           <span className="text-xs text-gray-500 ml-1">天</span>
         </StatCard>
-        <StatCard title="上一交易日">
-          <span className="text-lg font-mono text-gray-200">{showTodayStats && prevDay ? prevDay : '-'}</span>
+        <StatCard title={`数据槽位总量（${slotStart ?? '-'} 起）`}>
+          <span className="text-2xl font-mono text-white">{ss?.slot_total ?? '-'}</span>
+          <span className="text-xs text-gray-500 ml-1">个交易日</span>
         </StatCard>
-        <StatCard title="下一交易日">
-          <span className="text-lg font-mono text-gray-200">{showTodayStats && nextDay ? nextDay : '-'}</span>
+        <StatCard title="槽位覆盖">
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-mono text-green-400">{ss?.covered_days ?? '-'}</span>
+            <span className="text-xs text-gray-500">/ {ss?.slot_total ?? '-'} 已覆盖</span>
+            {coverPct != null && (
+              <span className={`ml-auto text-sm font-mono ${ss && ss.missing_days > 0 ? 'text-amber-400' : 'text-green-400'}`}>{coverPct}%</span>
+            )}
+          </div>
+          {coverPct != null && (
+            <div className="mt-2 h-1.5 bg-gray-800 rounded overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-amber-500 to-green-500" style={{ width: `${coverPct}%` }} />
+            </div>
+          )}
         </StatCard>
       </div>
+
+      {ss && ss.missing_days > 0 && (
+        <div className="flex items-center gap-2 flex-wrap text-xs mb-6 px-1">
+          <span className="text-red-400">当前数据缺口（交易日历即填充槽）：</span>
+          {ss.missing_ranges.map(r => (
+            <span key={r[0]} className="font-mono bg-red-500/10 border border-red-500/30 text-red-400 rounded px-1.5 py-0.5">
+              {r[0]} ~ {r[1]}
+            </span>
+          ))}
+          <Link to="/data" className="text-sky-400 hover:text-sky-300 transition-colors">去数据管理页补全 →</Link>
+        </div>
+      )}
 
       <div className="flex items-center justify-between mb-4">
         <div className="inline-flex rounded-lg border border-gray-800 overflow-hidden">
@@ -213,15 +233,17 @@ export default function TradeCalendar() {
               const isToday = dateStr === todayStr
               const label = KIND_LABEL[kind]
               const dc = dotCls(dateStr)
+              const isSlotStart = slotStart != null && dateStr === slotStart
               return (
                 <div
                   key={dateStr}
-                  title={`${dateStr}${dc ? ` · 数据覆盖 ${coverage[dateStr]}/4` : ''}${label ? ` · ${label}` : ''}`}
-                  className={`relative aspect-square flex flex-col items-center justify-center rounded-md border font-mono text-sm ${BIG_KIND[kind]} ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+                  title={`${dateStr}${dc ? ` · 数据覆盖 ${coverage[dateStr]}/4` : ''}${isSlotStart ? ' · 数据槽位起始' : ''}${label ? ` · ${label}` : ''}`}
+                  className={`relative aspect-square flex flex-col items-center justify-center rounded-md border font-mono text-sm ${BIG_KIND[kind]} ${isToday ? 'ring-2 ring-blue-500' : ''} ${isSlotStart ? 'border-l-2 border-sky-500' : ''}`}
                 >
                   <span>{day}</span>
-                  {kind === 'holiday' && <span className="text-[10px] leading-none mt-0.5">休</span>}
-                  {dc && <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${dc}`} />}
+                  {isSlotStart && <span className="text-[9px] leading-none text-sky-400 mt-0.5">始</span>}
+                  {kind === 'holiday' && !isSlotStart && <span className="text-[10px] leading-none mt-0.5">休</span>}
+                  {dc && <span className={`absolute bottom-0.5 left-1.5 right-1.5 h-1 rounded-sm ${dc}`} />}
                 </div>
               )
             })}

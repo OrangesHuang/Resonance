@@ -1,4 +1,6 @@
 // 交易日历类型
+import type { SlotStats } from './data'
+
 export interface CalendarDays {
   year: number
   days: string[]
@@ -9,6 +11,7 @@ export interface CalendarDays {
   // 数据槽位台账: {date: 0-4} — etf_daily/份额/成交额/融资 四源覆盖数; slot_start = 槽位起始日期
   coverage?: Record<string, number>
   slot_start?: string | null
+  slot_stats?: SlotStats
 }
 
 export interface CalendarRefreshResult {

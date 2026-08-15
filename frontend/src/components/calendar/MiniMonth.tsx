@@ -23,10 +23,19 @@ interface Props {
 export default function MiniMonth({ year, month, tradingSet, todayStr, lo, hi, coverage, slotStart, onSelect }: Props) {
   const cells = buildMonthCells(year, month)
   const tradingCount = cells.filter(d => d != null && tradingSet.has(toKey(year, month, d))).length
+  // 本月槽位(起始日~今天)与已覆盖数
+  const slotDays = cells.filter((d): d is number => {
+    if (d == null || !tradingSet.has(toKey(year, month, d))) return false
+    const ds = toKey(year, month, d)
+    if (ds > todayStr) return false
+    return !slotStart || ds >= slotStart
+  })
+  const covered = slotDays.filter(d => (coverage?.[toKey(year, month, d)] ?? 0) > 0).length
+  const ratio = slotDays.length > 0 ? covered / slotDays.length : null
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-baseline justify-between mb-1.5">
         <button
           onClick={() => onSelect(month)}
           className="text-sm font-medium text-gray-200 hover:text-white transition-colors"
@@ -34,8 +43,18 @@ export default function MiniMonth({ year, month, tradingSet, todayStr, lo, hi, c
         >
           {month}月
         </button>
-        <span className="text-xs text-gray-500 font-mono">{tradingCount} 天</span>
+        <span className="text-[10px] text-gray-500 font-mono">
+          {tradingCount} 天 · 槽位 {slotDays.length > 0 ? `${covered}/${slotDays.length}` : '-'}
+        </span>
       </div>
+      {ratio != null && slotDays.length > 0 && (
+        <div className="mb-1.5 h-1 bg-gray-800 rounded overflow-hidden">
+          <div
+            className={`h-full ${ratio >= 1 ? 'bg-green-400' : ratio > 0 ? 'bg-amber-400' : 'bg-red-400'}`}
+            style={{ width: `${Math.round(ratio * 100)}%` }}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] mb-0.5">
         {WEEK_HEADERS.map((w, i) => (
