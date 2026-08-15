@@ -65,6 +65,11 @@ BASE_LOOKBACK = 60
 VERIFY_START_DAY = 10  # 买入后第 N 日开始检查
 VERIFY_ESCAPE_PCT = 3.0  # 累计涨幅低于此值视为未脱离成本区
 VERIFY_SHARES_PCT = 5.0  # 份额较买入日增长低于此值视为无承接
+# 买入量能门槛: 左侧买入(暴跌抄底/低位吸筹/极冷吸筹/反弹确认)当日量比必须
+# 高于均值 20%, 防止"地量假信号"误发买入(2023-05-24 vr0.86 等缩量低位吸筹
+# 日 20日胜率仅20%均值-1.9%; 而历史 11 个真实买入 vr 全部≥1.02, 左侧类全部
+# ≥1.52, 此门槛不改变任何既有轮次, 只堵规则漏洞: 量能要求显式化)
+BUY_VOL_MIN = 1.2
 
 
 def _count_crash_accum(rows: list[dict], idx: int, window: int = 10) -> int:
@@ -125,7 +130,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             in_crash_cluster = crash_count >= 2
 
             # 单日极端暴跌: 跌≥5%+ACCUMULATE → 直接左侧买入
-            if is_accum and chg <= -5:
+            if is_accum and chg <= -5 and vr >= BUY_VOL_MIN:
                 action = "BUY"
                 reason = f"暴跌抄底: 跌{chg:.1f}%+pp{pp:.0f}"
 
@@ -134,7 +139,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 waiting_for_reversal = True
 
             # 非暴跌集群的普通买入
-            elif is_accum and pp is not None and pp <= 25:
+            elif is_accum and pp is not None and pp <= 25 and vr >= BUY_VOL_MIN:
                 if sp is not None and sp >= 50:
                     action = "BUY"
                     reason = f"低位吸筹: pp{pp:.0f}+sp{sp:.0f}"
@@ -151,6 +156,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 and pp is not None
                 and pp <= 30
                 and crash_count < 2
+                and vr >= BUY_VOL_MIN
             ):
                 action = "BUY"
                 reason = f"反弹确认: 跌超7%后企稳 pp{pp:.0f}"
