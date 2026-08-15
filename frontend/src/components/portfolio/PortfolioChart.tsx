@@ -155,6 +155,7 @@ export default function PortfolioChart({ data, displayRowsByDate }: {
       backgroundColor: 'transparent',
       animation: false,
       tooltip: {
+        transitionDuration: 0,
         trigger: 'axis',
         axisPointer: {
           link: [{ xAxisIndex: 'all' }],

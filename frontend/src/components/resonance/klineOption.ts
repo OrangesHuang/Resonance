@@ -92,6 +92,9 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
         removeOnClick: false,
       },
       tooltip: {
+        // 默认 transitionDuration 0.4s: 每次悬停 tooltip 会从轴吸附位
+        // 平滑漂移到鼠标位(两次定位被 CSS transition 动画化), 逐日查看很乱
+        transitionDuration: 0,
         trigger: 'axis',
         axisPointer: { type: 'cross' },
         backgroundColor: '#111827',

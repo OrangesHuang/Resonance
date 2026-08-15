@@ -126,6 +126,7 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
       backgroundColor: 'transparent',
       animation: false,
       tooltip: {
+        transitionDuration: 0,
         trigger: 'axis',
         backgroundColor: '#111827',
         borderColor: '#374151',

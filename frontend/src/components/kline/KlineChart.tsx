@@ -29,6 +29,7 @@ export default function KlineChart({ kline, groupId, height = 520, zoom, onReady
     backgroundColor: 'transparent',
     animation: false,
     tooltip: {
+      transitionDuration: 0,
       trigger: 'axis',
       axisPointer: { type: 'cross' },
       backgroundColor: '#111827',

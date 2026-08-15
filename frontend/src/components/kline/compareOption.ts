@@ -134,6 +134,7 @@ export function buildCompareOption({ kline, trades, signals, sharedDates, rangeS
         removeOnClick: false,
       },
       tooltip: {
+        transitionDuration: 0,
         trigger: 'axis',
         axisPointer: { type: 'cross' },
         backgroundColor: '#111827',

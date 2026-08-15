@@ -151,6 +151,7 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
     backgroundColor: 'transparent',
     animation: false,
     tooltip: {
+      transitionDuration: 0,
       trigger: 'axis',
       backgroundColor: '#111827',
       borderColor: '#374151',

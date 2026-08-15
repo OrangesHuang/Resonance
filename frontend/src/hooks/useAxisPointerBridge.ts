@@ -22,6 +22,7 @@ export function useAxisPointerBridge() {
   const listeners = useRef<Set<Listener>>(new Set())
   const zooming = useRef(false)
   const lastZoom = useRef<[number, number, number] | null>(null)
+  const showing = useRef(false)
 
   /** getDates 为 getter: 切换标的/数据更新后取最新日期序列。
    *  已 dispose 的实例(StrictMode 双挂载/echarts-for-react 临时实例
@@ -87,41 +88,50 @@ export function useAxisPointerBridge() {
 
   /** 广播 hover 日期: 除来源图外所有图显示白线 + 通知订阅者。
    *  跳过来源图: 来源图由原生 axisPointer 定位 tooltip, 广播回来的
-   *  showTip(图表中心 y)会与鼠标位置交替覆盖导致 tooltip 飘移。 */
+   *  showTip(图表中心 y)会与鼠标位置交替覆盖导致 tooltip 飘移。
+   *  再入抑制: showTip 同步触发各图 updateAxisPointer, 其 handler 又以自己
+   *  为来源再次广播回来(间接回环), 把 K线 tooltip 拉回图表中心再被鼠标
+   *  位置覆盖; 广播期间再入的 show 直接忽略, 只保留第一跳(来源图→其他图)。 */
   const show = useCallback((date: string | null, source: ECharts | null = null) => {
-    // 清理已 dispose 的实例(dispose 后 getZr 抛错)
-    charts.current = charts.current.filter(c => {
-      try {
-        c.inst.getZr()
-        return true
-      } catch {
-        return false
-      }
-    })
-    for (const { inst, getDates } of charts.current) {
-      if (inst === source) continue
-      try {
-        if (!date) {
-          inst.dispatchAction({ type: 'hideTip' })
-          continue
+    if (showing.current) return
+    showing.current = true
+    try {
+      // 清理已 dispose 的实例(dispose 后 getZr 抛错)
+      charts.current = charts.current.filter(c => {
+        try {
+          c.inst.getZr()
+          return true
+        } catch {
+          return false
         }
-        const dates = getDates()
-        const idx = dates.indexOf(date)
-        if (idx < 0) continue
-        const px = (inst.convertToPixel({ xAxisIndex: 0 }, idx) as number) ?? 0
-        if (Number.isNaN(px)) continue
-        // y 取图表垂直中心: 固定值可能落在 grid 外导致 showTip 无效
-        inst.dispatchAction({ type: 'showTip', x: px, y: (inst.getHeight?.() ?? 100) / 2 })
-      } catch {
-        // 忽略实例未就绪/坐标转换异常
+      })
+      for (const { inst, getDates } of charts.current) {
+        if (inst === source) continue
+        try {
+          if (!date) {
+            inst.dispatchAction({ type: 'hideTip' })
+            continue
+          }
+          const dates = getDates()
+          const idx = dates.indexOf(date)
+          if (idx < 0) continue
+          const px = (inst.convertToPixel({ xAxisIndex: 0 }, idx) as number) ?? 0
+          if (Number.isNaN(px)) continue
+          // y 取图表垂直中心: 固定值可能落在 grid 外导致 showTip 无效
+          inst.dispatchAction({ type: 'showTip', x: px, y: (inst.getHeight?.() ?? 100) / 2 })
+        } catch {
+          // 忽略实例未就绪/坐标转换异常
+        }
       }
-    }
-    for (const cb of listeners.current) {
-      try {
-        cb(date)
-      } catch {
-        // 忽略订阅者异常
+      for (const cb of listeners.current) {
+        try {
+          cb(date)
+        } catch {
+          // 忽略订阅者异常
+        }
       }
+    } finally {
+      showing.current = false
     }
   }, [])
 

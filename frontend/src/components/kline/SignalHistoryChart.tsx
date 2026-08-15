@@ -38,6 +38,7 @@ export default function SignalHistoryChart({ dates, points, groupId, height = 42
     animation: false,
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
     tooltip: {
+      transitionDuration: 0,
       trigger: 'axis',
       backgroundColor: '#111827',
       borderColor: '#374151',

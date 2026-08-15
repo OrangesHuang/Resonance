@@ -25,6 +25,7 @@ function WindowSparkline({ window: w }: { window: number[] }) {
       splitLine: { lineStyle: { color: '#1f2937' } },
     },
     tooltip: {
+      transitionDuration: 0,
       trigger: 'axis',
       backgroundColor: '#111827',
       borderColor: '#374151',
