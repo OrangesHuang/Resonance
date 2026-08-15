@@ -19,7 +19,10 @@
   Phase 1 — 暴跌集群检测: 10天内≥3个ACCUMULATE → 进入等待
   Phase 2 — 右侧确认: 集群结束后连续2天涨+放量 → 买入
   Phase 3 — 单日恐慌: 跌≥5%+ACCUMULATE → 直接左侧买入(单日极端)
-  Phase 4 — 卖出: DISTRIBUTE集群确认 + 量价记忆
+  Phase 4 — 卖出: DISTRIBUTE集群确认 + 量价记忆 + 底部失败守卫(连续浮亏离场)
+  2021 起全历史(TRADE_START=2021-01-01): 2022-04-29 底 +22.2% / 2024-06-26
+  +26.1% / 2025-04-07 +33.1% 均由现有份额/顶部卖出捕获; 守卫补 2023-04-25
+  式阴跌深套的缺口(份额无巨量流出时价格缓慢下跌的轮次)。
 """
 
 from __future__ import annotations
@@ -43,7 +46,12 @@ WATCH_PP_EXIT = 60  # 观察期 pp 跌破此值立即卖
 MIN_HOLD = 5
 COOLDOWN = 3
 VOL_LOOKBACK = 20
-TRADE_START = "2024-01-01"
+TRADE_START = "2021-01-01"  # 放开 2021 起全历史(2021 前无共振数据)
+# 底部失败守卫: 持仓连续浮亏超阈值即顺势离场, 不扛逆势深套
+# (案例 2023-04-25 买@2.56, 2023 小盘阴跌份额无巨量流出, 份额卖出不触发,
+#  一直扛到 2024-05 -16.4%; 而 2022-04-29 真底部 0 天浮亏超 8%)
+UNDERWATER_PCT = 8.0
+UNDERWATER_DAYS = 15
 # 吸筹周期起点窗口: 右侧确认买入常发生在吸筹中后段, 用买入日份额作基准
 # 会把已流入份额计入基准, 导致小幅回撤即"净流入回撤过半"过早卖出
 # (案例: 2026-07-27 买入, 7/1-8/4 累计吸筹92.4亿仅回撤45.7%却触发卖出)
@@ -74,6 +82,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     dist_count = 0
     waiting_for_reversal = False
     last_sell_price = None
+    entry_price = None  # 买入价(底部失败守卫用)
+    underwater_streak = 0  # 连续浮亏超阈值天数
     entry_shares = None  # 买入时份额
     base_shares = None  # 吸筹起点份额(买入前 BASE_LOOKBACK 日最低)
     peak_shares = None  # 持仓期最高份额(用于计算净流入峰值)
@@ -162,9 +172,14 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             elif pp is not None and pp > 50:
                 waiting_for_reversal = False  # 价格回升太多, 重置
 
-        # ---- 卖出 (份额驱动) ----
+        # ---- 卖出 (份额驱动 + 底部失败守卫) ----
         if position == 1:
             hold_days += 1
+            # 底部失败: 连续浮亏超阈值 → 顺势离场(防 2023-04-25 式阴跌深套)
+            if entry_price is not None and close < entry_price * (1 - UNDERWATER_PCT / 100):
+                underwater_streak += 1
+            else:
+                underwater_streak = 0
             cur_shares = row.get("shares_yi")
 
             # 跟踪持仓期最高份额
@@ -207,7 +222,10 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 dist_count += 1
 
             if hold_days >= MIN_HOLD:
-                if massive_outflow:
+                if underwater_streak >= UNDERWATER_DAYS:
+                    action = "SELL"
+                    reason = f"底部失败: 连续{UNDERWATER_DAYS}日浮亏超{UNDERWATER_PCT}%"
+                elif massive_outflow:
                     action = "SELL"
                     reason = f"巨量流出: {sd_yi:.0f}亿+净流入回撤+pp{pp:.0f}"
                 elif is_dist and dist_count >= sell_threshold and not watch_mode:
@@ -235,6 +253,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             watch_mode = False
             watch_peak = 0.0
             entry_shares = row.get("shares_yi")
+            entry_price = close
+            underwater_streak = 0
             peak_shares = entry_shares
             # 吸筹起点 = 买入前 BASE_LOOKBACK 日内最低份额
             # (右侧确认买入时基准不被已流入份额抬高, 避免过早卖出)
