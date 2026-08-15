@@ -96,6 +96,24 @@ MARGIN_USE_SSE_FALLBACK = False  # True 则融资数据仅取上交所(更快但
 VOLUME_UP_RATIO = 1.05  # 量比≥此值判为放量
 VOLUME_DOWN_RATIO = 0.95  # 量比≤此值判为缩量
 
+# 两市成交额批量源(东财指数日线): SSE 官方接口 2021 返回空, 用上证/深证
+# 综指成交额替代 — 与官方全市场口径误差 <0.4%, 2021 全年完整可得
+EM_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+EM_INDEX_SH_SECID = "1.000001"  # 上证综指(≈上交所全市场成交额)
+EM_INDEX_SZ_SECID = "0.399106"  # 深证综指(≈深交所全市场成交额)
+EM_UT = "fa5fd1943c7b386f172d6893dbfba10b"  # 东财行情接口公共 token
+EM_FETCH_RETRIES = 3  # 东财批量源请求重试次数(接口偶发限流/断连)
+EM_FETCH_RETRY_SLEEP = 3  # 重试间隔基础秒数(递增)
+EM_FETCH_TIMEOUT = 15  # 东财请求超时(秒)
+
+# 雪球批量源(东财回退): 日K含 amount 成交额, 2021 起完整; 与东财/官方
+# 交叉验证一致(2021-03-01 上证 4024.77 亿两者完全相同)
+XQ_KLINE_URL = "https://stock.xueqiu.com/v5/stock/chart/kline.json"
+XQ_HQ_URL = "https://xueqiu.com/hq"  # 先访问拿 xq_a_token cookie
+XQ_INDEX_SH = "SH000001"  # 上证综指(≈上交所全市场成交额)
+XQ_INDEX_SZ = "SZ399106"  # 深证综指(≈深交所全市场成交额)
+XQ_FETCH_TIMEOUT = 12
+
 # 情绪分区(危险区/中性区/安全区)
 SENTIMENT_ZONE_WINDOW = 60  # 分位数滚动窗口(交易日)
 SENTIMENT_ZONE_MIN_PTS = 20  # 分位数计算最少样本数

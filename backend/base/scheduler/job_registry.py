@@ -100,7 +100,13 @@ JOB_DEFS: dict[str, dict] = {
     "fetch_sentiment": {
         "label": "拉取市场情绪",
         "exclusive": False,
-        "defaults": {"days": SENTIMENT_BACKFILL_DAYS, "force": False, "start_date": None, "end_date": None},
+        "defaults": {
+            "days": SENTIMENT_BACKFILL_DAYS,
+            "force": False,
+            "start_date": None,
+            "end_date": None,
+            "chunk_days": DEFAULT_CHUNK_DAYS,
+        },
         "data_flow": [
             {"step": "fetch", "text": "拉取沪深两市成交额 + 融资余额"},
             {
