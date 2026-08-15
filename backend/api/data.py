@@ -20,8 +20,8 @@ from base.scheduler.job_manager import job_manager, run_job
 from base.scheduler.job_registry import JOB_DEFS, JOB_FNS
 from base.scheduler.scheduled_defs import SCHEDULED_DEFS
 from base.scheduler.tasks import scheduler
-from base.store.calendar_repo import get_calendar_count, get_last_sync, get_range
-from base.store.daily_repo import get_stats
+from base.store.calendar_repo import get_calendar_count, get_last_sync, get_range, get_trade_days
+from base.store.daily_repo import get_distinct_dates, get_stats
 from base.store.sentiment_repo import (
     get_margin_count,
     get_margin_series,
@@ -43,6 +43,31 @@ def _series_range(rows: list[dict]) -> list:
     return [rows[0].get("date"), rows[-1].get("date")]
 
 
+def _etf_daily_gaps() -> tuple[list[list[str]], int]:
+    """以交易日历为填充槽: 数据区间内"应该有数据"却缺失的交易日区间与天数。
+
+    区间拉取被接口单次上限截断(如 2021~2023 中间段)、任务中断、单日失败
+    都会留下缺口 — 日历明确定义哪天应有数据, 缺口可被扫描/展示/一键补全。
+    """
+    stats = get_stats()
+    lo, hi = stats["date_range"]
+    if not lo or not hi:
+        return [], 0
+    actual = set(get_distinct_dates())
+    runs: list[list[str]] = []
+    cur: list[str] = []
+    for d in get_trade_days(lo, hi):
+        if d in actual:
+            if cur:
+                runs.append(cur)
+                cur = []
+        else:
+            cur.append(d)
+    if cur:
+        runs.append(cur)
+    return [[r[0], r[-1]] for r in runs], sum(len(r) for r in runs)
+
+
 @router.get("/status")
 def data_status():
     turnover = get_turnover_series()
@@ -52,9 +77,10 @@ def data_status():
     for j in scheduler.get_jobs():
         nr = j.next_run_time
         sched.append({"id": j.id, "next_run": nr.isoformat() if nr else None})
+    missing_ranges, missing_days = _etf_daily_gaps()
     return {
         "sources": {
-            "etf_daily": get_stats(),
+            "etf_daily": {**get_stats(), "missing_days": missing_days, "missing_ranges": missing_ranges},
             "turnover": {"count": get_turnover_count(), "range": _series_range(turnover)},
             "margin": {"count": get_margin_count(), "range": _series_range(margin)},
             "calendar": {"count": get_calendar_count(), "range": get_range(), "last_sync": get_last_sync()},

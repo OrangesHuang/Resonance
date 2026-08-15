@@ -213,6 +213,16 @@ def get_by_code(code: str, start: str | None = None, end: str | None = None) -> 
         conn.close()
 
 
+def get_distinct_dates() -> list[str]:
+    """etf_daily 中出现过的全部交易日(升序), 供缺口扫描与交易日历比对。"""
+    conn = get_connection()
+    try:
+        rows = conn.execute("SELECT DISTINCT date FROM etf_daily ORDER BY date").fetchall()
+        return [r["date"] for r in rows]
+    finally:
+        conn.close()
+
+
 def get_latest_date() -> str | None:
     conn = get_connection()
     try:

@@ -74,14 +74,18 @@ export default function DataManage() {
 
   const s = status.data.sources
 
-  const missingShares = s.etf_daily.total_records - s.etf_daily.records_with_shares
+  const LEVEL_TEXT = { ok: '充足', warn: '部分缺失', empty: '空' }
 
-  const etfLevel = s.etf_daily.total_records === 0 ? 'empty' : s.etf_daily.records_with_shares === 0 ? 'warn' : 'ok'
+  const missingShares = s.etf_daily.total_records - s.etf_daily.records_with_shares
+  const missingEtfDays = s.etf_daily.missing_days ?? 0
+  const missingEtfRange = s.etf_daily.missing_ranges?.map(r => `${r[0]}~${r[1]}`).join(' / ') ?? ''
+
+  const etfLevel = s.etf_daily.total_records === 0 ? 'empty' : missingEtfDays > 0 ? 'warn' : s.etf_daily.records_with_shares === 0 ? 'warn' : 'ok'
+  const etfLevelText = s.etf_daily.total_records === 0 ? LEVEL_TEXT.empty : missingEtfDays > 0 ? `缺失 ${missingEtfDays} 天` : s.etf_daily.records_with_shares === 0 ? '缺份额' : LEVEL_TEXT.ok
   const shareLevel = s.etf_daily.records_with_shares === 0 ? 'empty' : s.etf_daily.records_with_shares < s.etf_daily.total_records ? 'warn' : 'ok'
   const sentCount = Math.min(s.turnover.count, s.margin.count)
   const sentLevel = sentCount === 0 ? 'empty' : sentCount < 20 ? 'warn' : 'ok'
   const calLevel = s.calendar.count === 0 ? 'empty' : 'ok'
-  const LEVEL_TEXT = { ok: '充足', warn: '部分缺失', empty: '空' }
 
   const startRebuild = () => run('rebuild_all', rangeParams)
 
@@ -148,15 +152,21 @@ export default function DataManage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <SourceCard title="ETF 日度数据" description="K线三因子分析：价格位置、交易方向、综合概率"
-          level={etfLevel} levelText={etfLevel === 'warn' ? '缺份额' : LEVEL_TEXT[etfLevel]}
+          level={etfLevel} levelText={etfLevelText}
           stats={[
             { label: '记录数', value: String(s.etf_daily.total_records) },
             { label: '交易日', value: String(s.etf_daily.trading_days) },
             { label: '区间', value: fmtRange(s.etf_daily.date_range) },
+            ...(missingEtfDays > 0 ? [{ label: '缺失交易日', value: `${missingEtfDays} 天${missingEtfRange ? ` (${missingEtfRange})` : ''}` }] : []),
           ]}
           actionLabel="回填日度" onAction={() => run('backfill_etf_daily', rangeParams)}
           disabled={runningTasks.has('backfill_etf_daily') || rebuildRunning}
-          running={runningTasks.has('backfill_etf_daily')} progress={progressFor('backfill_etf_daily')}
+          running={runningTasks.has('backfill_etf_daily')}
+          progress={progressFor('backfill_missing_etf_daily') ?? progressFor('backfill_etf_daily')}
+          secondaryLabel={missingEtfDays > 0 ? `补全缺失 (${missingEtfDays})` : undefined}
+          secondaryOnAction={missingEtfDays > 0 ? () => run('backfill_missing_etf_daily') : undefined}
+          secondaryDisabled={runningTasks.has('backfill_missing_etf_daily') || rebuildRunning}
+          secondaryRunning={runningTasks.has('backfill_missing_etf_daily')}
           flow={flowOf('backfill_etf_daily')} />
 
         <SourceCard title="份额数据" description="ETF 份额净申赎，重算 share_prob（影响份额流向灯）"

@@ -36,6 +36,9 @@ export interface EtfDailyStats {
   trading_days: number
   date_range: [string | null, string | null]
   records_with_shares: number
+  // 以交易日历为填充槽: 数据区间内应有数据却缺失的交易日(区间拉取截断/中断等成因)
+  missing_days?: number
+  missing_ranges?: [string, string][]
 }
 
 export interface SeriesStats {

@@ -47,6 +47,32 @@ def _warmup_start(start_date: str, warmup_days: int = SEED_MIN_BARS) -> str:
     return (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(days=int(warmup_days * 1.5) + 5)).strftime("%Y-%m-%d")
 
 
+def _missing_etf_ranges(code: str) -> list[tuple[str, str]]:
+    """该 ETF 在自身数据区间内缺失的交易日区间(以交易日历为"填充槽"定义)。
+
+    返回 [(gap_start, gap_end), ...], 无缺失返回 []。缺口成因: 区间拉取被
+    接口单次上限截断、任务中断、单日拉取失败等 — 交易日历能明确"哪天
+    应该有数据"这件事, 缺口一目了然。
+    """
+    rows = get_by_code(code)
+    if not rows:
+        return []
+    dates = {r["date"] for r in rows}
+    lo, hi = min(dates), max(dates)
+    runs: list[list[str]] = []
+    cur: list[str] = []
+    for d in get_trade_days(lo, hi):
+        if d in dates:
+            if cur:
+                runs.append(cur)
+                cur = []
+        else:
+            cur.append(d)
+    if cur:
+        runs.append(cur)
+    return [(r[0], r[-1]) for r in runs]
+
+
 def _range_covered(code: str, start: str, end: str | None) -> bool:
     """请求区间 [start, end] 是否已全部入库(以交易日历为准)。
 
@@ -118,6 +144,32 @@ def _seed_one_etf(
             cur_chunk = ci
             progress(chunk_base + min(ci, chunk_n - 1), chunk_total, f"{code} 第 {ci + 1}/{chunk_n} 批 · {d}")
     return count, chunk_n
+
+
+def job_backfill_missing_etf_daily(progress: ProgressFn, chunk_days: int = DEFAULT_CHUNK_DAYS) -> dict:
+    """补全全历史缺失 ETF 日度: 以交易日历为填充槽, 扫描各 ETF 自身数据区间
+    内的缺失交易日, 对缺口整体范围复用区间回填(逐日跳过只补缺失段)。
+
+    与 backfill_missing_shares 对应, 处理接口截断/任务中断/单日失败遗留的
+    缺口; 无需日期参数, 自动定位。
+    """
+    codes = list(ETFS.items())
+    gaps: list[tuple[str, str]] = []
+    for i, (code, info) in enumerate(codes, 1):
+        rs = _missing_etf_ranges(code)
+        if rs:
+            gaps.extend(rs)
+            progress(i, len(codes), f"{code} {info['name']} 缺失 {len(rs)} 段")
+        else:
+            progress(i, len(codes), f"{code} 无缺失")
+    if not gaps:
+        progress(len(codes), len(codes), "ETF日度无缺失")
+        return {"gaps": 0, "records": 0}
+    lo = min(g[0] for g in gaps)
+    hi = max(g[1] for g in gaps)
+    progress(len(codes), len(codes), f"回填缺口 {lo} ~ {hi}")
+    result = job_backfill_etf_daily(progress, start_date=lo, end_date=hi, chunk_days=chunk_days)
+    return {"gaps": len(gaps), "range": [lo, hi], **result}
 
 
 def job_backfill_etf_daily(

@@ -138,6 +138,7 @@ npm run build    # tsc && vite build
 - **按标的补齐粒度**：份额等回填只写缺失的 ETF，不影响其他标的（`_missing_share_etfs`）。
 - **边拉边写**：逐日任务每拉到一天立即入库（`on_row` 回调），中断不丢已拉数据；重跑自动跳过已完成日期。
 - **渐进式分批回填**：带 `start_date` 的日度/份额回填按 `chunk_days`（默认 10）个交易日一批处理并上报进度；区间完整覆盖才跳过（`_range_covered`，后向扩展免强制重拉），逐日跳过已入库日期，重跑只补缺失段（`_seed_one_etf`）。
+- **交易日历即填充槽**：交易日历定义"哪天应该有数据"——缺口扫描（`_missing_etf_ranges` / 状态接口 `missing_days`）、补全任务（`backfill_missing_etf_daily`/`backfill_missing_shares`）与 UI 补全按钮都以日历为基准，接口截断/中断/单日失败遗留的缺口可被精确定位并一键补全。
 - **K线历史拉取**：腾讯接口单次 limit 上限约 640 根，更早历史必须用日期区间（`KLINE_URL_RANGE` + `fetch_kline(start_date=…, end_date=…)`）；前端 `KLINE_DAYS` 与 `/etf/{code}/history` 上限需同步放大才能看到更长历史。
 - **非交易日不拉取**：回溯跳过周末，目标日期用 `get_last_trading_day`。
 - 手动刷新接口限速（`REFRESH_MIN_INTERVAL_SEC`）。

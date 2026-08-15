@@ -11,7 +11,7 @@ from base.config import (
     SENTIMENT_BACKFILL_DAYS,
 )
 from base.scheduler.data_jobs import job_sync_calendar
-from base.scheduler.etf_daily_jobs import job_backfill_etf_daily
+from base.scheduler.etf_daily_jobs import job_backfill_etf_daily, job_backfill_missing_etf_daily
 from base.scheduler.rebuild import job_rebuild_all
 from base.scheduler.recalc import job_recalc_composite
 from base.scheduler.sentiment_jobs import job_fetch_etf_latest, job_fetch_sentiment
@@ -46,6 +46,19 @@ JOB_DEFS: dict[str, dict] = {
             },
             {"step": "derive", "text": "综合概率 composite_prob → signal_level（V2 四层门控）"},
             {"step": "write", "text": "upsert 写入 etf_daily，已存在的日期跳过（勾选强制则覆盖）"},
+        ],
+    },
+    "backfill_missing_etf_daily": {
+        "label": "补全缺失ETF日度",
+        "exclusive": False,
+        "defaults": {"chunk_days": DEFAULT_CHUNK_DAYS},
+        "data_flow": [
+            {
+                "step": "derive",
+                "text": "以交易日历为填充槽, 扫描各 ETF 自身区间内的缺失交易日(区间拉取截断/中断/单日失败成因)",
+            },
+            {"step": "fetch", "text": "按缺口范围分块拉取日K(单次接口上限约 600 交易日, 超限自动分块)"},
+            {"step": "write", "text": "逐日跳过已有日期, 仅写入缺失日"},
         ],
     },
     "backfill_shares": {
@@ -131,6 +144,7 @@ JOB_DEFS: dict[str, dict] = {
 JOB_FNS: dict[str, Callable[..., dict]] = {
     "sync_calendar": job_sync_calendar,
     "backfill_etf_daily": job_backfill_etf_daily,
+    "backfill_missing_etf_daily": job_backfill_missing_etf_daily,
     "backfill_shares": job_backfill_shares,
     "backfill_missing_shares": job_backfill_missing_shares,
     "fetch_sentiment": job_fetch_sentiment,
