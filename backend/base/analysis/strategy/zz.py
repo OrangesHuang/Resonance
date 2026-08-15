@@ -19,10 +19,11 @@
   Phase 1 — 暴跌集群检测: 10天内≥3个ACCUMULATE → 进入等待
   Phase 2 — 右侧确认: 集群结束后连续2天涨+放量 → 买入
   Phase 3 — 单日恐慌: 跌≥5%+ACCUMULATE → 直接左侧买入(单日极端)
-  Phase 4 — 卖出: DISTRIBUTE集群确认 + 量价记忆 + 底部失败守卫(连续浮亏离场)
+  Phase 4 — 卖出: DISTRIBUTE集群确认 + 量价记忆 + 买入验证期(10日内未脱离
+  成本区即认错, 防阴跌陷阱) + 底部失败守卫(连续浮亏离场)
   2021 起全历史(TRADE_START=2021-01-01): 2022-04-29 底 +22.2% / 2024-06-26
-  +26.1% / 2025-04-07 +33.1% 均由现有份额/顶部卖出捕获; 守卫补 2023-04-25
-  式阴跌深套的缺口(份额无巨量流出时价格缓慢下跌的轮次)。
+  +26.1% / 2025-04-07 +33.1% 均由现有份额/顶部卖出捕获; 验证期+守卫补
+  2023-04-25 式阴跌深套的缺口(份额无巨量流出时价格缓慢下跌的轮次)。
 """
 
 from __future__ import annotations
@@ -56,6 +57,14 @@ UNDERWATER_DAYS = 15
 # 会把已流入份额计入基准, 导致小幅回撤即"净流入回撤过半"过早卖出
 # (案例: 2026-07-27 买入, 7/1-8/4 累计吸筹92.4亿仅回撤45.7%却触发卖出)
 BASE_LOOKBACK = 60
+# 买入验证期: 买入后应快速脱离成本区, 否则尽早认错离场
+# (案例 2023-04-25 买入@2.56, 前20日无恐慌日+20日波动0.90%全史最低,
+#  买入后20日价格横盘±1%且份额不流入 — 阴跌陷阱; 而 8 个赢家轮全部
+#  在第10日价格≥+3.8% 或份额暴涨承接, 唯一价格为负的 2024-06-26
+#  份额+7.1% 承接, 最终 +26.1%。验证期第10日检查: 价格<3%且份额<5%即离场)
+VERIFY_START_DAY = 10  # 买入后第 N 日开始检查
+VERIFY_ESCAPE_PCT = 3.0  # 累计涨幅低于此值视为未脱离成本区
+VERIFY_SHARES_PCT = 5.0  # 份额较买入日增长低于此值视为无承接
 
 
 def _count_crash_accum(rows: list[dict], idx: int, window: int = 10) -> int:
@@ -188,6 +197,19 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                     peak_shares = cur_shares
                 else:
                     peak_shares = max(peak_shares, cur_shares)
+
+            # 买入验证期: 快速脱离成本区检查(在浮亏守卫之前, 尽早认错)
+            if VERIFY_START_DAY <= hold_days <= VERIFY_START_DAY + 5:
+                ret_pct = (close / entry_price - 1) * 100 if entry_price else 0.0
+                cur_shares = row.get("shares_yi")
+                shares_gain = (
+                    (cur_shares / entry_shares - 1) * 100
+                    if cur_shares is not None and entry_shares and entry_shares > 0
+                    else 0.0
+                )
+                if ret_pct < VERIFY_ESCAPE_PCT and shares_gain < VERIFY_SHARES_PCT:
+                    action = "SELL"
+                    reason = f"买入未验证: 第{hold_days}日累计{ret_pct:+.1f}%+份额{shares_gain:+.1f}%未承接"
 
             # 卖出条件1: DISTRIBUTE集群中不触发巨量流出 (让集群完整)
             in_dist_cluster = dist_count >= 1
