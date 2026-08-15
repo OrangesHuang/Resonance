@@ -12,6 +12,7 @@ import MarketSentimentSection from '../components/resonance/MarketSentimentSecti
 import EtfSelector from '../components/common/EtfSelector'
 import { useAxisPointerBridge } from '../hooks/useAxisPointerBridge'
 import { DEFAULT_VISIBLE_BARS, type DateWindow } from '../components/common/chartZoom'
+import { unionDates, alignKlineToDates, alignResonanceHistoryToDates } from '../components/resonance/alignChartDates'
 
 const KLINE_DAYS = 640
 
@@ -82,9 +83,24 @@ export default function Resonance() {
     () => (klineStart && data ? data.history.filter(h => h.date >= klineStart) : (data?.history ?? [])),
     [data, klineStart],
   )
+  // 五图统一日期轴: K线 ∪ 共振历史(共振已按 klineStart 过滤, 实际 == K线日期)。
+  // 各图数据范围不一致(如 515080 K线 631 天 vs 共振 453 天 vs 情绪 472 天),
+  // 缩放百分比广播到不同长度数组会错位; 补零对齐后所有图缩放窗口逐日一致。
+  const alignDates = useMemo(
+    () => unionDates([tradeDates, resonanceHistory.map(h => h.date)]),
+    [tradeDates, resonanceHistory],
+  )
+  const alignedKline = useMemo(
+    () => alignKlineToDates(history?.kline ?? [], alignDates),
+    [history, alignDates],
+  )
+  const alignedHistory = useMemo(
+    () => alignResonanceHistoryToDates(resonanceHistory, alignDates),
+    [resonanceHistory, alignDates],
+  )
   const heatmapData = useMemo(
-    () => (data ? { ...data, history: resonanceHistory } : null),
-    [data, resonanceHistory],
+    () => (data ? { ...data, history: alignedHistory } : null),
+    [data, alignedHistory],
   )
 
   if (error) {
@@ -197,7 +213,7 @@ export default function Resonance() {
         onSelectDate={selectDate}
         dateWindow={dateWindow}
         onZoomChange={handleZoom}
-        minDate={klineStart}
+        alignDates={alignDates}
       />
 
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
@@ -209,8 +225,8 @@ export default function Resonance() {
         </div>
         {history ? (
           <ResonanceKline
-            kline={history.kline}
-            history={resonanceHistory}
+            kline={alignedKline}
+            history={alignedHistory}
             signals={history.daily_signals}
             trades={tradesData?.trades ?? []}
             selectedDate={selected?.date ?? null}
@@ -228,7 +244,7 @@ export default function Resonance() {
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <h3 className="text-sm font-medium text-gray-300 mb-2">红绿灯走势（点击柱查看当日依据）</h3>
             <ResonanceChart
-              history={resonanceHistory}
+              history={alignedHistory}
               selectedDate={selected?.date ?? null}
               onSelectDate={selectDate}
               bridge={bridge}

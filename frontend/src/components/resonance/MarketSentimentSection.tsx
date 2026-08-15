@@ -14,13 +14,15 @@ const ZONE_TEXT: Record<ZoneKey, string> = {
 }
 
 /** 共振页底部市场情绪区: 成交额/融资两图 + 情绪分区概览（与情绪页共用数据源）。 */
-export default function MarketSentimentSection({ selectedDate, bridge, onSelectDate, dateWindow, onZoomChange, minDate }: {
+export default function MarketSentimentSection({ selectedDate, bridge, onSelectDate, dateWindow, onZoomChange, alignDates }: {
   selectedDate: string | null
   bridge: ReturnType<typeof useAxisPointerBridge>
   onSelectDate: (date: string) => void
   dateWindow: DateWindow | null
   onZoomChange: (w: DateWindow) => void
-  minDate: string | null
+  // 五图统一日期轴(K线 ∪ 共振历史): 情绪数据缺失的日期补 null,
+  // 保证缩放百分比窗口与 K线/红绿灯/热力图逐日对齐
+  alignDates: string[]
 }) {
   const { data, isLoading, error } = useSentiment()
   const isMobile = useIsMobile()
@@ -41,10 +43,11 @@ export default function MarketSentimentSection({ selectedDate, bridge, onSelectD
     )
   }
 
-  const turnover = minDate ? data.turnover.filter(p => p.date >= minDate) : data.turnover
-  const margin = minDate ? data.margin.filter(p => p.date >= minDate) : data.margin
-  const dates = turnover.map(p => p.date)
-  const marginByDate = new Map(margin.map(p => [p.date, p]))
+  const turnoverByDate = new Map(data.turnover.map(p => [p.date, p]))
+  const marginByDate = new Map(data.margin.map(p => [p.date, p]))
+  const dates = alignDates
+  const turnoverAmount = dates.map(d => turnoverByDate.get(d)?.total_amount_yi ?? null)
+  const turnoverMa5 = dates.map(d => turnoverByDate.get(d)?.ma5_yi ?? null)
   const marginLine = dates.map(d => marginByDate.get(d)?.fin_balance_yi ?? null)
   const marginBar = dates.map(d => marginByDate.get(d)?.net_fin_buy_yi ?? null)
   const cur = data.zone.current
@@ -79,8 +82,8 @@ export default function MarketSentimentSection({ selectedDate, bridge, onSelectD
             onZoomChange={onZoomChange}
             onReady={onSentimentReady}
             lines={[
-              { name: '成交额', data: turnover.map(p => p.total_amount_yi), color: '#3b82f6', width: 1.5 },
-              { name: 'MA5', data: turnover.map(p => p.ma5_yi), color: '#f59e0b', width: 1.2 },
+              { name: '成交额', data: turnoverAmount, color: '#3b82f6', width: 1.5 },
+              { name: 'MA5', data: turnoverMa5, color: '#f59e0b', width: 1.2 },
             ]}
           />
         </div>
