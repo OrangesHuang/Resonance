@@ -7,9 +7,8 @@
   A500的数据仅用于展示(价格/收益), 不参与信号生成。
 
 算法:
-  1. 对510300运行通用策略 `_run_default`(与页面「共振买卖点」同一实现,
-     含 P1-P5 全部买入路径 — 曾因 a500 内嵌旧版 v5 逻辑漏掉 P5 恐慌吸筹
-     导致买卖点与 510300 不一致, 如 2026-03-23 买入缺失)
+  1. 对510300运行混合策略 `strategy_hs300`(熊市恐慌底波段 + 牛市趋势持有,
+     与 510300 页面「共振买卖点」完全一致)
   2. 提取买卖点日期集合
   3. 在A500价格序列上查找对应日期, 构建A500交易记录
   4. 计算A500口径的收益指标
@@ -21,11 +20,11 @@ A500_CODE = "159352"
 HS300_CODE = "510300"
 
 
-def run_a500_strategy(a500_rows, hs300_rows, t_pct, m_pct):
-    """用沪深300的买卖日期映射到A500价格(信号来源与 router._run_default 完全一致)。"""
-    from base.analysis.strategy.router import _run_default
+def run_a500_strategy(a500_rows, hs300_rows):
+    """用沪深300的买卖日期映射到A500价格(信号来源 = strategy_hs300, 与 510300 完全一致)。"""
+    from base.analysis.strategy.hs300 import run_hs300_strategy
 
-    hs_result = _run_default(hs300_rows, t_pct, m_pct)
+    hs_result = run_hs300_strategy(hs300_rows)
     trade_map = {t["date"]: t["action"] for t in hs_result.get("trades", [])}
 
     a500_by_date = {r["date"]: r for r in a500_rows}

@@ -5,7 +5,8 @@
   515080 中证红利 → strategy_div     510050 上证50   → strategy_sh50
   159780 双创50   → strategy_sc50    588000 科创50   → strategy_kc50(参照科创综指)
   510500 中证500  → strategy_zz500_v2 159352 中证A500 → strategy_a500(复用沪深300)
-  其余(如 510300) → 通用多指标共振(价格低位+吸筹+份额/成交额/概率共振)
+  510300 沪深300  → strategy_hs300(熊市恐慌底波段+牛市趋势持有)
+  其余(如 563300) → 通用多指标共振(价格低位+吸筹+份额/成交额/概率共振)
 
 本模块纯函数无 I/O; 所需数据由调用方注入:
   t_pct / m_pct — {date: {percentile}} 成交额/融资余额分位(部分策略需要)
@@ -19,6 +20,7 @@ import math
 
 from base.analysis.strategy.a500 import A500_CODE, run_a500_strategy
 from base.analysis.strategy.div import DIV_CODE, run_div_strategy
+from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
 from base.analysis.strategy.kc import KC_CODE, run_kc_strategy
 from base.analysis.strategy.kc50 import KC50_CODE, run_kc50_strategy
 from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
@@ -155,6 +157,9 @@ def compute_trades(
         return run_kc50_strategy(rows, kc_idx_rows)
     if code == ZZ500_CODE:
         return run_zz500_strategy_v2(rows)
+    if code == HS300_CODE:
+        # 沪深300: 熊市恐慌底波段 + 牛市趋势持有(混合策略, 2021 起全历史)
+        return run_hs300_strategy(rows)
     if code == A500_CODE:
-        return run_a500_strategy(rows, hs300_rows, t_pct, m_pct)
+        return run_a500_strategy(rows, hs300_rows)
     return _run_default(rows, t_pct, m_pct)
