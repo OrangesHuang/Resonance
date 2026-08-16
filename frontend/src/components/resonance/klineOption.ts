@@ -1,6 +1,6 @@
 import type { EChartsOption } from 'echarts'
 import type { TooltipComponentOption } from 'echarts/components'
-import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../../api/types'
+import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint, DangerZone } from '../../api/types'
 import { buildTradeBands, sanitizeBands } from '../kline/tradeBands'
 import { buildKlineTooltip } from '../kline/klineTooltip'
 import { buildMarks } from '../kline/klineMarks'
@@ -10,6 +10,7 @@ import type { RangeStats } from '../kline/rangeStats'
 const AXIS_LABEL = '#6b7280'
 const DANGER_BAND = 'rgba(239, 68, 68, 0.08)'
 const CHANCE_BAND = 'rgba(34, 197, 94, 0.08)'
+const DANGER_ZONE_COLOR = 'rgba(239, 68, 68, 0.16)' // 危险区(首买点前无买点段), 深于普通空仓带
 const UP_COLOR = '#ef4444'
 const DOWN_COLOR = '#22c55e'
 
@@ -18,6 +19,7 @@ interface BuildParams {
   history: ResonanceHistoryPoint[]
   signals: DailySignal[]
   trades: TradePoint[]
+  dangerZone: DangerZone | null | undefined
   selectedDate: string | null
   rangeSel: { sel: RangeSelection; band: Array<{ xAxis: string; itemStyle?: object }>; mode: boolean }
   rangeStats: RangeStats | null
@@ -50,7 +52,7 @@ function buildRegimeBands(kline: KlinePoint[], dates: string[]): Array<Array<{ x
   return bands
 }
 
-export function buildKlineOption({ kline, history, signals, trades, selectedDate, rangeSel, rangeStats, isMobile }: BuildParams): { option: EChartsOption | null; dates: string[] } {
+export function buildKlineOption({ kline, history, signals, trades, dangerZone, selectedDate, rangeSel, rangeStats, isMobile }: BuildParams): { option: EChartsOption | null; dates: string[] } {
   if (kline.length === 0) return { option: null, dates: [] }
   const dates = kline.map(k => k.date)
   const ohlc = kline.map(k => [k.open, k.close, k.low, k.high])
@@ -77,6 +79,22 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
 
   // 买卖点区间蒙布: 持仓段淡绿 / 空仓段淡红
   const tradeBands = sanitizeBands(buildTradeBands(trades, dates[dates.length - 1]), dates)
+  // 危险区蒙布: 策略声明的首买点前无买点段(仅 Beta 类全程策略返回, 正式版无此字段不标)
+  const dangerZoneBands = dangerZone
+    ? sanitizeBands(
+        [
+          [
+            {
+              xAxis: dangerZone.start,
+              itemStyle: { color: DANGER_ZONE_COLOR },
+              label: { show: true, position: 'insideTop', color: 'rgba(239, 68, 68, 0.85)', fontSize: 10, formatter: dangerZone.label },
+            },
+            { xAxis: dangerZone.end },
+          ],
+        ] as never[],
+        dates,
+      )
+    : []
   // 区间统计蒙版: rangeSel.band 是 [首日, 末日] 二元组, 必须整体传入不可展开
   const rangeBand = rangeSel.band.length ? sanitizeBands([rangeSel.band] as never[], dates) : []
 
@@ -170,7 +188,7 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
             borderColor: UP_COLOR,
             borderColor0: DOWN_COLOR,
           },
-          markArea: { silent: true, data: sanitizeBands([...bands, ...tradeBands, ...rangeBand] as never[], dates) },
+          markArea: { silent: true, data: sanitizeBands([...dangerZoneBands, ...bands, ...tradeBands, ...rangeBand] as never[], dates) },
           markLine: markLineTop,
           markPoint,
         },

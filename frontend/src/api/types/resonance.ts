@@ -72,7 +72,16 @@ export interface TradePoint {
   reason: string
 }
 
+export interface DangerZone {
+  start: string
+  end: string
+  label: string
+  reason: string
+}
+
 export interface TradesResponse {
   code: string
   trades: TradePoint[]
+  version?: string
+  danger_zone?: DangerZone | null
 }

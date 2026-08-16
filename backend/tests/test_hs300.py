@@ -56,6 +56,19 @@ def test_insufficient_history_no_trade() -> None:
     closes = [3.0] * 20
     res = run_hs300_strategy(_mk(closes, {}, 20))
     assert res["trades"] == []
+    assert res["danger_zone"] is None
+
+
+def test_danger_zone_covers_pre_first_buy() -> None:
+    # 首个买点前无买点的空仓段 -> 危险区(数据起点 ~ 买点前一日)
+    closes = _declining(270) + [2.79, 2.74, 2.69, 2.64, 2.61, 2.59]
+    caps = {270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -3.0, "tp": 5.0, "mp": 5.0}}
+    rows = _mk(closes, caps, 270)
+    res = run_hs300_strategy(rows)
+    assert res["danger_zone"] is not None
+    assert res["danger_zone"]["start"] == rows[0]["date"]
+    assert res["danger_zone"]["end"] == rows[269]["date"]  # 首买点前一日
+    assert res["danger_zone"]["label"] == "危险区·无买点"
 
 
 def test_bear_sell_cooldown_blocks_rebuy() -> None:

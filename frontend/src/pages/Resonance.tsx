@@ -255,7 +255,7 @@ export default function Resonance() {
         <div className="flex items-center gap-3 mb-2 flex-wrap">
           <h3 className="text-sm font-medium text-gray-300">K线走势（点击K线查看当日依据）</h3>
           <span className="text-[11px] text-gray-600">
-            淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（红→黄→绿渐变，45/35 虚线为吸筹/出货线） · B/S=策略买卖点
+            淡红色带=危险共振日 · 淡绿色带=机会共振日 · 深红色=危险区（策略判定无买点、主动空仓） · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（红→黄→绿渐变，45/35 虚线为吸筹/出货线） · B/S=策略买卖点
           </span>
         </div>
         {history ? (
@@ -265,6 +265,7 @@ export default function Resonance() {
             history={alignedHistory}
             signals={history.daily_signals}
             trades={tradesData?.trades ?? []}
+            dangerZone={tradesData?.danger_zone ?? null}
             selectedDate={selected?.date ?? null}
             onSelectDate={selectDate}
             dateWindow={dateWindow}

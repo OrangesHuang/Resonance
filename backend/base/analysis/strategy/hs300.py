@@ -103,7 +103,7 @@ def _ma(closes: list[float], window: int, idx: int) -> float | None:
 def run_hs300_strategy(rows: list[dict]) -> dict:
     n = len(rows)
     if n < 30:
-        return {"code": HS300_CODE, "trades": [], "metrics": {}, "holding": False}
+        return {"code": HS300_CODE, "trades": [], "metrics": {}, "holding": False, "danger_zone": None}
     closes = [r.get("close_price") or 0.0 for r in rows]
 
     trades: list[dict] = []
@@ -116,6 +116,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
     dist_confirm = 0  # 出货确认计数(出货共振卖出)
     dist_threshold = 2  # 出货共振确认阈值(买入量比动态调整, 移植正式版)
     buy_bull = False  # 买入时是否牛市(牛熊分治: 牛市买入不验证, 熊市买入验证)
+    first_buy_idx: int | None = None  # 首个买点位置(危险区标注用)
 
     for i, row in enumerate(rows):
         d = row["date"]
@@ -284,6 +285,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                 dist_threshold = 1
             else:
                 dist_threshold = max(2, math.ceil(2 + vr * 0.55)) if vr else 2
+            if first_buy_idx is None:
+                first_buy_idx = i
             trades.append({"date": d, "action": "BUY", "price": close, "reason": reason})
         elif action == "SELL":
             position = 0.0
@@ -292,7 +295,26 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
             trades.append({"date": d, "action": "SELL", "price": close, "reason": reason})
 
     metrics = _calc_metrics(trades, closes[-1] if closes else 0.0, position)
-    return {"code": HS300_CODE, "trades": trades, "metrics": metrics, "holding": position > 0}
+    # 危险区: 首个买点之前的空仓段(2021-01-04 数据起点 ~ 2022-04-20, 15个月无买点):
+    # 2021 全年 ma250 未预热且处历史大顶回落(2021-02-10 5.39); 2022-01-28 绝望底被
+    # 跌势成熟门槛拦(买入后 3 月 -15%); 2022-03-08/15 深背离恐慌日被 P1 份额门槛拦
+    # (sp14/47 无承接); 2022-03-16/04-12 政策底反弹被 P2 cp>=70 门槛拦(cp62.7/58)。
+    # 每次拦截都避免了一次亏损, 该段策略主动空仓, 标记危险区供前端可视化。
+    danger_zone = None
+    if first_buy_idx is not None and first_buy_idx > 0 and rows:
+        danger_zone = {
+            "start": rows[0]["date"],
+            "end": rows[first_buy_idx - 1]["date"],
+            "label": "危险区·无买点",
+            "reason": "跌势未成熟/承接不足, 策略判定无博弈机会, 主动空仓",
+        }
+    return {
+        "code": HS300_CODE,
+        "trades": trades,
+        "metrics": metrics,
+        "holding": position > 0,
+        "danger_zone": danger_zone,
+    }
 
 
 def _calc_metrics(trades: list[dict], last_close: float, position: float) -> dict:
