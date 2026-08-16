@@ -39,6 +39,11 @@ import math
 
 from base.analysis.strategy.hs300_metrics import build_danger_zone, calc_metrics
 
+TRADE_START = "2022-01-01"  # 策略交易起点: 2020-2021 数据回填后 ma250 在 2021 年可用,
+# 2021 年会被判为牛市(close 高出 ma250 +24%)并触发顶部假低位买点(2021-03-09
+# pp12.2 实为 2021-02 大顶急跌, 买入即接顶), 故 2021 年前只画线不交易
+DANGER_ZONE_START = "2021-01-01"  # 危险区标注起点: 2021 年大顶回落段标危险;
+# 2020 年是牛市(策略未启用)不标危险
 MA250_WINDOW = 250  # 牛熊状态: 长周期均线(250 日)
 MA20_WINDOW = 20  # 牛市回调买: 短期均线
 MA60_WINDOW = 60  # 牛市趋势破位卖
@@ -126,6 +131,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
 
     for i, row in enumerate(rows):
         d = row["date"]
+        if d < TRADE_START:
+            continue  # 2022 年前只画线不交易(2021 牛市末期假低位保护)
         close = closes[i]
         pp = row.get("price_position")
         td = row.get("trade_direction")
@@ -290,5 +297,5 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         "trades": trades,
         "metrics": metrics,
         "holding": position > 0,
-        "danger_zone": build_danger_zone(rows, first_buy_idx),
+        "danger_zone": build_danger_zone(rows, first_buy_idx, DANGER_ZONE_START),
     }

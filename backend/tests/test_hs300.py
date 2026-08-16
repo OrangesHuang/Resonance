@@ -17,7 +17,7 @@ def _mk(closes, caps, idx):
         cap = caps.get(i, {})
         rows.append(
             {
-                "date": f"2021-{i // 30 + 1:02d}-{i % 30 + 1:02d}",
+                "date": f"2023-{i // 30 + 1:02d}-{i % 30 + 1:02d}",
                 "close_price": closes[i],
                 "price_position": cap.get("pp", 50.0),
                 "trade_direction": cap.get("td", "NEUTRAL"),
@@ -74,7 +74,7 @@ def test_bear_violent_cross_then_trail() -> None:
     assert len(res["trades"]) == 2
     sell = res["trades"][1]
     # 暴力穿越后触线失效: 271~274 日(+11%~+18%)未被触线卖出
-    assert sell["date"] == "2021-10-06"  # 第 276 天: 高点3.30回撤6% -> 3.05
+    assert sell["date"] == "2023-10-06"  # 第 276 天: 高点3.30回撤6% -> 3.05
     assert "尾随止盈" in sell["reason"]
     assert sell["price"] == 3.05
 
@@ -88,7 +88,7 @@ def test_bear_deep_quick_verify_fails() -> None:
     assert len(res["trades"]) == 2
     sell = res["trades"][1]
     # 第 280 天(买入后第 10 日): 从未 +2%(最高 2.64 < 2.65*1.02) 且收盘 2.60 < 买价 2.65
-    assert sell["date"] == "2021-10-11"
+    assert sell["date"] == "2023-10-11"
     assert "接刀未验证" in sell["reason"]
     assert sell["price"] == 2.60
 

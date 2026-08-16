@@ -53,15 +53,18 @@ def calc_metrics(trades: list[dict], last_close: float, position: float) -> dict
     }
 
 
-def build_danger_zone(rows: list[dict], first_buy_idx: int | None) -> dict | None:
-    # 危险区: 首个买点之前的空仓段(2021-01-04 数据起点 ~ 2022-04-20, 15个月无买点):
-    # 2021 全年 ma250 未预热且处历史大顶回落(2021-02-10 5.39); 2022-01-28 绝望底被
-    # 份额承接门槛拦(sp66<75, 买入后 3 月 -15%); 2022-03-15 政策底被 sp47 拦
-    # (4 月还有市场底)。每次拦截都避免了一次亏损, 该段策略主动空仓。
+def build_danger_zone(rows: list[dict], first_buy_idx: int | None, zone_start: str) -> dict | None:
+    # 危险区: 策略交易起点(TRADE_START)到首个买点的空仓段(2022-01-01 ~ 2022-04-20):
+    # 2022-01-28 绝望底被份额承接门槛拦(sp66<75, 买入后 3 月 -15%); 2022-03-15
+    # 政策底被 sp47 拦(4 月还有市场底)。每次拦截都避免了一次亏损, 该段策略主动空仓。
+    # zone_start 之前的区段(2020 牛市末期/2021 大顶回落)是策略未启用, 不标危险。
     if first_buy_idx is None or first_buy_idx <= 0 or not rows:
         return None
+    start = max(rows[0]["date"], zone_start)
+    if start >= rows[first_buy_idx - 1]["date"]:
+        return None
     return {
-        "start": rows[0]["date"],
+        "start": start,
         "end": rows[first_buy_idx - 1]["date"],
         "label": "危险区·无买点",
         "reason": "跌势未成熟/承接不足, 策略判定无博弈机会, 主动空仓",
