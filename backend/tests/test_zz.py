@@ -122,3 +122,55 @@ def test_bear_heat_top_stop_sells() -> None:
     trades = res["trades"]
     sells = [t for t in trades if t["action"] == "SELL"]
     assert any("熊市热度顶" in t["reason"] for t in sells)
+
+
+def test_panic_bottom_buy() -> None:
+    # 单日史诗级恐慌底: 跌>=7%+pp<=20, 不限 td/vr(跌停日量比失真)
+    # (案例 2020-02-03 疫情底 -10.4% vr0.85 tdNEUTRAL -> V反弹)
+    closes = [2.0] * 40 + [1.79] + [2.0] * 25
+    caps = {40: {"pp": 10.0, "td": "NEUTRAL", "vr": 0.8, "chg": -10.5, "sp": 30.0}}
+    res = run_zz_strategy(_mk(closes, caps))
+    trades = res["trades"]
+    assert len(trades) >= 1
+    assert trades[0]["action"] == "BUY" and "恐慌底" in trades[0]["reason"]
+    # 买入后第10日累计 +11.7% >= 0 -> 验证锁定, 无卖出
+    assert all(t["action"] != "SELL" for t in trades)
+
+
+def test_rapid_end_buy() -> None:
+    # 急跌末端企稳: 当日跌>=4.5%+pp<=30+20日跌>=12%+近10日无ACC
+    # (案例 2020-03-23 -4.6% pp27 20日-16% tdNEUTRAL -> V反弹+40.8%)
+    closes = [2.2] * 20 + [2.16, 2.12, 2.08, 2.04, 2.0, 1.96, 1.92, 1.88, 1.86, 1.84] + [1.75] + [1.8] * 25
+    caps = {30: {"pp": 27.0, "td": "NEUTRAL", "vr": 0.7, "chg": -4.9, "sp": 10.0}}
+    res = run_zz_strategy(_mk(closes, caps))
+    trades = res["trades"]
+    assert len(trades) >= 1
+    assert trades[0]["action"] == "BUY" and "急跌末端" in trades[0]["reason"]
+
+
+def test_extreme_sell_bear_only() -> None:
+    # 熊市(ma250下行): DISTRIBUTE集群+加速赶顶(涨>=3%) -> 立即卖(2024-10-08 案例保留)
+    closes = [3.6 - i * 0.005 for i in range(270)] + [2.255, 2.26, 2.3, 2.35, 2.42, 2.5]
+    caps = {
+        270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -2.0, "vr": 1.6},
+        273: {"pp": 86.0, "td": "DISTRIBUTE", "vr": 1.6},
+        274: {"pp": 88.0, "td": "DISTRIBUTE", "vr": 1.6},
+        275: {"pp": 90.0, "td": "DISTRIBUTE", "chg": 3.6, "vr": 1.6},
+    }
+    res = run_zz_strategy(_mk(closes, caps))
+    sells = [t for t in res["trades"] if t["action"] == "SELL"]
+    assert any("加速赶顶" in t["reason"] for t in sells)
+
+
+def test_extreme_no_sell_in_bull() -> None:
+    # 牛市(ma250上行): 同样 DISTRIBUTE+加速赶顶 -> 不立即卖, 转顶部观察
+    # (案例 2019-02-18 春季主升卖飞+15% / 2020-07-06 科技牛卖飞+8%)
+    closes = [2.2 + i * 0.005 for i in range(270)] + [3.55, 3.6, 3.65, 3.7, 3.8, 3.95]
+    caps = {
+        270: {"pp": 20.0, "td": "ACCUMULATE", "sp": 90.0, "chg": 1.0, "vr": 1.6},
+        273: {"pp": 86.0, "td": "DISTRIBUTE", "vr": 1.6},
+        274: {"pp": 88.0, "td": "DISTRIBUTE", "vr": 1.6},
+        275: {"pp": 90.0, "td": "DISTRIBUTE", "chg": 3.9, "vr": 1.6},
+    }
+    res = run_zz_strategy(_mk(closes, caps))
+    assert all("加速赶顶" not in t["reason"] for t in res["trades"])

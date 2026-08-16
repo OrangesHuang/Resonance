@@ -1,33 +1,25 @@
-"""中证1000 (512100) 右侧量价记忆策略。[正式版 — 2026-08-16 由 Beta 升级, 全历史 +288.8% vs 旧正式版 +190.8%]
+"""中证1000 (512100) 右侧量价记忆策略。[正式版 — 2026-08-16 由 Beta 升级 +288.8% vs 旧版 +190.8%; 2026-08-17 延伸至 2019 起全历史链式 +643.3%]
 
-核心认知:
-  中证1000 暴跌集群特征明显 — 连续5-9个ACCUMULATE密集出现
-  左侧抄底会在集群中段入场, 继续承压5-10%
-  需要等待集群结束+反弹确认后右侧入场
+核心认知: 暴跌集群特征明显(连续5-9个ACCUMULATE密集出现), 左侧抄底会在
+集群中段入场继续承压5-10%, 需等集群结束+反弹确认后右侧入场。
 
-历史教训:
-  2026-07-27 买入后 8/10 触发"巨量流出"卖出, 但 7/1-8/4 累计吸筹
-  92.4亿仅回撤45.7% — 右侧确认买入使"买入日份额"基准被抬高,
-  修正为以"买入前60日最低份额"(吸筹周期起点)为基准
-  (2025-02-17 那轮份额跌破吸筹起点, 卖出仍正确, 不受影响)
-  2026-08-12 再次触发巨量流出卖出(-6亿), 但 8/5-8/12 累计流出50亿后
-  价格仍创反弹新高(3.04→3.16), 属震仓而非资金撤退 — 修正为: 份额
-  跌破吸筹起点(净流入归零)无条件卖(2025-02-17 验证), 回撤过半但未
-  跌破起点需叠加价格破位确认(收盘跌破近5日最低)
+历史教训(每条规则至少一个案例):
+  2026-07-27 买入日份额基准被抬高致"巨量流出"误卖 — 份额基准改用买入前
+  60日最低份额(吸筹周期起点); 2026-08-12 震仓(-6亿)后价格创新高 —
+  回撤过半需叠加价格破位确认(收盘跌破近5日最低)
+  2020-02-03 疫情底单日-10.4%跌停量比失真(vr0.85)方向漏判 — 恐慌底不限
+  td/vr; 2020-03-23 全球股灾底缩量急跌td全NEUTRAL — 急跌末端企稳路径
+  2019-02-18 春季主升加速赶顶卖飞+15% — 加速赶顶立即卖仅熊市(ma250下行)
+  2023-04-25 阴跌陷阱/2023-09-22 — 验证期第10日一次性检查: 涨幅达标(牛市
+  0%/熊市3%)或份额>=5%锁定, 否则立即认错; 2020-03-23 第10日+5.1%锁定
 
-算法:
-  Phase 1 — 暴跌集群检测: 10天内≥3个ACCUMULATE → 进入等待
-  Phase 2 — 右侧确认: 集群结束后连续2天涨+放量 → 买入
-  Phase 3 — 单日恐慌: 跌≥5%+ACCUMULATE → 直接左侧买入(单日极端)
-  Phase 4 — 缩量深底: NEUTRAL方向+pp<=12+距250日高回撤>=25%+融资分位<=30
-  (杠杆出清)+近10日无ACCUMULATE → 30日验证期确认(缩量底磨底慢, 10日会误杀)
-  Phase 5 — 卖出: DISTRIBUTE集群确认 + 量价记忆 + 买入验证期(10日内未脱离
-  成本区即认错, 防阴跌陷阱) + 底部失败守卫(连续浮亏离场)
-  2021 起全历史(TRADE_START=2021-01-01): 2022-04-29 底 +22.2% / 2024-06-26
-  +26.1% / 2025-04-07 +33.1% 均由现有份额/顶部卖出捕获; 验证期+守卫补
-  2023-04-25 式阴跌深套的缺口(份额无巨量流出时价格缓慢下跌的轮次);
-  缩量深底补放量底抓不到的阴跌尽头(2022-04-21/22, 2022-10-10/11,
-  2024-01-22/30/31, 2024-09-18 — 8 触发点全盈, 60日均值+17%)。
+算法: 恐慌底(跌>=7%+pp<=20) → 暴跌集群右侧确认 → 缩量深底(pp<=12+回撤
+>=25%+融资<=30分位) → 急跌末端(跌>=4.5%+pp<=30+20日跌>=12%) → 单日恐慌
+/低位吸筹/极冷吸筹/反弹确认; 卖出: DISTRIBUTE集群(加速赶顶仅熊市立即卖,
+否则顶部观察) + 巨量流出 + 热度顶 + 缩量深底尾随 + 底部失败守卫。
+  2019 起全历史: 2019-06 +19.4% / 2020-03 +36.0% / 2020-09 +8.8% /
+  2022-04 +28.9% / 2022-10 +16.1% / 2024-06 +26.1% / 2025-04 +33.1% /
+  2026-03 +17.6%
 """
 
 from __future__ import annotations
@@ -35,100 +27,24 @@ from __future__ import annotations
 import math
 
 from base.analysis.strategy.metrics import calc_round_metrics
+from base.analysis.strategy.zz_helpers import (
+    _count_crash_accum,
+    _dd_from_high,
+    _ma250_slope,
+    _recent_accum,
+    extreme_bear_only,
+    is_hot_top,
+    is_panic_bottom,
+    is_quiet_deep,
+    is_quiet_trail,
+    is_rapid_end,
+    massive_outflow_confirmed,
+    phase2_reversal,
+    watch_break,
+)
+from base.analysis.strategy.zz_params import *
 
 ZZ_CODE = "512100"
-
-SELL_PP_MIN = 75
-SELL_VR_MIN = 1.3
-
-# 顶部观察(延迟卖出): 出货确认达标后不立即卖, 等破位
-EXTREME_CHG = 3.0  # 确认日涨幅≥此值 → 加速赶顶(924式)立即卖
-EXTREME_VR = 4.0  # 确认日量比≥此值 → 立即卖
-TRAIL_PCT = 0.04  # 从观察期最高收盘回落幅度触发
-WATCH_BREAK_DAYS = 5  # 跌破N日最低收盘触发
-WATCH_PP_EXIT = 60  # 观察期 pp 跌破此值立即卖
-
-MIN_HOLD = 5
-COOLDOWN = 3
-VOL_LOOKBACK = 20
-TRADE_START = "2021-01-01"  # 放开 2021 起全历史(2021 前无共振数据)
-# 底部失败守卫: 持仓连续浮亏超阈值即顺势离场, 不扛逆势深套
-# (案例 2023-04-25 买@2.56, 2023 小盘阴跌份额无巨量流出, 份额卖出不触发,
-#  一直扛到 2024-05 -16.4%; 而 2022-04-29 真底部 0 天浮亏超 8%)
-UNDERWATER_PCT = 8.0
-UNDERWATER_DAYS = 15
-# 吸筹周期起点窗口: 右侧确认买入常发生在吸筹中后段, 用买入日份额作基准
-# 会把已流入份额计入基准, 导致小幅回撤即"净流入回撤过半"过早卖出
-# (案例: 2026-07-27 买入, 7/1-8/4 累计吸筹92.4亿仅回撤45.7%却触发卖出)
-BASE_LOOKBACK = 60
-# 买入验证期: 买入后应快速脱离成本区, 否则尽早认错离场
-# (案例 2023-04-25 买入@2.56, 前20日无恐慌日+20日波动0.90%全史最低,
-#  买入后20日价格横盘±1%且份额不流入 — 阴跌陷阱; 而 8 个赢家轮全部
-#  在第10日价格≥+3.8% 或份额暴涨承接, 唯一价格为负的 2024-06-26
-#  份额+7.1% 承接, 最终 +26.1%。验证期第10日检查: 价格<3%且份额<5%即离场)
-VERIFY_START_DAY = 10  # 买入后第 N 日开始检查
-VERIFY_ESCAPE_PCT = 3.0  # 累计涨幅低于此值视为未脱离成本区
-VERIFY_SHARES_PCT = 5.0  # 份额较买入日增长低于此值视为无承接
-# 买入量能门槛: 左侧买入(暴跌抄底/低位吸筹/极冷吸筹/反弹确认)当日量比必须
-# 高于均值 20%, 防止"地量假信号"误发买入(2023-05-24 vr0.86 等缩量低位吸筹
-# 日 20日胜率仅20%均值-1.9%; 而历史 11 个真实买入 vr 全部≥1.02, 左侧类全部
-# ≥1.52, 此门槛不改变任何既有轮次, 只堵规则漏洞: 量能要求显式化)
-BUY_VOL_MIN = 1.2
-# 缩量深底: 阴跌尽头的"杠杆出清+地量磨底"形态(2021 无此形态因回撤仅-10%)
-# (案例: 2022-04-21/22 回撤-27% 融资分位1 -> +21%; 2024-01-22/30/31 回撤-30%
-#  融资分位1 -> +5.9~+17.8%; 2024-09-18 924政策底前夕 -> +42.5%;
-#  反例 2024-06-24/25 回撤-27% 但近10日已有ACCUMULATE信号(放量吸筹已启动)
-#  被"近10日无ACCUMULATE"排除 — 缩量深底只抓"还没放量的阴跌尽头")
-QUIET_PP_MAX = 12  # 缩量深底 pp 上限
-QUIET_DD_MIN = 25.0  # 距250日高点回撤下限(%) — 2021 浅回调-10%不触发
-QUIET_MARGIN_MAX = 30.0  # 融资余额分位上限(杠杆出清=筹码沉淀, 赢家均值2.7)
-QUIET_NO_ACCUM_DAYS = 10  # 近 N 日无 ACCUMULATE(防与放量信号重叠)
-QUIET_VERIFY_START = 20  # 缩量深底验证期起点(磨底慢, 比放量底10日长)
-QUIET_VERIFY_END = 30  # 缩量深底验证期终点(30日/3%通过率8/8)
-# 熊市热度顶止盈: 弱反弹顶(pp>=70+成交额热+破5日低)波段卖出, 只在熊市(ma250下行)生效
-# (2023-02-16 熊市顶卖+16.1% vs 持有+6.1%; 牛市主升 2025-07-31/2026-04-28 热度顶
-#  是常态不卖, 靠 ma250 斜率分治 — 924 政策牛的量价传导)
-HOT_PP_MIN = 70.0  # 热度顶 pp 下限
-HOT_TP_MIN = 80.0  # 成交额分位下限(热度)
-HOT_BREAK_DAYS = 5  # 破近 N 日最低确认
-BEAR_MA250_SLOPE = 0.0  # ma250 20日斜率<0 = 熊市(热度顶止盈仅熊市生效)
-# 缩量深底尾随止盈: 缩量底买入后可能进入阴跌年(2022-10-10 买后 2023 年
-# 慢阴跌无强卖出信号, 原体系扛到 -23%), 需高点回撤止盈兜底
-# (10%: 2022-10-10 +6.1%卖 vs -23%; 2024-09-18 +24.2%卖; 2022-04-22 +13.1%)
-QUIET_TRAIL_PCT = 10.0  # 缩量深底持仓期收盘回撤峰值此比例即卖
-
-
-def _count_crash_accum(rows: list[dict], idx: int, window: int = 10) -> int:
-    """统计最近 window 天内的 ACCUMULATE 数量 (判断暴跌集群)。"""
-    count = 0
-    for j in range(max(0, idx - window + 1), idx + 1):
-        if rows[j].get("trade_direction") == "ACCUMULATE":
-            count += 1
-    return count
-
-
-def _dd_from_high(closes: list[float], idx: int, window: int = 250) -> float:
-    """当前收盘距 window 日最高收盘的回撤百分比(负数=回撤)。"""
-    lo = max(0, idx + 1 - window)
-    hi = max(closes[lo : idx + 1])
-    return (closes[idx] / hi - 1) * 100 if hi > 0 else 0.0
-
-
-def _recent_accum(rows: list[dict], idx: int, window: int) -> bool:
-    """近 window 日内是否出现过 ACCUMULATE 信号(缩量深底要求无, 防重叠)。"""
-    for j in range(max(0, idx - window), idx):
-        if rows[j].get("trade_direction") == "ACCUMULATE":
-            return True
-    return False
-
-
-def _ma250_slope(closes: list[float], idx: int) -> float:
-    """ma250 20日斜率(%/20日): 正=牛市(政策牛/上行), 负=熊市。"""
-    if idx < 249:
-        return 0.0
-    cur = sum(closes[idx - 249 : idx + 1]) / 250
-    prev = sum(closes[idx - 269 : idx - 19]) / 250
-    return (cur / prev - 1) * 100 if prev > 0 else 0.0
 
 
 def run_zz_strategy(rows: list[dict]) -> dict:
@@ -155,6 +71,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     watch_peak = 0.0  # 观察期最高收盘
     quiet_buy = False  # 缩量深底买入(30日验证期+尾随止盈)
     quiet_peak = 0.0  # 缩量深底持仓期最高收盘(尾随止盈用)
+    verify_locked = False  # 验证期已达标锁定(不再复查)
 
     for i in range(n):
         row = rows[i]
@@ -174,6 +91,11 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         cooldown += 1
         action = None
         reason = ""
+
+        # ---- Phase 0: 单日史诗级恐慌底(不受集群等待限制) ----
+        if position == 0 and is_panic_bottom(chg, pp):
+            action = "BUY"
+            reason = f"恐慌底: 单日跌{chg:.1f}%+pp{pp:.0f}"
 
         # ---- Phase 1: 暴跌集群检测 ----
         if position == 0 and not waiting_for_reversal:
@@ -217,42 +139,24 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         # 仅放量路径未触发时启用(2024-02-01 td=ACCUMULATE 走低位吸筹, 不被覆盖)
         if action is None and position == 0 and not waiting_for_reversal:
             mp = row.get("_mp")
-            if (
-                pp is not None
-                and pp <= QUIET_PP_MAX
-                and mp is not None
-                and mp <= QUIET_MARGIN_MAX
-                and _dd_from_high(closes, i, 250) <= -QUIET_DD_MIN
-                and not _recent_accum(rows, i, QUIET_NO_ACCUM_DAYS)
-            ):
+            dd250 = _dd_from_high(closes, i, 250)
+            if is_quiet_deep(pp, mp, dd250, _recent_accum(rows, i, QUIET_NO_ACCUM_DAYS)):
                 action = "BUY"
-                reason = f"缩量深底: pp{pp:.0f}+融资{mp:.0f}分位+回撤{_dd_from_high(closes, i, 250):.0f}%"
+                reason = f"缩量深底: pp{pp:.0f}+融资{mp:.0f}分位+回撤{dd250:.0f}%"
+
+        # ---- Phase 1.6: 急跌末端企稳(非集群缩量赶底) ----
+        if action is None and position == 0 and not waiting_for_reversal:
+            dd20 = _dd_from_high(closes, i, 20)
+            if is_rapid_end(chg, pp, dd20, _recent_accum(rows, i, QUIET_NO_ACCUM_DAYS)):
+                action = "BUY"
+                reason = f"急跌末端: 跌{chg:.1f}%+pp{pp:.0f}+20日{dd20:.0f}%"
 
         # ---- Phase 2: 右侧确认 (暴跌集群结束后) ----
         if position == 0 and waiting_for_reversal:
-            crash_count = _count_crash_accum(rows, i, 10)
-            # 集群结束: ACCUMULATE密度下降 或 连续2天无ACCUMULATE
-            no_recent_accum = (
-                td != "ACCUMULATE" and rows[i - 1].get("trade_direction") != "ACCUMULATE" if i > 0 else True
-            )
-            cluster_ended = crash_count < 2 or no_recent_accum
-            pp_ok = pp is not None and pp <= 35
-
-            prev_chg = rows[i - 1].get("change_pct") or 0 if i > 0 else 0
-
-            two_day_up = cluster_ended and chg > 0 and prev_chg > 0 and vr > 1.0 and pp_ok
-            strong_bounce = cluster_ended and chg > 2 and vr > 1.0 and pp_ok
-
-            if two_day_up:
-                action = "BUY"
-                reason = f"右侧确认: 连涨2天+放量 pp{pp:.0f}"
-                waiting_for_reversal = False
-            elif strong_bounce:
-                action = "BUY"
-                reason = f"强反弹: 涨{chg:.1f}%+vr{vr:.1f}+pp{pp:.0f}"
-                waiting_for_reversal = False
-            elif pp is not None and pp > 50:
-                waiting_for_reversal = False  # 价格回升太多, 重置
+            act2, rsn2, waiting_for_reversal = phase2_reversal(rows, i, pp, td, vr, chg, waiting_for_reversal)
+            if act2:
+                action = act2
+                reason = rsn2
 
         # ---- 卖出 (份额驱动 + 底部失败守卫) ----
         if position == 1:
@@ -273,10 +177,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
 
             # 买入验证期: 快速脱离成本区检查(在浮亏守卫之前, 尽早认错)
             # 缩量深底磨底慢: 30日验证(QUIET), 放量底10日验证(普通)
-            verify_lo, verify_hi = (
-                (QUIET_VERIFY_START, QUIET_VERIFY_END) if quiet_buy else (VERIFY_START_DAY, VERIFY_START_DAY + 5)
-            )
-            if verify_lo <= hold_days <= verify_hi:
+            verify_lo = QUIET_VERIFY_START if quiet_buy else VERIFY_START_DAY  # 一次性检查日
+            if hold_days == verify_lo and not verify_locked:
                 ret_pct = (close / entry_price - 1) * 100 if entry_price else 0.0
                 cur_shares = row.get("shares_yi")
                 shares_gain = (
@@ -284,7 +186,12 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                     if cur_shares is not None and entry_shares and entry_shares > 0
                     else 0.0
                 )
-                if ret_pct < VERIFY_ESCAPE_PCT and shares_gain < VERIFY_SHARES_PCT:
+                # 熊市反弹多陷阱: 验证门槛更高(2023-06-26 +1.6% 阴跌陷阱 vs
+                # 2020-03-23 +5.1% V反转), 牛市/数据不足宽松(2026-03/2019-06)
+                ret_min = VERIFY_BEAR_ESCAPE_PCT if _ma250_slope(closes, i) < BEAR_MA250_SLOPE else VERIFY_ESCAPE_PCT
+                if ret_pct >= ret_min or shares_gain >= VERIFY_SHARES_PCT:
+                    verify_locked = True
+                else:
                     action = "SELL"
                     reason = f"买入未验证: 第{hold_days}日累计{ret_pct:+.1f}%+份额{shares_gain:+.1f}%未承接"
 
@@ -294,44 +201,21 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             # 缩量深底(quiet)也适用: 优先级高于 quiet 尾随(先看是否热度顶)
             if action is None and hold_days > HOT_BREAK_DAYS:
                 slope = _ma250_slope(closes, i)
-                if slope < BEAR_MA250_SLOPE:
-                    tp = row.get("_tp")
-                    if pp is not None and pp >= HOT_PP_MIN and tp is not None and tp >= HOT_TP_MIN:
-                        low5 = min(closes[max(0, i - HOT_BREAK_DAYS) : i])
-                        if close < low5:
-                            action = "SELL"
-                            reason = f"熊市热度顶: pp{pp:.0f}+成交额{tp:.0f}分位破5日低"
+                if is_hot_top(pp, row.get("_tp"), closes, i, slope):
+                    action = "SELL"
+                    reason = f"熊市热度顶: pp{pp:.0f}+成交额{row.get('_tp'):.0f}分位破5日低"
 
             # 缩量深底尾随止盈: 高点回撤即离场(防阴跌年深套, 案例 2022-10-10)
             if quiet_buy:
                 quiet_peak = max(quiet_peak, close)
-                if hold_days >= MIN_HOLD and close <= quiet_peak * (1 - QUIET_TRAIL_PCT / 100):
+                if is_quiet_trail(close, quiet_peak, hold_days, MIN_HOLD):
                     action = "SELL"
-                    reason = f"缩量深底尾随: 峰{quiet_peak:.3f}+收盘{close:.3f}回撤{QUIET_TRAIL_PCT:.0f}%"
+                    reason = f"缩量深底尾随: 峰{quiet_peak:.3f}+收盘{close:.3f}回撤10%"
 
-            # 卖出条件1: DISTRIBUTE集群中不触发巨量流出 (让集群完整)
-            in_dist_cluster = dist_count >= 1
-            recent_big_inflow = any((rows[j].get("shares_delta_yi") or 0) >= 5 for j in range(max(0, i - 3), i))
-            peak_inflow = peak_shares - base_shares if peak_shares is not None and base_shares is not None else 0.0
-            # 价格破位确认: 收盘跌破近5日最低 (防震仓误卖, 案例 2026-08-12)
-            low_n = (
-                min((rows[j].get("close_price") or 0.0) for j in range(max(0, i - WATCH_BREAK_DAYS), i))
-                if i >= WATCH_BREAK_DAYS
-                else 0.0
-            )
-            price_break = close < low_n
-            # 跌破吸筹起点(净流入归零)无条件卖(2025-02-17 验证);
-            # 仅回撤过半时需价格破位确认(防震仓误卖, 案例 2026-08-12)
-            outflow_confirmed = price_break or (cur_shares is not None and cur_shares < base_shares)
-            massive_outflow = (
-                not in_dist_cluster  # 不在DISTRIBUTE集群中
-                and not recent_big_inflow
-                and sd_yi <= -5
-                and peak_inflow > 0
-                and cur_shares is not None
-                and base_shares is not None
-                and (cur_shares - base_shares) < peak_inflow * 0.5
-                and outflow_confirmed  # 资金撤退过半 + 破位/跌破起点 双确认
+            # 卖出条件1: 巨量流出(资金撤退过半 + 破位/跌破吸筹起点双确认,
+            # 不在DISTRIBUTE集群中且近3日无大额流入; 防震仓误卖案例 2026-08-12)
+            massive_outflow = massive_outflow_confirmed(
+                rows, i, sd_yi, cur_shares, base_shares, peak_shares, dist_count, close
             )
 
             # 卖出条件2: DISTRIBUTE + 份额净流出 (经典确认)
@@ -349,8 +233,11 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                     action = "SELL"
                     reason = f"巨量流出: {sd_yi:.0f}亿+净流入回撤+pp{pp:.0f}"
                 elif is_dist and dist_count >= sell_threshold and not watch_mode:
-                    # 首次达标: 加速赶顶日(924式)立即卖, 否则进入顶部观察等破位
-                    if chg >= EXTREME_CHG or vr >= EXTREME_VR:
+                    # 首次达标: 加速赶顶日仅熊市(ma250下行)立即卖, 否则进顶部观察等破位
+                    # (924 熊末脉冲 2024-10-08 ma250下行 保留立即卖; 牛市主升的加速
+                    #  赶顶不是顶: 2019-02-18 春季行情卖飞+15%, 2020-07-06 科技牛卖飞+8%,
+                    #  转观察后等破位多拿; ma250 数据不足按非熊处理)
+                    if extreme_bear_only(chg, vr, _ma250_slope(closes, i)):
                         reason = f"出货确认+加速赶顶({dist_count}/{sell_threshold})+pp{pp:.0f}+vr{vr:.1f}"
                         action = "SELL"
                     else:
@@ -359,8 +246,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 elif watch_mode:
                     # 顶部观察: 跟踪最高收盘, 破位即卖
                     watch_peak = max(watch_peak, close)
-                    low_n = min((rows[j].get("close_price") or 0) for j in range(max(0, i - WATCH_BREAK_DAYS), i))
-                    if close < low_n or close < watch_peak * (1 - TRAIL_PCT) or (pp is not None and pp < WATCH_PP_EXIT):
+                    if watch_break(rows, i, close, watch_peak, pp):
                         reason = f"顶部破位: 高点{watch_peak:.3f}+收盘{close:.3f}+pp{pp:.0f}"
                         action = "SELL"
 
@@ -377,6 +263,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             quiet_peak = close if quiet_buy else 0.0
             entry_price = close
             underwater_streak = 0
+            verify_locked = False
             peak_shares = entry_shares
             # 吸筹起点 = 买入前 BASE_LOOKBACK 日内最低份额
             # (右侧确认买入时基准不被已流入份额抬高, 避免过早卖出)
