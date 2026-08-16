@@ -19,7 +19,10 @@
     P1 恐慌吸筹: pp<=8 + ACCUMULATE + share_prob>=65
     P2 低位强承接: pp<=40 + ACCUMULATE + share_prob>=80 + composite_prob>=70
     跌势成熟门槛: ma60 20日斜率<=-2%(2022-08-31 斜+1.40%接刀-5.5%被拦)
-    卖 S1 尾随止盈: 持仓>=5 天后收盘 <= 持仓最高收盘 x (1-6%)
+    卖 S1 微微红止盈(左侧卖): 收盘较买入 +2% 即卖(普通反弹日温和:
+      2022-05-20 +2.3%/vr0.9); 暴力启动例外(单日>=4%且量比>=2, 924: 09-24
+      +4.7%/vr2.8)目标价失效转持有模式, 保 2024-08-28->10-08 +33.5%
+    卖 S2 尾随止盈: 持仓>=5 天后收盘 <= 持仓最高收盘 x (1-6%)
   牛市(bull):
     B0 恐慌回踩: pp<=40 + ACCUMULATE + share_prob>=80, 跳过卖出冷却
       (案例 2025-04-07 关税暴跌 pp17.5+吸筹+sp83 -> 吃 2025 下半年行情 +27%)
@@ -67,6 +70,14 @@ DIST_EXTREME_VR = 3.5  # 加速赶顶量比(924式暴涨顶: 10-08 vr3.85 立即
 #  2026-03-23 sp65 +14.9% 保留 — 同一波 03-31 sp27 拦掉无损失)
 TRAIL_PCT = 6.0  # 熊市尾随止盈: 收盘回撤持仓最高 x6%(波段小亏封顶)
 TRAIL_MIN_HOLD = 5  # 尾随止盈最短持有
+# 熊市左侧卖(微微红就卖): 收盘收益达到目标价即止盈, 不赌大反弹。
+# 普通熊市反弹触发日涨幅 1.8~2.3%/量比 0.9~1.3(2022-05-20/12-05/2024-01-25),
+# 924 暴力启动触发日 +4.7%/量比 2.8(2024-09-24) — 温和反弹 +2% 就跑;
+# 暴力启动(单日>=4% 且放量>=2倍)例外: 目标价失效, 转持有模式(尾随+出货共振),
+# 让 924 式政策级反转完整持有(2024-08-28 买 3.146 -> 10-08 出货卖 4.201 +33.5%)
+BEAR_TAKE_PROFIT_PCT = 2.0  # 熊市微微红止盈: 收盘较买入 +2% 即卖
+BEAR_VIOLENT_CHG = 4.0  # 暴力启动例外: 触发日单日涨幅下限
+BEAR_VIOLENT_VR = 2.0  # 暴力启动例外: 触发日量比下限
 SELL_COOLDOWN = 15  # 牛市卖出后冷却天数(防连续打脸)
 # 全策略卖出冷却: 卖出后 N 日内不重复买入, 消除"卖出后立马买回"的连亏循环
 # (案例 2022-09-22卖->09-26买/10-24卖->10-25买 间隔1-2日, 三次-5.5%连亏;
@@ -116,6 +127,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
     dist_confirm = 0  # 出货确认计数(出货共振卖出)
     dist_threshold = 2  # 出货共振确认阈值(买入量比动态调整, 移植正式版)
     buy_bull = False  # 买入时是否牛市(牛熊分治: 牛市买入不验证, 熊市买入验证)
+    violent_start = False  # 暴力启动例外: 目标价触发日放量暴涨, 转持有模式
     first_buy_idx: int | None = None  # 首个买点位置(危险区标注用)
 
     for i, row in enumerate(rows):
@@ -226,10 +238,22 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         else:
             hold_days += 1
             high_since_buy = max(high_since_buy, close)
+            # 熊市左侧卖(微微红就卖): 收盘较买入 +2% 即止盈, 不赌大反弹
+            # 暴力启动例外: 触发日单日>=4% 且量比>=2(924: 09-24 +4.7%/vr2.8)则目标价
+            # 失效转持有模式(6%尾随+出货共振), 让政策级反转完整持有; 普通反弹触发日
+            # 温和(2022-05-20 +2.3%/vr0.9)直接卖出
+            if not buy_bull and not violent_start:
+                ret_pct = (close / buy_price - 1) * 100 if buy_price else 0.0
+                chg = row.get("change_pct") or 0
+                if ret_pct >= BEAR_TAKE_PROFIT_PCT:
+                    if chg >= BEAR_VIOLENT_CHG and vr >= BEAR_VIOLENT_VR:
+                        violent_start = True
+                    else:
+                        action, reason = "SELL", f"熊市微微红止盈(收盘+{ret_pct:.1f}%)"
             # 买入验证期(仅熊市买入): 20日未脱离成本区即认错
             # 牛市买入不验证 — 慢涨回调正常(2025-01-02 20日+2.1% 后加速),
             # 交给出货共振/趋势破位; 熊市抄底需快速认错(2022-03-16 防阴跌)
-            if hold_days == VERIFY_DAY and not buy_bull:
+            if action is None and hold_days == VERIFY_DAY and not buy_bull:
                 ret_pct = (close / buy_price - 1) * 100 if buy_price else 0.0
                 cur_shares = row.get("shares_yi")
                 shares_gain = (
@@ -279,6 +303,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
             entry_shares = row.get("shares_yi")
             dist_confirm = 0
             buy_bull = bull  # 记录买入时牛熊(验证期只对熊市买入生效)
+            violent_start = False  # 新持仓重置暴力启动标记
             # 动态出货阈值(正式版逻辑): 地量极冷买入阈值1(1次确认即卖),
             # 其余按买入量比: 越高需越多确认
             if reason.startswith("价格低位+吸筹+成交额极冷"):

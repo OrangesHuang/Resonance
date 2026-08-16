@@ -22,6 +22,7 @@ def _mk(closes, caps, idx):
                 "trade_direction": cap.get("td", "NEUTRAL"),
                 "share_prob": cap.get("sp", 10.0),
                 "composite_prob": cap.get("cp", 45.0),
+                "volume_ratio": cap.get("vr", 0.0),
                 "_tp": cap.get("tp"),
                 "_mp": cap.get("mp"),
                 "change_pct": cap.get("chg", 0.0),
@@ -49,6 +50,39 @@ def test_bear_p1_buy_then_trailing_sell() -> None:
     assert "恐慌吸筹P1" in res["trades"][0]["reason"]
     # 尾随止盈: 持仓最高 = 买价 2.79, 6% 回撤 = 2.6226, 第 4 个持有日 close 2.61 触发
     assert "尾随止盈" in res["trades"][1]["reason"]
+
+
+def test_bear_take_profit_sells_on_mild_rally() -> None:
+    # 熊市左侧卖: 买入后温和反弹 +2.3%/低量比 -> 微微红止盈落袋
+    # (案例 2022-04-21 买 3.652 -> 05-20 +2.3%/vr0.9 卖)
+    closes = _declining(270) + [2.79, 2.72, 2.66, 2.62, 2.85]
+    caps = {
+        270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -3.0, "tp": 5.0, "mp": 5.0},
+        274: {"chg": 2.3, "vr": 0.9},
+    }
+    res = run_hs300_strategy(_mk(closes, caps, 270))
+    assert len(res["trades"]) == 2
+    assert res["trades"][1]["action"] == "SELL"
+    assert "熊市微微红止盈" in res["trades"][1]["reason"]
+    assert res["trades"][1]["price"] == 2.85  # 收盘 +2.2% >= +2% 目标
+
+
+def test_bear_violent_start_suspends_take_profit() -> None:
+    # 暴力启动例外: 触发日 +5%/vr2.5(924: 09-24 +4.7%/vr2.8) -> 目标价失效转持有,
+    # 之后 6% 尾随兜底(而非 +2% 目标价卖出)
+    closes = _declining(270) + [2.79, 2.93, 2.95, 2.98, 3.02, 3.06, 3.1, 2.85]
+    caps = {
+        270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -3.0, "tp": 5.0, "mp": 5.0},
+        271: {"chg": 5.0, "vr": 2.5},  # 暴力启动: ret +5.0% >= 2% 但当日放量暴涨
+    }
+    res = run_hs300_strategy(_mk(closes, caps, 270))
+    assert len(res["trades"]) == 2
+    sell = res["trades"][1]
+    assert sell["action"] == "SELL"
+    # 暴力启动后目标价失效: 不会在 272~276 日(+5.7%~+11%)被 +2% 目标价卖出
+    assert sell["date"] == "2021-10-08"  # 第 278 天(尾随: 高点3.1回撤6% -> 2.85)
+    assert "尾随止盈" in sell["reason"]
+    assert sell["price"] == 2.85
 
 
 def test_insufficient_history_no_trade() -> None:
