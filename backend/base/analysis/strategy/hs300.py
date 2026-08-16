@@ -110,14 +110,16 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     action, reason = "BUY", "牛市恐慌回踩(大跌+强吸筹)"
                 else:
                     low5 = min(closes[max(0, i - 4) : i + 1])
-                    # 距ma60>=1%: 避免贴着ma60买入后小回调即破位(2025-02-28 +0.3%买后1日卖)
+                    # ma60 距离带: 贴ma60浅回调(0.97~1.01)危险(2025-02-28 +0.3%买后1日卖
+                    #  -0.3%、03-28 +0.6%买后2日卖), 深度回调(<=ma60*0.97)是机会
+                    #  (2026-07-17 距ma60-5.9% 后20日+3.0%; 03-23买持到07-13 +7.1%)
                     if (
                         m20 is not None
                         and m60 is not None
                         and close <= m20
                         and close <= low5
                         and (i - last_sell_idx) >= SELL_COOLDOWN
-                        and close >= m60 * 1.01
+                        and (close >= m60 * 1.01 or close <= m60 * 0.97)
                     ):
                         action, reason = "BUY", "牛市回调(站上ma250+回踩ma20)"
                         pullback_buy = True
