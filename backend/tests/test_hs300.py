@@ -88,8 +88,6 @@ def test_b1_ma60_band_blocks_shallow_allows_deep() -> None:
     n = 300
     closes = [3.0 + i * 0.002 for i in range(n)]  # 缓升, ma60上行 → bull
     # 浅回调日: 价格回落到 ma60 附近(+0.5%)
-    import math
-
     # 直接构造: 在 n+1 天设为浅回调(接近ma60), n+2 天深回调
     closes = closes + [4.0, 3.9, 3.8, 3.6, 3.5, 3.45]  # 逐步回调
     caps = {
