@@ -188,15 +188,15 @@ def compute_trades(
 
     if fn is None:
         return _run_default(rows, t_pct, m_pct)
-    # 分位注入型(zz/div): 策略签名单参数 rows, 内部读 _tp/_mp, 统一在此注入
-    if code in (ZZ_CODE, DIV_CODE):
+    # 分位注入型(zz/div/hs300-beta): 策略签名单参数 rows, 内部读 _tp/_mp, 统一注入
+    if code in (ZZ_CODE, DIV_CODE) or (code == HS300_CODE and version == "beta"):
         return fn(_inject_percentile(rows, t_pct, m_pct))
     # kc50 需要 kc_idx_rows, a500 需要 hs300_rows
     if code == KC50_CODE:
         return fn(rows, kc_idx_rows)
     if code == A500_CODE:
         return fn(rows, hs300_rows)
-    # hs300 stable 是 lambda 包装(收 tp/mp 转 _run_default); beta 收 rows
+    # hs300 stable 是 lambda 包装(收 tp/mp 转 _run_default)
     if code == HS300_CODE and version == "stable":
         return fn(rows, t_pct, m_pct)
     return fn(rows)

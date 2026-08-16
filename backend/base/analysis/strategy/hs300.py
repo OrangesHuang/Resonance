@@ -35,6 +35,8 @@
 
 from __future__ import annotations
 
+import math
+
 MA250_WINDOW = 250  # 牛熊状态: 长周期均线(250 日)
 MA20_WINDOW = 20  # 牛市回调买: 短期均线
 MA60_WINDOW = 60  # 牛市趋势破位卖
@@ -49,6 +51,12 @@ BULL_PANIC_PP_MAX = 40  # 牛市恐慌回踩 pp 上限
 BULL_PP_MAX = 40  # 牛市回调 B1 pp 上限(只买低位回调, 2026-01-23 pp68高位被拦-2.2%,
 #  2024-10-30 pp52白做+0.4%被拦; 2026-03-23 pp5.5 +7.1%、2025-01-02 pp14 +2.1%保留)
 BULL_SHARE_MIN = 50.0  # B1 份额承接下限: 牛市初期弱承接(sp<50)假回调60日全负
+# 出货共振卖出(移植正式版优势): 牛市真顶 = 出货信号 + 高位 + 杠杆高位
+# (2025-06-25 pp100+vr2.4 但融资88 中继震荡不卖; 2025-10-31 pp84+融资94 真顶卖)
+DIST_PP_MIN = 80.0  # 出货共振 pp 下限
+DIST_VR_MIN = 1.3  # 出货共振量比下限
+DIST_MP_MIN = 90.0  # 出货共振融资分位下限(区分中继震荡与真顶)
+DIST_EXTREME_VR = 3.5  # 加速赶顶量比(924式暴涨顶: 10-08 vr3.85 立即卖, 常规出货1.5~2.5不误触)
 #  (2025-01-02 sp42 -5.8% / 01-03 sp35 -3.8% / 01-06 sp34 -2.4%;
 #  2026-03-23 sp65 +14.9% 保留 — 同一波 03-31 sp27 拦掉无损失)
 TRAIL_PCT = 6.0  # 熊市尾随止盈: 收盘回撤持仓最高 x6%(波段小亏封顶)
@@ -95,6 +103,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
     last_sell_idx = -999
     buy_price = 0.0  # 买入价(验证期用)
     entry_shares = None  # 买入时份额(验证期豁免用)
+    dist_confirm = 0  # 出货确认计数(出货共振卖出)
+    dist_threshold = 2  # 出货共振确认阈值(买入量比动态调整, 移植正式版)
     sell_mode = "trend"  # 买入时确定: "trail"(恐慌/波段底) / "trend"(健康回踩=趋势持有)
     pullback_buy = False  # 是否健康回调买入(牛市 B1)
 
@@ -105,6 +115,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         td = row.get("trade_direction")
         sp = row.get("share_prob")
         cp = row.get("composite_prob")
+        vr = row.get("volume_ratio") or 0
+        mp = row.get("_mp")  # 融资分位(出货共振用, router 注入)
 
         m250 = _ma(closes, MA250_WINDOW, i)
         m250_prev = _ma(closes, MA250_WINDOW, max(0, i - BULL_MA_LOOKBACK))
@@ -207,6 +219,26 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                 )
                 if ret_pct < VERIFY_ESCAPE_PCT and shares_gain < VERIFY_SHARES_PCT:
                     action, reason = "SELL", f"买入未验证: 第{VERIFY_DAY}日累计{ret_pct:+.1f}%+份额{shares_gain:+.1f}%"
+            # 出货共振卖出(移植正式版优势): DISTRIBUTE+pp>=80+vr>=1.3+融资>=90
+            # 动态阈值: 买入量比越高需越多确认(正式版 sell_threshold)
+            if (
+                action is None
+                and td == "DISTRIBUTE"
+                and pp is not None
+                and pp >= DIST_PP_MIN
+                and vr >= DIST_VR_MIN
+                and mp is not None
+                and mp >= DIST_MP_MIN
+            ):
+                dist_confirm += 1
+                # 加速赶顶(924式): 极端放量直接卖, 不等凑满阈值(移植 zz EXTREME_VR)
+                if vr >= DIST_EXTREME_VR and hold_days >= TRAIL_MIN_HOLD:
+                    action, reason = (
+                        "SELL",
+                        f"出货共振+加速赶顶({dist_confirm}/{dist_threshold}次)+pp{pp:.0f}+vr{vr:.1f}",
+                    )
+                elif hold_days >= TRAIL_MIN_HOLD and dist_confirm >= dist_threshold:
+                    action, reason = "SELL", f"出货共振(第{dist_confirm}/{dist_threshold}次)+pp{pp:.0f}+融资{mp:.0f}"
             if action is None and sell_mode == "trend":
                 # 趋势持有(买入时在 ma60 上方): 破位卖
                 if m60 is not None and close < m60:
@@ -226,12 +258,16 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
             high_since_buy = close
             buy_price = close
             entry_shares = row.get("shares_yi")
+            dist_confirm = 0
+            # 动态出货阈值(正式版逻辑): 买入量比越高, 顶部需更多出货确认才卖
+            dist_threshold = max(2, math.ceil(2 + vr * 0.55)) if vr else 2
             # 恐慌/波段底买入始终尾随(价格天然低于均线); 健康回调才可能趋势持有
             sell_mode = "trend" if (pullback_buy and m60 is not None and close >= m60) else "trail"
             pullback_buy = False
             trades.append({"date": d, "action": "BUY", "price": close, "reason": reason})
         elif action == "SELL":
             position = 0.0
+            dist_confirm = 0
             last_sell_idx = i
             trades.append({"date": d, "action": "SELL", "price": close, "reason": reason})
 
