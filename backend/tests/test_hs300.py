@@ -98,3 +98,44 @@ def test_b1_ma60_band_blocks_shallow_allows_deep() -> None:
     buys = [t for t in res["trades"] if t["action"] == "BUY"]
     # 至少有一次买入(深回调触发); 具体日期不强制, 主要验证深回调能买
     assert len(buys) >= 1
+
+
+def test_buy_verify_period_sells_unconfirmed() -> None:
+    # 买入后 20 日未脱离成本区(价格<3%)且份额未承接(<5%) → 验证期认错
+    # 构造: 缓降(ma60下行) -> 第270天恐慌吸筹买 -> 之后横盘 25 日(第20日不涨)
+    closes = _declining(270) + [
+        2.79,
+        2.80,
+        2.78,
+        2.79,
+        2.81,
+        2.80,
+        2.79,
+        2.82,
+        2.80,
+        2.79,
+        2.81,
+        2.80,
+        2.78,
+        2.79,
+        2.80,
+        2.81,
+        2.79,
+        2.80,
+        2.78,
+        2.79,
+        2.80,
+        2.81,
+        2.79,
+        2.80,
+        2.78,
+    ]  # 25日横盘~+0.7%
+    caps = {270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -3.0}}
+    res = run_hs300_strategy(_mk(closes, caps, 270))
+    trades = res["trades"]
+    buys = [t for t in trades if t["action"] == "BUY"]
+    sells = [t for t in trades if t["action"] == "SELL"]
+    assert len(buys) == 1
+    assert len(sells) == 1
+    # 验证期第 20 日卖出(份额默认 100 不变 <5%, 价格 <3%)
+    assert "买入未验证" in sells[0]["reason"]

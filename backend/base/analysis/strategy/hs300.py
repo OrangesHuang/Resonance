@@ -54,6 +54,13 @@ PANIC_SKIP_COOLDOWN_CHG = -3.0
 #  与"只抓跌透的底"哲学一致, 2021 顶部急跌假低位同样被拦)
 MA60_SLOPE_LOOKBACK = 20  # ma60 斜率回看窗口
 BEAR_MA60_SLOPE_MIN = -2.0  # 熊市接刀门槛: ma60 20日斜率<=此值(跌势成熟, %/20日)
+# 买入验证期(向中证1000 对齐): 买入后 20 日累计涨幅<3% 且份额未增长>=5% → 认错离场
+# (2022-03-16 20日+0.9%份额-3.5%止损-3.9%该卖; 2024-10-30 +0.4%白做止损省事;
+#  2026-01-23 +0.7%份额-30%止损-2.2%该卖; 而 2024-08-28 20日+16.3%份额+12.9%
+#  通过保+21.1%, 2024-01-18 份额+37%通过保+6.8% — 大赢家全靠20日窗口保住)
+VERIFY_DAY = 20  # 买入后第 N 日检查
+VERIFY_ESCAPE_PCT = 3.0  # 累计涨幅低于此值视为未脱离成本区
+VERIFY_SHARES_PCT = 5.0  # 份额较买入日增长>=此值视为有承接(豁免)
 
 HS300_CODE = "510300"
 
@@ -75,6 +82,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
     hold_days = 0
     high_since_buy = 0.0
     last_sell_idx = -999
+    buy_price = 0.0  # 买入价(验证期用)
+    entry_shares = None  # 买入时份额(验证期豁免用)
     sell_mode = "trend"  # 买入时确定: "trail"(恐慌/波段底) / "trend"(健康回踩=趋势持有)
     pullback_buy = False  # 是否健康回调买入(牛市 B1)
 
@@ -172,7 +181,18 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         else:
             hold_days += 1
             high_since_buy = max(high_since_buy, close)
-            if sell_mode == "trend":
+            # 买入验证期: 20日未脱离成本区(且份额未承接)即认错(防假买, 向中证1000对齐)
+            if hold_days == VERIFY_DAY:
+                ret_pct = (close / buy_price - 1) * 100 if buy_price else 0.0
+                cur_shares = row.get("shares_yi")
+                shares_gain = (
+                    (cur_shares / entry_shares - 1) * 100
+                    if cur_shares is not None and entry_shares and entry_shares > 0
+                    else 0.0
+                )
+                if ret_pct < VERIFY_ESCAPE_PCT and shares_gain < VERIFY_SHARES_PCT:
+                    action, reason = "SELL", f"买入未验证: 第{VERIFY_DAY}日累计{ret_pct:+.1f}%+份额{shares_gain:+.1f}%"
+            if action is None and sell_mode == "trend":
                 # 趋势持有(买入时在 ma60 上方): 破位卖
                 if m60 is not None and close < m60:
                     action, reason = "SELL", "趋势破位(跌破ma60)"
@@ -189,6 +209,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
             position = 1.0
             hold_days = 0
             high_since_buy = close
+            buy_price = close
+            entry_shares = row.get("shares_yi")
             # 恐慌/波段底买入始终尾随(价格天然低于均线); 健康回调才可能趋势持有
             sell_mode = "trend" if (pullback_buy and m60 is not None and close >= m60) else "trail"
             pullback_buy = False
