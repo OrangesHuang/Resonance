@@ -63,7 +63,8 @@ DIST_EXTREME_VR = 3.5  # 加速赶顶量比(924式暴涨顶: 10-08 vr3.85 立即
 TRAIL_PCT = 6.0  # 尾随止盈: 收盘回撤持仓最高 x6%(熊市波段回撤兜底)
 TRAIL_MIN_HOLD = 5  # 尾随止盈最短持有
 # 熊市绝望底买入(买卖点先行拟合: 4 真底指纹)
-BEAR_BUY_PP_MAX = 40.0  # 买入 pp 上限(A底0.9/B底1.8/C底25.7/D底4.6)
+BEAR_BUY_PP_MAX = 15.0  # 买入 pp 上限: 60日价格必须真触底(用户: 滚动60天没触底才是接飞刀关键;
+# 真底 pp 0.9/1.8/14.8/4.6, 拦 2022-04-13 pp21.5 假底; 2024-02-02 C底 pp25.7 但 01-22 pp14.8 已买)
 BEAR_BUY_SHARE_MIN = 75.0  # 份额强承接下限(4真底 75.8~95; 拦 03-15 sp47/11-28 sp44/07-08 sp70)
 BEAR_BUY_CHG_MAX = 1.0  # 买入日涨幅上限(绝望底当日不追大涨: 拦 2022-03-16 +4.77%政策底追高)
 BEAR_BOTTOM_DIV_MIN = 15.0  # 深背离阈值%(A-23/B-20/C-15.6; 假底09-26 仅-13.7 被拦)
@@ -72,6 +73,12 @@ BEAR_DESPAIR_TP_MAX = 10.0  # 绝望底成交额分位上限(924前夜: 2024-08-
 BEAR_DESPAIR_MP_MAX = 10.0  # 绝望底融资分位上限
 # 熊市卖出(触线止盈 + 硬止损)
 BEAR_STOP_LOSS_PCT = 5.0  # 接刀失败硬止损: 收盘较买入 <= -5% 卖(2022-09-26 轮)
+# 深背离路径快速验证(用户: 宏观极端承接后理应快速反弹, 一段时间内没反弹=还没到底):
+# 买入后 QUICK_VERIFY_DAY 日内从未收盘 +2% 且仍低于买价 -> 离场。深背离真底
+# (04-26/10-31/01-22) 3日内即 +2% 不误杀; 双绝望冰点底(08-28)可横盘17天等924,
+# 不适用时间止损(维持 -5% 硬止损)
+BEAR_QUICK_VERIFY_DAY = 10  # 深背离买入快速验证窗口
+BEAR_QUICK_VERIFY_PCT = 2.0  # 窗口内需出现的反弹幅度
 BEAR_TOUCH_DIV = 3.0  # 反弹触线: |div|<=3% 即 ma250 附近(熊市反弹目标位), 当日温和即卖
 BEAR_VIOLENT_CHG = 4.0  # 暴力穿越例外: 触线日单日涨幅下限(924: 09-24 +4.7%)
 BEAR_VIOLENT_VR = 2.0  # 暴力穿越例外: 触线日量比下限(924: 09-24 vr2.8)
@@ -113,6 +120,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
     dist_threshold = 2  # 出货共振确认阈值(买入量比动态调整, 移植正式版)
     buy_bull = False  # 买入时是否牛市(牛熊分治: 熊市才走止损/触线)
     violent_start = False  # 暴力穿越例外: 触线日放量暴涨, 转持有模式
+    buy_path_deep = False  # 买入走深背离路径(快速验证适用; 双绝望冰点底不适用)
+    quick_verified = False  # 快速验证: 窗口内出现过 +2% 收盘
     first_buy_idx: int | None = None  # 首个买点位置(危险区标注用)
 
     for i, row in enumerate(rows):
@@ -191,6 +200,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and (not in_cooldown or panic_day or deep_extreme)
                 ):
                     action, reason = "BUY", "熊市绝望底(强承接+杠杆出清)"
+                    buy_path_deep = deep_extreme
         else:
             hold_days += 1
             high_since_buy = max(high_since_buy, close)
@@ -200,6 +210,13 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                 div_dist = (close / m250 - 1) * 100 if m250 else 0.0
                 if ret_pct <= -BEAR_STOP_LOSS_PCT:
                     action, reason = "SELL", f"接刀失败止损(收盘{ret_pct:.1f}%)"
+                elif buy_path_deep and hold_days <= BEAR_QUICK_VERIFY_DAY:
+                    # 深背离路径快速验证(用户: 极端承接后理应快速反弹, 一段时间内
+                    # 没反弹=还没到底): 窗口内收盘 +2% 即通过; 第 N 日仍低于买价离场
+                    if close >= buy_price * (1 + BEAR_QUICK_VERIFY_PCT / 100):
+                        quick_verified = True
+                    elif hold_days == BEAR_QUICK_VERIFY_DAY and not quick_verified and close < buy_price:
+                        action, reason = "SELL", f"接刀未验证({BEAR_QUICK_VERIFY_DAY}日未反弹)"
                 elif not violent_start and abs(div_dist) <= BEAR_TOUCH_DIV:
                     # 反弹触线 = 到达 ma250 目标位, 当日温和即卖(熊市弱反弹哲学);
                     # 暴力穿越(单日>=4%且量比>=2, 924式)例外: 目标位失效转持有模式;
@@ -251,6 +268,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
             dist_confirm = 0
             buy_bull = bull  # 记录买入时牛熊(止损/触线只对熊市买入生效)
             violent_start = False  # 新持仓重置暴力穿越标记
+            quick_verified = False  # 新持仓重置快速验证标记(buy_path_deep 在触发时已记录)
             # 动态出货阈值(正式版逻辑): 地量极冷买入阈值1(1次确认即卖),
             # 其余按买入量比: 越高需越多确认
             if reason.startswith("价格低位+吸筹+成交额极冷"):

@@ -79,6 +79,30 @@ def test_bear_violent_cross_then_trail() -> None:
     assert sell["price"] == 3.05
 
 
+def test_bear_deep_quick_verify_fails() -> None:
+    # 深背离路径快速验证(用户: 极端承接后理应快速反弹, 一段时间没反弹=还没到底):
+    # 买入后 10 日从未收盘 +2% 且仍低于买价 -> 接刀未验证离场
+    closes = _declining(270) + [2.65, 2.62, 2.63, 2.62, 2.64, 2.63, 2.62, 2.64, 2.63, 2.62, 2.60]
+    caps = {270: BUY_CAP, 280: {"chg": -0.8}}
+    res = run_hs300_strategy(_mk(closes, caps, 270))
+    assert len(res["trades"]) == 2
+    sell = res["trades"][1]
+    # 第 280 天(买入后第 10 日): 从未 +2%(最高 2.64 < 2.65*1.02) 且收盘 2.60 < 买价 2.65
+    assert sell["date"] == "2021-10-11"
+    assert "接刀未验证" in sell["reason"]
+    assert sell["price"] == 2.60
+
+
+def test_bear_despair_path_no_quick_verify() -> None:
+    # 双绝望冰点底不适用快速验证(08-28 买后横盘 17 天才爆发 924, 不能时间止损):
+    # 买入后 10 日未 +2% 且低于买价, 但走双绝望路径 -> 继续持有(不卖)
+    closes = _declining(270) + [2.79, 2.72, 2.70, 2.71, 2.69, 2.70, 2.68, 2.69, 2.67, 2.68, 2.66]
+    caps = {270: BUY_CAP}
+    res = run_hs300_strategy(_mk(closes, caps, 270))
+    assert len(res["trades"]) == 1  # 只有买入, 无快速验证卖出(双绝望路径)
+    assert res["trades"][0]["action"] == "BUY"
+
+
 def test_bear_extreme_bottom_skips_cooldown() -> None:
     # 止损后冷却期内, 深背离极端底(div<=-15%且mp<=5)豁免冷却立即再买
     # (案例 2022-04-25 止损 -> 04-26 极端底再买 -> +21.5%)
