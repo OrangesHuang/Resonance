@@ -48,6 +48,9 @@ PANIC_CRASH_PCT = -5.0  # 恐慌回踩: 单日跌幅下限(案例 2025-04-07 关
 BULL_PANIC_PP_MAX = 40  # 牛市恐慌回踩 pp 上限
 BULL_PP_MAX = 40  # 牛市回调 B1 pp 上限(只买低位回调, 2026-01-23 pp68高位被拦-2.2%,
 #  2024-10-30 pp52白做+0.4%被拦; 2026-03-23 pp5.5 +7.1%、2025-01-02 pp14 +2.1%保留)
+BULL_SHARE_MIN = 50.0  # B1 份额承接下限: 牛市初期弱承接(sp<50)假回调60日全负
+#  (2025-01-02 sp42 -5.8% / 01-03 sp35 -3.8% / 01-06 sp34 -2.4%;
+#  2026-03-23 sp65 +14.9% 保留 — 同一波 03-31 sp27 拦掉无损失)
 TRAIL_PCT = 6.0  # 熊市尾随止盈: 收盘回撤持仓最高 x6%(波段小亏封顶)
 TRAIL_MIN_HOLD = 5  # 尾随止盈最短持有
 SELL_COOLDOWN = 15  # 牛市卖出后冷却天数(防连续打脸)
@@ -139,6 +142,8 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                         and (close >= m60 * 1.01 or close <= m60 * 0.97)
                         and pp is not None
                         and pp <= BULL_PP_MAX
+                        and sp is not None
+                        and sp >= BULL_SHARE_MIN
                     ):
                         action, reason = "BUY", "牛市回调(站上ma250+回踩ma20)"
                         pullback_buy = True
