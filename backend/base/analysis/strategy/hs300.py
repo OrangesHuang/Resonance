@@ -79,6 +79,10 @@ PANIC_SKIP_COOLDOWN_CHG = -3.0
 #  与"只抓跌透的底"哲学一致, 2021 顶部急跌假低位同样被拦)
 MA60_SLOPE_LOOKBACK = 20  # ma60 斜率回看窗口
 BEAR_MA60_SLOPE_MIN = -2.0  # 熊市接刀门槛: ma60 20日斜率<=此值(跌势成熟, %/20日)
+# 熊市博弈门槛(贴线阴跌无博弈价值, 深背离才有均值回归机会):
+BEAR_DIVERGENCE_MIN = 13.0  # 距ma250深背离阈值%(<-13%才有博弈价值, 2023贴线-1~-3% 60日全负)
+BEAR_DESPAIR_TP_MAX = 10.0  # 绝望底成交额分位上限(924前夜: 2024-08-28 成交额1)
+BEAR_DESPAIR_MP_MAX = 10.0  # 绝望底融资分位上限(杠杆出清: 2024-08-28 融资1)
 # 买入验证期(向中证1000 对齐): 买入后 20 日累计涨幅<3% 且份额未增长>=5% → 认错离场
 # (2022-03-16 20日+0.9%份额-3.5%止损-3.9%该卖; 2024-10-30 +0.4%白做止损省事;
 #  2026-01-23 +0.7%份额-30%止损-2.2%该卖; 而 2024-08-28 20日+16.3%份额+12.9%
@@ -169,6 +173,16 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                 trend_mature = (
                     m60 is not None and m60_prev is not None and (m60 / m60_prev - 1) * 100 <= BEAR_MA60_SLOPE_MIN
                 )
+                # 熊市博弈门槛: 深背离(距ma250<=-13%)或绝望底(成交额+融资双低<=10)
+                # 贴线阴跌(>-13%)无博弈价值(2023全年贴线-1.5~-3% 60日全负-5~-10%);
+                # 深背离才有均值回归机会(2022-04 -18~-23% 60日+9~+14%);
+                # 绝望底抓 924 前夜(2024-08-28 成交额1融资1 -> +20.5%)
+                tp = row.get("_tp")
+                m250_now = m250
+                div_dist = (close / m250_now - 1) * 100 if m250_now else 0.0
+                deep_div = div_dist <= -BEAR_DIVERGENCE_MIN
+                despair = tp is not None and tp <= BEAR_DESPAIR_TP_MAX and mp is not None and mp <= BEAR_DESPAIR_MP_MAX
+                bear_gate = deep_div or despair
                 if (
                     pp is not None
                     and pp <= BEAR_P1_PP_MAX
@@ -177,6 +191,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and sp >= BEAR_P1_SHARE_MIN
                     and (not in_cooldown or panic_day)
                     and trend_mature
+                    and bear_gate
                 ):
                     action, reason = "BUY", "恐慌吸筹P1"
                 elif (
@@ -189,6 +204,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and cp >= BEAR_P2_CP_MIN
                     and not in_cooldown
                     and trend_mature
+                    and bear_gate
                 ):
                     action, reason = "BUY", "低位强承接P2"
                 elif (
@@ -201,6 +217,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and (not in_cooldown or panic_day)
                 ):
                     # 单日大跌>=5%是极端事件(2025-04-07 -7.0% 关税暴跌), 不要求跌势成熟
+                    # 也不要求 bear_gate(极端恐慌本身就是博弈时机)
                     action, reason = "BUY", "恐慌回踩(单日大跌+强承接)"
         else:
             hold_days += 1
