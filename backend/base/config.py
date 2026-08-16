@@ -105,6 +105,7 @@ EM_UT = "fa5fd1943c7b386f172d6893dbfba10b"  # 东财行情接口公共 token
 EM_FETCH_RETRIES = 3  # 东财批量源请求重试次数(接口偶发限流/断连)
 EM_FETCH_RETRY_SLEEP = 3  # 重试间隔基础秒数(递增)
 EM_FETCH_TIMEOUT = 15  # 东财请求超时(秒)
+EM_FAIL_COOLDOWN_SEC = 600  # 东财批量源失败冷却(秒): 冷却期内跳过东财直走雪球回退
 
 # 雪球批量源(东财回退): 日K含 amount 成交额, 2021 起完整; 与东财/官方
 # 交叉验证一致(2021-03-01 上证 4024.77 亿两者完全相同)

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import requests
 
 from base.config import (
+    EM_FAIL_COOLDOWN_SEC,
     EM_FETCH_RETRIES,
     EM_FETCH_RETRY_SLEEP,
     EM_FETCH_TIMEOUT,
@@ -15,98 +15,33 @@ from base.config import (
     EM_KLINE_URL,
     EM_UT,
     MARGIN_USE_SSE_FALLBACK,
-    TURNOVER_FETCH_SLEEP_SEC,
     XQ_FETCH_TIMEOUT,
     XQ_HQ_URL,
     XQ_INDEX_SH,
     XQ_INDEX_SZ,
     XQ_KLINE_URL,
 )
+from base.fetch.turnover_official import fetch_market_turnover  # noqa: F401  (re-export 供调度层使用)
+
+_EM_FAIL_TS = 0.0  # 东财批量源最近一次失败时刻(epoch 秒); 冷却期内跳过东财
+
+
+def _em_in_cooldown() -> bool:
+    return time.time() - _EM_FAIL_TS < EM_FAIL_COOLDOWN_SEC
+
+
+def _em_mark_failed() -> None:
+    global _EM_FAIL_TS
+    _EM_FAIL_TS = time.time()
+
+
+def _em_mark_ok() -> None:
+    global _EM_FAIL_TS
+    _EM_FAIL_TS = 0.0
 
 
 def _date_to_ak(d: str) -> str:
     return d.replace("-", "")
-
-
-def _sse_turnover_yi(d8: str):
-    try:
-        import akshare as ak
-
-        df = ak.stock_sse_deal_daily(date=d8)
-        row = df[df["单日情况"] == "成交金额"]
-        if row.empty:
-            return None
-        return round(float(row["股票"].iloc[0]), 2)
-    except Exception:
-        return None
-
-
-def _szse_turnover_yi(d8: str):
-    try:
-        import akshare as ak
-
-        df = ak.stock_szse_summary(date=d8)
-        row = df[df["证券类别"] == "股票"]
-        if row.empty:
-            return None
-        return round(float(row["成交金额"].iloc[0]) / 1e8, 2)
-    except Exception:
-        return None
-
-
-def _weekday_dates(start_date: str, end_date: str) -> list[datetime]:
-    cur = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
-    out: list[datetime] = []
-    while cur <= end:
-        if cur.weekday() < 5:
-            out.append(cur)
-        cur += timedelta(days=1)
-    return out
-
-
-def _turnover_row(cur: datetime) -> dict | None:
-    d8 = cur.strftime("%Y%m%d")
-    sh = _sse_turnover_yi(d8)
-    sz = _szse_turnover_yi(d8)
-    if not sh or not sz:
-        return None
-    return {
-        "date": cur.strftime("%Y-%m-%d"),
-        "sh_amount_yi": sh,
-        "sz_amount_yi": sz,
-        "total_amount_yi": round(sh + sz, 2),
-    }
-
-
-def fetch_market_turnover(
-    start_date: str,
-    end_date: str,
-    on_progress: Callable[[int, int, str], None] | None = None,
-    skip_dates: set[str] | None = None,
-    on_row: Callable[[dict], None] | None = None,
-) -> list[dict]:
-    """逐日拉取成交额; on_row 每次拉到一天立即回调(便于边拉边写库)。"""
-    days = _weekday_dates(start_date, end_date)
-    skip_dates = skip_dates or set()
-    rows = []
-    try:
-        for i, cur in enumerate(days, 1):
-            ds = cur.strftime("%Y-%m-%d")
-            if on_progress:
-                on_progress(i, len(days), ds)
-            if ds in skip_dates:
-                continue
-            row = _turnover_row(cur)
-            if row:
-                rows.append(row)
-                if on_row:
-                    on_row(row)
-            time.sleep(TURNOVER_FETCH_SLEEP_SEC)
-        return rows
-    except Exception as e:
-        print(f"[FETCH] market turnover failed: {e}")
-        return rows
 
 
 def _em_index_kline(secid: str, start_date: str, end_date: str) -> dict[str, float]:
@@ -136,9 +71,14 @@ def _em_index_kline(secid: str, start_date: str, end_date: str) -> dict[str, flo
             data = r.json().get("data") or {}
             if data.get("klines"):
                 break
-        except Exception as e:
-            print(f"[FETCH] em index {secid} attempt{attempt + 1} failed: {e}")
+        except Exception:
             time.sleep(EM_FETCH_RETRY_SLEEP * (attempt + 1))
+    if data is None or not data.get("klines"):
+        # 全部重试失败(含远端直接断连): 进入冷却, 后续请求直走雪球
+        _em_mark_failed()
+        print(
+            f"[FETCH] em index {secid} unavailable after {EM_FETCH_RETRIES} attempts, cooldown {EM_FAIL_COOLDOWN_SEC}s"
+        )
     out: dict[str, float] = {}
     for line in (data or {}).get("klines") or []:
         parts = line.split(",")
@@ -244,9 +184,11 @@ def fetch_turnover_range(start_date: str, end_date: str) -> list[dict]:
     入库。东财接口偶发限流(push2his 连接失败), 雪球带 cookie 独立源,
     两源交叉验证一致, 保证补 2021 稳定可用。
     """
-    rows = _em_batch(start_date, end_date)
-    if rows:
-        return rows
+    if not _em_in_cooldown():
+        rows = _em_batch(start_date, end_date)
+        if rows:
+            _em_mark_ok()
+            return rows
     try:
         return _xq_turnover_range(start_date, end_date)
     except Exception as e:
