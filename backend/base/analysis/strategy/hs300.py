@@ -7,8 +7,9 @@ B 2022-10-31 3.22->01-30 3.93 +21.9% / C 2024-02-02 2.98->05-20 3.47 +16.7%
 3.17->3.46 +9.1% / 03-23 全球股灾底 3.04->7-01 3.78 +24.6%。
 假底无法靠单日信号区分(2022-09-26 与真底指纹一致后仍跌 -9.4%), 架构 = 放宽
 买点覆盖所有绝望底 + 硬止损快速认错 + 极端底豁免冷却再上车。
-历史教训: 2021-03-09 顶部假低位(与 2025-01-02 牛市回调底同指纹, 买入即接顶)
--> 2021 年整年跳过; 2022-09-26 接刀假底靠 -5% 硬止损 + 10-31 再买弥补;
+历史教训: 2021-03-09 顶部假低位(与 2025-01-02 牛市回调底同指纹, 无法事前区分)
+靠牛市尾随 10% 认错离场(-3.7%, 不扛 2022 崩盘) — 全算法无时间硬编码, 大顶后
+第一个急跌抓不住就快速认错; 2022-09-26 接刀假底靠 -5% 硬止损 + 10-31 再买弥补;
 2020-03-23 贴线买 4-07 触线卖飞 +8.4% vs +30%+ -> 贴线买禁触线;
 微微红+2%卖(已弃)把 A 波段 +21.5% 做成 +2.3%, 熊市反弹目标位是 ma250。
 
@@ -17,10 +18,11 @@ B 2022-10-31 3.22->01-30 3.93 +21.9% / C 2024-02-02 2.98->05-20 3.47 +16.7%
   熊市买: P1 恐慌底 单日跌>=7%+pp<=20(不分牛熊); P2 绝望底 pp<=15+sp>=75
   +chg<=1+ma60 20日斜率<=-2% + 底部门槛(深背离 div<=-15% 且 mp<=5, 或
   双绝望 tp<=10 且 mp<=10); P3 强承接冰点底 pp<=8+sp>=90+div>=-10(急跌贴线V底)。
-  熊市卖: 硬止损-5% -> 触线止盈(|div|<=3 且温和, 贴线买/暴力穿越除外)
-  -> 尾随6%; 深背离极端底豁免卖出冷却。
+  卖出: 硬止损-5%(熊买) -> 触线止盈(|div|<=3 且温和, 贴线买/暴力穿越除外)
+  -> 尾随(熊市/恐慌底 6%, 牛市买入/转牛持仓 10%: 主升洗盘不卖, 顶部确认卖,
+  假低位快速认错); 常规出货共振仅牛市买入持仓生效, 加速赶顶(vr>=3.5)不限。
   牛市(bull): 恐慌回踩 + 移植正式版四路径买入, 出货共振卖出(与生产一致)。
-  过渡: 熊市买入后转牛 -> 出货共振+尾随管, 让持仓吃牛市。
+  过渡: 熊市买入后转牛 -> 触线/止损失效, 尾随10%+加速赶顶管, 让持仓吃牛市主升。
 """
 
 from __future__ import annotations
@@ -29,9 +31,7 @@ import math
 
 from base.analysis.strategy.hs300_metrics import build_danger_zone, calc_metrics
 
-TRADE_START = "2019-01-01"  # 策略交易起点: 2019 起(2019-2020 恐慌底/强承接底 + 2022 起绝望底)
-TRADE_SKIP_START = "2021-01-01"  # 2021 年整年跳过: 2021-03-09 顶部假低位(pp12.2+sp90.8)与
-TRADE_SKIP_END = "2022-01-01"  # 与 2025-01-02 牛市回调底同指纹, 大顶后急跌无法事前区分, 2021 只画线不交易
+TRADE_START = "2019-01-01"  # 策略交易起点: 2019 起(2019 年前数据仅预热)
 DANGER_ZONE_START = "2021-01-01"  # 危险区标注起点: 2021 年大顶回落段标危险;
 # 2020 年是牛市(策略未启用)不标危险
 MA250_WINDOW = 250  # 牛熊状态: 长周期均线(250 日)
@@ -56,6 +56,8 @@ DIST_VR_MIN = 1.3  # 出货共振量比下限
 DIST_MP_MIN = 90.0  # 出货共振融资分位下限(区分中继震荡与真顶)
 DIST_EXTREME_VR = 3.5  # 加速赶顶量比(924式暴涨顶: 10-08 vr3.85 立即卖, 常规出货1.5~2.5不误触)
 TRAIL_PCT = 6.0  # 尾随止盈: 收盘回撤持仓最高 x6%(熊市波段回撤兜底)
+TRAIL_BULL_PCT = 10.0  # 转牛持仓尾随放宽: 主升洗盘不卖(2020-07 三连阴 -7.5% 该持有),
+# 顶部确认才卖(2021-02-18 顶 5.345 后 -12.8% 卖 4.661, 保主升 +53.6%)
 TRAIL_MIN_HOLD = 5  # 尾随止盈最短持有
 # 熊市绝望底买入(买卖点先行拟合: 4 真底指纹)
 BEAR_BUY_PP_MAX = 15.0  # 买入 pp 上限: 60日价格必须真触底(用户: 滚动60天没触底才是接飞刀关键;
@@ -123,15 +125,13 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
     violent_start = False  # 暴力穿越例外: 触线日放量暴涨, 转持有模式
     buy_path_deep = False  # 买入走深背离路径(快速验证适用; 双绝望冰点底不适用)
     buy_shallow = False  # 贴线买(div>=-12): 触线止盈禁用, 靠尾随+出货共振
+    buy_panic = False  # 恐慌底(抢反弹): 尾随保持 6%, 反弹到位即跑不参与转牛放宽
     quick_verified = False  # 快速验证: 窗口内出现过 +2% 收盘
-    first_buy_idx: int | None = None  # 首个买点位置(危险区标注用)
 
     for i, row in enumerate(rows):
         d = row["date"]
         if d < TRADE_START:
             continue
-        if TRADE_SKIP_START <= d < TRADE_SKIP_END:
-            continue  # 2021 年跳过(顶部假低位保护)
         close = closes[i]
         pp = row.get("price_position")
         td = row.get("trade_direction")
@@ -252,18 +252,15 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                         "SELL",
                         f"出货共振+加速赶顶({dist_confirm}/{dist_threshold}次)+pp{pp:.0f}+vr{vr:.1f}",
                     )
-                elif hold_days >= TRAIL_MIN_HOLD and dist_confirm >= dist_threshold:
+                elif hold_days >= TRAIL_MIN_HOLD and dist_confirm >= dist_threshold and buy_bull:
                     action, reason = "SELL", f"出货共振(第{dist_confirm}/{dist_threshold}次)+pp{pp:.0f}+融资{mp:.0f}"
-            if (
-                action is None
-                and not buy_bull
-                and hold_days >= TRAIL_MIN_HOLD
-                and high_since_buy > 0
-                and close <= high_since_buy * (1 - TRAIL_PCT / 100)
-            ):
-                # 熊市持仓: 尾随止盈(盈利回撤兜底)
-                action, reason = "SELL", f"尾随止盈(回撤{TRAIL_PCT}%)"
-            # 牛市买入(buy_bull): 无止损/触线/尾随, 只靠出货共振卖出(持仓长持到出货)
+            if action is None and hold_days >= TRAIL_MIN_HOLD and high_since_buy > 0:
+                # 尾随止盈(盈利回撤兜底): 牛市买入/转牛持仓 10%(主升洗盘不卖, 顶部确认卖;
+                # 2021-03-09 假低位买后 2021-08 尾随离场防阴跌深套), 熊市/恐慌底 6%
+                trail_used = TRAIL_BULL_PCT if (buy_bull or (bull and not buy_panic)) else TRAIL_PCT
+                if close <= high_since_buy * (1 - trail_used / 100):
+                    action, reason = "SELL", f"尾随止盈(回撤{trail_used:.0f}%)"
+            # 牛市买入(buy_bull): 无止损/触线, 尾随10%+出货共振管(持仓长持到出货)
 
         if action == "BUY":
             position = 1.0
@@ -273,6 +270,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
             dist_confirm = 0
             buy_bull = bull  # 记录买入时牛熊(止损/触线只对熊市买入生效)
             buy_shallow = div_dist >= SHALLOW_DIV_MIN  # 贴线买: 触线止盈无意义
+            buy_panic = reason.startswith("恐慌底")  # 恐慌底抢反弹: 尾随不放宽
             violent_start = False  # 新持仓重置暴力穿越标记
             quick_verified = False  # 新持仓重置快速验证标记(buy_path_deep 在触发时已记录)
             # 动态出货阈值: 地量极冷买入 1 次确认即卖, 其余按买入量比越高越多确认
@@ -280,8 +278,6 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                 dist_threshold = 1
             else:
                 dist_threshold = max(2, math.ceil(2 + vr * 0.55)) if vr else 2
-            if first_buy_idx is None and d >= TRADE_SKIP_END:
-                first_buy_idx = i
             trades.append({"date": d, "action": "BUY", "price": close, "reason": reason})
         elif action == "SELL":
             position = 0.0
@@ -295,5 +291,5 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         "trades": trades,
         "metrics": metrics,
         "holding": position > 0,
-        "danger_zone": build_danger_zone(rows, first_buy_idx, DANGER_ZONE_START),
+        "danger_zone": build_danger_zone(rows, trades, DANGER_ZONE_START),
     }

@@ -53,19 +53,34 @@ def calc_metrics(trades: list[dict], last_close: float, position: float) -> dict
     }
 
 
-def build_danger_zone(rows: list[dict], first_buy_idx: int | None, zone_start: str) -> dict | None:
-    # 危险区: 策略交易起点(TRADE_START)到首个买点的空仓段(2022-01-01 ~ 2022-04-20):
-    # 2022-01-28 绝望底被份额承接门槛拦(sp66<75, 买入后 3 月 -15%); 2022-03-15
-    # 政策底被 sp47 拦(4 月还有市场底)。每次拦截都避免了一次亏损, 该段策略主动空仓。
-    # zone_start 之前的区段(2020 牛市末期/2021 大顶回落)是策略未启用, 不标危险。
-    if first_buy_idx is None or first_buy_idx <= 0 or not rows:
+def build_danger_zone(rows: list[dict], trades: list[dict], zone_start: str, min_gap_days: int = 60) -> dict | None:
+    """危险区: zone_start 后第一段长空仓(卖出后 >=min_gap 个交易日无买点)。
+
+    数据驱动无时间硬编码: 2021-03-05 顶部卖出 2 日后 03-09 重新买入属轮间
+    衔接不标; 2021-07-27 假低位轮认错卖出后 9 个月无买点(熊市初期+崩盘
+    前夜, 绝望底门槛持续拦截)才标危险区。zone_start 之前的区段不标。
+    """
+    if not rows or not trades:
         return None
-    start = max(rows[0]["date"], zone_start)
-    if start >= rows[first_buy_idx - 1]["date"]:
+    idx = {r["date"]: i for i, r in enumerate(rows)}
+    sell_d, buy_d = None, None
+    for t in trades:
+        if t["date"] < zone_start:
+            continue
+        if t["action"] == "SELL":
+            sell_d, buy_d = t["date"], None
+        elif sell_d is not None:
+            gap = idx.get(t["date"], 0) - idx.get(sell_d, 0)
+            if gap >= min_gap_days:
+                buy_d = t["date"]
+                break
+            sell_d, buy_d = None, None
+    if not sell_d or not buy_d:
         return None
+    bi = idx.get(buy_d, 0)
     return {
-        "start": start,
-        "end": rows[first_buy_idx - 1]["date"],
+        "start": sell_d,
+        "end": rows[bi - 1]["date"] if bi > 0 else buy_d,
         "label": "危险区·无买点",
         "reason": "跌势未成熟/承接不足, 策略判定无博弈机会, 主动空仓",
     }

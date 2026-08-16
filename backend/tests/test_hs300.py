@@ -132,12 +132,32 @@ def test_insufficient_history_no_trade() -> None:
     assert res["danger_zone"] is None
 
 
-def test_danger_zone_covers_pre_first_buy() -> None:
-    # 首个买点前无买点的空仓段 -> 危险区(数据起点 ~ 买点前一日)
-    closes = _declining(270) + [2.79, 2.74, 2.69]
-    rows = _mk(closes, {270: BUY_CAP}, 270)
-    res = run_hs300_strategy(rows)
-    assert res["danger_zone"] is not None
-    assert res["danger_zone"]["start"] == rows[0]["date"]
-    assert res["danger_zone"]["end"] == rows[269]["date"]  # 首买点前一日
-    assert res["danger_zone"]["label"] == "危险区·无买点"
+def test_danger_zone_long_gap_after_sell() -> None:
+    # 卖出后长空仓(>=60 交易日无买点) -> 危险区
+    # (案例 2021-07-27 假低位轮认错卖出 -> 2022-04-21 绝望底, 熊市全程无买点)
+    from base.analysis.strategy.hs300_metrics import build_danger_zone
+
+    rows = [{"date": f"2023-{i // 30 + 1:02d}-{i % 30 + 1:02d}"} for i in range(400)]
+    trades = [
+        {"date": "2023-02-01", "action": "BUY"},
+        {"date": "2023-02-10", "action": "SELL"},
+        {"date": "2023-05-01", "action": "BUY"},  # 间隔 80 交易日 >= 60
+    ]
+    dz = build_danger_zone(rows, trades, "2021-01-01")
+    assert dz is not None
+    assert dz["start"] == "2023-02-10"
+    assert dz["end"] == "2023-04-30"  # 下次买入前一日
+    assert dz["label"] == "危险区·无买点"
+
+
+def test_danger_zone_short_gap_not_marked() -> None:
+    # 卖出后 2 日即重新买入(轮间衔接) -> 不标危险区
+    from base.analysis.strategy.hs300_metrics import build_danger_zone
+
+    rows = [{"date": f"2023-{i // 30 + 1:02d}-{i % 30 + 1:02d}"} for i in range(400)]
+    trades = [
+        {"date": "2023-02-01", "action": "BUY"},
+        {"date": "2023-02-10", "action": "SELL"},
+        {"date": "2023-02-12", "action": "BUY"},
+    ]
+    assert build_danger_zone(rows, trades, "2021-01-01") is None
