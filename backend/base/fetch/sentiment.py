@@ -197,7 +197,11 @@ def _xq_klines(symbol: str, end_date: str, count: int = 600) -> dict[str, float]
         "count": str(-count),
         "indicator": "kline",
     }
-    j = _xq_session.get(XQ_KLINE_URL, params=params, timeout=XQ_FETCH_TIMEOUT).json()
+    try:
+        j = _xq_session.get(XQ_KLINE_URL, params=params, timeout=XQ_FETCH_TIMEOUT).json()
+    except Exception as e:
+        print(f"[FETCH] xq kline failed: {e}")
+        return {}
     data = j.get("data") or {}
     cols = data.get("column") or []
     if "amount" not in cols:
@@ -243,7 +247,11 @@ def fetch_turnover_range(start_date: str, end_date: str) -> list[dict]:
     rows = _em_batch(start_date, end_date)
     if rows:
         return rows
-    return _xq_turnover_range(start_date, end_date)
+    try:
+        return _xq_turnover_range(start_date, end_date)
+    except Exception as e:
+        print(f"[FETCH] xq turnover range failed: {e}")
+        return []
 
 
 def _to_float(v) -> float:
