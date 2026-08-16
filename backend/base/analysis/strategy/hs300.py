@@ -43,6 +43,12 @@ BULL_PANIC_PP_MAX = 40  # 牛市恐慌回踩 pp 上限
 TRAIL_PCT = 6.0  # 熊市尾随止盈: 收盘回撤持仓最高 x6%(波段小亏封顶)
 TRAIL_MIN_HOLD = 5  # 尾随止盈最短持有
 SELL_COOLDOWN = 15  # 牛市卖出后冷却天数(防连续打脸)
+# 全策略卖出冷却: 卖出后 N 日内不重复买入, 消除"卖出后立马买回"的连亏循环
+# (案例 2022-09-22卖->09-26买/10-24卖->10-25买 间隔1-2日, 三次-5.5%连亏;
+#  但真恐慌单日跌>=PANIC_SKIP_COOLDOWN_CHG 可跳过冷却 — 2025-04-07 -7.0% 恐慌回踩
+#  +27.5% 大赢家, 2022-04-25 -5.3% +11.7%, 均不能被冷却误杀)
+BEAR_SELL_COOLDOWN = 10
+PANIC_SKIP_COOLDOWN_CHG = -3.0
 
 HS300_CODE = "510300"
 
@@ -99,18 +105,30 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     action, reason = "BUY", "牛市恐慌回踩(大跌+强吸筹)"
                 else:
                     low5 = min(closes[max(0, i - 4) : i + 1])
-                    if m20 is not None and close <= m20 and close <= low5 and (i - last_sell_idx) >= SELL_COOLDOWN:
+                    # 距ma60>=1%: 避免贴着ma60买入后小回调即破位(2025-02-28 +0.3%买后1日卖)
+                    if (
+                        m20 is not None
+                        and m60 is not None
+                        and close <= m20
+                        and close <= low5
+                        and (i - last_sell_idx) >= SELL_COOLDOWN
+                        and close >= m60 * 1.01
+                    ):
                         action, reason = "BUY", "牛市回调(站上ma250+回踩ma20)"
                         pullback_buy = True
             else:
                 # 熊市: 只买恐慌底/强承接(拒绝顶部急跌假低位)
                 chg = row.get("change_pct") or 0
+                # 卖出冷却: 卖出后 BEAR_SELL_COOLDOWN 日内不重复买(真恐慌单日大跌除外)
+                in_cooldown = (i - last_sell_idx) <= BEAR_SELL_COOLDOWN
+                panic_day = chg <= PANIC_SKIP_COOLDOWN_CHG
                 if (
                     pp is not None
                     and pp <= BEAR_P1_PP_MAX
                     and td == "ACCUMULATE"
                     and sp is not None
                     and sp >= BEAR_P1_SHARE_MIN
+                    and (not in_cooldown or panic_day)
                 ):
                     action, reason = "BUY", "恐慌吸筹P1"
                 elif (
@@ -121,6 +139,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and sp >= BEAR_P2_SHARE_MIN
                     and cp is not None
                     and cp >= BEAR_P2_CP_MIN
+                    and not in_cooldown
                 ):
                     action, reason = "BUY", "低位强承接P2"
                 elif (
@@ -130,6 +149,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and sp is not None
                     and sp >= BEAR_P2_SHARE_MIN
                     and chg <= PANIC_CRASH_PCT
+                    and (not in_cooldown or panic_day)
                 ):
                     action, reason = "BUY", "恐慌回踩(单日大跌+强承接)"
         else:

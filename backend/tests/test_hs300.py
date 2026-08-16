@@ -49,3 +49,30 @@ def test_insufficient_history_no_trade() -> None:
     closes = [3.0] * 20
     res = run_hs300_strategy(_mk(closes, {}, 20))
     assert res["trades"] == []
+
+
+def test_bear_sell_cooldown_blocks_rebuy() -> None:
+    # 熊市 P1 卖出后 10 日内普通买点被冷却拦截(2022-09-22卖->09-26买 案例)
+    # 构造: 走平 -> 恐慌吸筹买 -> 连跌尾随卖 -> 2日后又一个 ACCUMULATE(非恐慌, 无大跌)
+    closes = [3.0] * 270 + [3.0, 2.95, 2.9, 2.85, 2.82, 2.8, 2.82, 2.85, 2.88, 2.9, 2.92, 2.95]
+    caps = {
+        270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -3.0},  # 首次买
+        277: {"pp": 8.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -0.5},  # 卖后2日, 非恐慌
+    }
+    res = run_hs300_strategy(_mk(closes, caps, 270))
+    buys = [t for t in res["trades"] if t["action"] == "BUY"]
+    # 第 277 天 chg=-0.5% 非恐慌 → 冷却拦截, 只买了一次
+    assert len(buys) == 1
+
+
+def test_bear_panic_skips_cooldown() -> None:
+    # 卖出后 2 日出现真恐慌(当日跌<=-3%) → 跳过冷却重新买入(2025-04-07 -7.0% 案例)
+    closes = [3.0] * 270 + [3.0, 2.95, 2.9, 2.85, 2.82, 2.8, 2.7, 2.82, 2.88]
+    caps = {
+        270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -3.0},  # 首次买
+        276: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -5.0},  # 卖后1日, 真恐慌
+    }
+    res = run_hs300_strategy(_mk(closes, caps, 270))
+    buys = [t for t in res["trades"] if t["action"] == "BUY"]
+    # 第 276 天 -5.0% 恐慌 → 跳过冷却, 买了两次
+    assert len(buys) == 2
