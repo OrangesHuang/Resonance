@@ -162,9 +162,10 @@ npm run build    # tsc && vite build
 
 1. 决定调试某 ETF → 写 beta 策略（`<后缀>.py` 现文件改，或新建 `<后缀>_beta.py`）→ 在 `BETA_STRATEGIES` 注册一行。
 2. 页面切到该 ETF → Beta 按钮自动亮起 → 所有人可对比两版买卖点。
-3. **验收门槛**：beta 回测必须**优于正式版**才值得发布——连自己都判断不出优于正式版，就没有发布价值。
-4. 升级：beta 优于 stable → 把 beta 实现移入 STABLE 槽位、删 BETA 注册（旧正式版可存档 `<后缀>_stable.py` 或丢弃）。
-5. 放弃：beta 无优势 → 直接删除注册，不留垃圾。
+3. **自动比对（每次改 Beta 必跑）**：`python3 scripts/compare_strategy_versions.py <code> [--base YYYY-MM-DD]`——逐笔比对基准日（默认 2024-10-08，正式版 TRADE_START）后的买卖点，确认 Beta 未漏正式版买点且全历史累计收益 ≥ 正式版；退出码 0=通过、1=漏笔、2=Beta 跑输。
+4. **验收门槛**：beta 回测必须**优于正式版**才值得发布——连自己都判断不出优于正式版，就没有发布价值。
+5. 升级：beta 优于 stable → 把 beta 实现移入 STABLE 槽位、删 BETA 注册（旧正式版可存档 `<后缀>_stable.py` 或丢弃）。
+6. 放弃：beta 无优势 → 直接删除注册，不留垃圾。
 
 **当前状态**：沪深300 正式版=生产通用共振（6714ce0）、Beta=A+B 调试版；中证1000 正式版=生产 zz（6714ce0，TRADE_START 2024-01-01）、Beta=当前调试版（2021 起+验证期+缩量深底+热度顶）。其余 ETF 仅正式版。
 
