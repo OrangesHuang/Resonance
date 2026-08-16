@@ -26,6 +26,7 @@ from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
 from base.analysis.strategy.sh50 import SH50_CODE, run_sh50_strategy
 from base.analysis.strategy.zz import ZZ_CODE, run_zz_strategy
 from base.analysis.strategy.zz500_v2 import ZZ500_CODE, run_zz500_strategy_v2
+from base.analysis.strategy.zz_stable import run_zz_strategy_stable
 
 # ---- 通用多指标共振(510300 等无专属策略的 ETF) ----
 SELL_PP = 80  # 卖出: 价格位置阈值
@@ -131,7 +132,8 @@ def _inject_percentile(rows: list[dict], t_pct: dict, m_pct: dict) -> list[dict]
 # 分位注入型策略用 _inject_closure 包装, 避免 lambda 闭包 t_pct 的引用 bug
 STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
     KC_CODE: run_kc_strategy,
-    ZZ_CODE: lambda rows, tp=None, mp=None: run_zz_strategy(_inject_percentile(rows, tp or {}, mp or {})),
+    # 中证1000 正式版 = 生产环境 zz 策略(6714ce0, TRADE_START 2024-01-01)
+    ZZ_CODE: lambda rows, tp=None, mp=None: run_zz_strategy_stable(_inject_percentile(rows, tp or {}, mp or {})),
     DIV_CODE: lambda rows, tp=None, mp=None: run_div_strategy(_inject_percentile(rows, tp or {}, mp or {})),
     SH50_CODE: run_sh50_strategy,
     SC50_CODE: run_sc50_strategy,
@@ -147,6 +149,8 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
 BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
     # 沪深300 beta = 调试中的 A+B 混合策略(验证期/跌势门槛/份额承接门槛)
     HS300_CODE: run_hs300_strategy,
+    # 中证1000 beta = 调试中的策略(验证期/缩量深底/量能门槛/热度顶止盈)
+    ZZ_CODE: run_zz_strategy,
 }
 
 
@@ -184,13 +188,15 @@ def compute_trades(
 
     if fn is None:
         return _run_default(rows, t_pct, m_pct)
-    # 按需传参: kc50 需要 kc_idx_rows, a500 需要 hs300_rows,
-    # 分位注入型(zz/div)需要 t_pct/m_pct;
-    # hs300 beta(run_hs300_strategy) 只收 rows, stable 是 lambda 包装收 tp/mp
+    # 分位注入型(zz/div): 策略签名单参数 rows, 内部读 _tp/_mp, 统一在此注入
+    if code in (ZZ_CODE, DIV_CODE):
+        return fn(_inject_percentile(rows, t_pct, m_pct))
+    # kc50 需要 kc_idx_rows, a500 需要 hs300_rows
     if code == KC50_CODE:
         return fn(rows, kc_idx_rows)
     if code == A500_CODE:
         return fn(rows, hs300_rows)
-    if code in (ZZ_CODE, DIV_CODE) or (code == HS300_CODE and version == "stable"):
+    # hs300 stable 是 lambda 包装(收 tp/mp 转 _run_default); beta 收 rows
+    if code == HS300_CODE and version == "stable":
         return fn(rows, t_pct, m_pct)
     return fn(rows)
