@@ -68,3 +68,41 @@ def test_escape_then_underwater_guard_sell() -> None:
     # 买入 i=40, +1..+15 日=2.1(脱离), 第 16 日(索引56)起 1.8 浮亏 8%+
     # 连续 15 日后(索引 70)守卫卖出
     assert trades[1]["date"] == "2021-03-11"
+
+
+def test_quiet_deep_bottom_buy() -> None:
+    # 缩量深底: 250日高点后回撤 30%(高点3.0→2.1), NEUTRAL+pp<=12+融资<=30+近10日无ACCUMULATE
+    # → 缩量深底买入, 30日验证期(20-30日), 不触发10日普通验证
+    closes = [3.0] * 200 + [2.9, 2.8, 2.7, 2.6, 2.5, 2.4, 2.3, 2.2, 2.15, 2.1] + [2.2] * 40
+    caps = {
+        209: {"pp": 8.0, "td": "NEUTRAL", "sp": 90.0, "vr": 1.0, "mp": 5.0},
+    }
+    rows = _mk(closes, caps)
+    # 注入 _mp(router 会做, 测试直接模拟)
+    for i, r in enumerate(rows):
+        if i == 209:
+            r["_mp"] = 5.0
+    res = run_zz_strategy(rows)
+    trades = res["trades"]
+    assert len(trades) >= 1
+    assert trades[0]["action"] == "BUY" and "缩量深底" in trades[0]["reason"]
+    # 20-30日验证期内价格从2.1涨到2.2(+4.8%>3%) → 通过, 不卖出
+    assert len(trades) == 1
+
+
+def test_quiet_deep_bottom_not_with_recent_accum() -> None:
+    # 近10日有 ACCUMULATE → 缩量深底不触发(防与放量信号重叠, 案例 2024-06-24)
+    closes = [3.0] * 200 + [2.9, 2.8, 2.7, 2.6, 2.5, 2.4, 2.3, 2.2, 2.15, 2.1] + [2.2] * 40
+    caps = {
+        205: {"pp": 30.0, "td": "ACCUMULATE", "sp": 80.0, "vr": 1.5},
+        209: {"pp": 8.0, "td": "NEUTRAL", "sp": 90.0, "vr": 1.0, "mp": 5.0},
+    }
+    rows = _mk(closes, caps)
+    for i, r in enumerate(rows):
+        if i == 209:
+            r["_mp"] = 5.0
+    res = run_zz_strategy(rows)
+    trades = [t for t in res["trades"] if t["action"] == "BUY"]
+    # 205 是 ACCUMULATE+pp30+sp80+vr1.5 → 低位吸筹(pp30>25 不触发), 不买
+    # 209 因近10日(205)有 ACCUMULATE → 缩量深底不触发
+    assert all("缩量深底" not in t["reason"] for t in trades)

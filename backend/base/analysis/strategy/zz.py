@@ -19,11 +19,15 @@
   Phase 1 — 暴跌集群检测: 10天内≥3个ACCUMULATE → 进入等待
   Phase 2 — 右侧确认: 集群结束后连续2天涨+放量 → 买入
   Phase 3 — 单日恐慌: 跌≥5%+ACCUMULATE → 直接左侧买入(单日极端)
-  Phase 4 — 卖出: DISTRIBUTE集群确认 + 量价记忆 + 买入验证期(10日内未脱离
+  Phase 4 — 缩量深底: NEUTRAL方向+pp<=12+距250日高回撤>=25%+融资分位<=30
+  (杠杆出清)+近10日无ACCUMULATE → 30日验证期确认(缩量底磨底慢, 10日会误杀)
+  Phase 5 — 卖出: DISTRIBUTE集群确认 + 量价记忆 + 买入验证期(10日内未脱离
   成本区即认错, 防阴跌陷阱) + 底部失败守卫(连续浮亏离场)
   2021 起全历史(TRADE_START=2021-01-01): 2022-04-29 底 +22.2% / 2024-06-26
   +26.1% / 2025-04-07 +33.1% 均由现有份额/顶部卖出捕获; 验证期+守卫补
-  2023-04-25 式阴跌深套的缺口(份额无巨量流出时价格缓慢下跌的轮次)。
+  2023-04-25 式阴跌深套的缺口(份额无巨量流出时价格缓慢下跌的轮次);
+  缩量深底补放量底抓不到的阴跌尽头(2022-04-21/22, 2022-10-10/11,
+  2024-01-22/30/31, 2024-09-18 — 8 触发点全盈, 60日均值+17%)。
 """
 
 from __future__ import annotations
@@ -70,6 +74,21 @@ VERIFY_SHARES_PCT = 5.0  # 份额较买入日增长低于此值视为无承接
 # 日 20日胜率仅20%均值-1.9%; 而历史 11 个真实买入 vr 全部≥1.02, 左侧类全部
 # ≥1.52, 此门槛不改变任何既有轮次, 只堵规则漏洞: 量能要求显式化)
 BUY_VOL_MIN = 1.2
+# 缩量深底: 阴跌尽头的"杠杆出清+地量磨底"形态(2021 无此形态因回撤仅-10%)
+# (案例: 2022-04-21/22 回撤-27% 融资分位1 -> +21%; 2024-01-22/30/31 回撤-30%
+#  融资分位1 -> +5.9~+17.8%; 2024-09-18 924政策底前夕 -> +42.5%;
+#  反例 2024-06-24/25 回撤-27% 但近10日已有ACCUMULATE信号(放量吸筹已启动)
+#  被"近10日无ACCUMULATE"排除 — 缩量深底只抓"还没放量的阴跌尽头")
+QUIET_PP_MAX = 12  # 缩量深底 pp 上限
+QUIET_DD_MIN = 25.0  # 距250日高点回撤下限(%) — 2021 浅回调-10%不触发
+QUIET_MARGIN_MAX = 30.0  # 融资余额分位上限(杠杆出清=筹码沉淀, 赢家均值2.7)
+QUIET_NO_ACCUM_DAYS = 10  # 近 N 日无 ACCUMULATE(防与放量信号重叠)
+QUIET_VERIFY_START = 20  # 缩量深底验证期起点(磨底慢, 比放量底10日长)
+QUIET_VERIFY_END = 30  # 缩量深底验证期终点(30日/3%通过率8/8)
+# 缩量深底尾随止盈: 缩量底买入后可能进入阴跌年(2022-10-10 买后 2023 年
+# 慢阴跌无强卖出信号, 原体系扛到 -23%), 需高点回撤止盈兜底
+# (10%: 2022-10-10 +6.1%卖 vs -23%; 2024-09-18 +24.2%卖; 2022-04-22 +13.1%)
+QUIET_TRAIL_PCT = 10.0  # 缩量深底持仓期收盘回撤峰值此比例即卖
 
 
 def _count_crash_accum(rows: list[dict], idx: int, window: int = 10) -> int:
@@ -79,6 +98,21 @@ def _count_crash_accum(rows: list[dict], idx: int, window: int = 10) -> int:
         if rows[j].get("trade_direction") == "ACCUMULATE":
             count += 1
     return count
+
+
+def _dd_from_high(closes: list[float], idx: int, window: int = 250) -> float:
+    """当前收盘距 window 日最高收盘的回撤百分比(负数=回撤)。"""
+    lo = max(0, idx + 1 - window)
+    hi = max(closes[lo : idx + 1])
+    return (closes[idx] / hi - 1) * 100 if hi > 0 else 0.0
+
+
+def _recent_accum(rows: list[dict], idx: int, window: int) -> bool:
+    """近 window 日内是否出现过 ACCUMULATE 信号(缩量深底要求无, 防重叠)。"""
+    for j in range(max(0, idx - window), idx):
+        if rows[j].get("trade_direction") == "ACCUMULATE":
+            return True
+    return False
 
 
 def run_zz_strategy(rows: list[dict]) -> dict:
@@ -103,6 +137,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
     peak_shares = None  # 持仓期最高份额(用于计算净流入峰值)
     watch_mode = False  # 顶部观察模式(阈值达标后等破位)
     watch_peak = 0.0  # 观察期最高收盘
+    quiet_buy = False  # 缩量深底买入(30日验证期+尾随止盈)
+    quiet_peak = 0.0  # 缩量深底持仓期最高收盘(尾随止盈用)
 
     for i in range(n):
         row = rows[i]
@@ -161,6 +197,21 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 action = "BUY"
                 reason = f"反弹确认: 跌超7%后企稳 pp{pp:.0f}"
 
+        # ---- Phase 1.5: 缩量深底 (阴跌尽头的杠杆出清形态) ----
+        # 仅放量路径未触发时启用(2024-02-01 td=ACCUMULATE 走低位吸筹, 不被覆盖)
+        if action is None and position == 0 and not waiting_for_reversal:
+            mp = row.get("_mp")
+            if (
+                pp is not None
+                and pp <= QUIET_PP_MAX
+                and mp is not None
+                and mp <= QUIET_MARGIN_MAX
+                and _dd_from_high(closes, i, 250) <= -QUIET_DD_MIN
+                and not _recent_accum(rows, i, QUIET_NO_ACCUM_DAYS)
+            ):
+                action = "BUY"
+                reason = f"缩量深底: pp{pp:.0f}+融资{mp:.0f}分位+回撤{_dd_from_high(closes, i, 250):.0f}%"
+
         # ---- Phase 2: 右侧确认 (暴跌集群结束后) ----
         if position == 0 and waiting_for_reversal:
             crash_count = _count_crash_accum(rows, i, 10)
@@ -205,7 +256,11 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                     peak_shares = max(peak_shares, cur_shares)
 
             # 买入验证期: 快速脱离成本区检查(在浮亏守卫之前, 尽早认错)
-            if VERIFY_START_DAY <= hold_days <= VERIFY_START_DAY + 5:
+            # 缩量深底磨底慢: 30日验证(QUIET), 放量底10日验证(普通)
+            verify_lo, verify_hi = (
+                (QUIET_VERIFY_START, QUIET_VERIFY_END) if quiet_buy else (VERIFY_START_DAY, VERIFY_START_DAY + 5)
+            )
+            if verify_lo <= hold_days <= verify_hi:
                 ret_pct = (close / entry_price - 1) * 100 if entry_price else 0.0
                 cur_shares = row.get("shares_yi")
                 shares_gain = (
@@ -216,6 +271,13 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 if ret_pct < VERIFY_ESCAPE_PCT and shares_gain < VERIFY_SHARES_PCT:
                     action = "SELL"
                     reason = f"买入未验证: 第{hold_days}日累计{ret_pct:+.1f}%+份额{shares_gain:+.1f}%未承接"
+
+            # 缩量深底尾随止盈: 高点回撤即离场(防阴跌年深套, 案例 2022-10-10)
+            if quiet_buy:
+                quiet_peak = max(quiet_peak, close)
+                if hold_days >= MIN_HOLD and close <= quiet_peak * (1 - QUIET_TRAIL_PCT / 100):
+                    action = "SELL"
+                    reason = f"缩量深底尾随: 峰{quiet_peak:.3f}+收盘{close:.3f}回撤{QUIET_TRAIL_PCT:.0f}%"
 
             # 卖出条件1: DISTRIBUTE集群中不触发巨量流出 (让集群完整)
             in_dist_cluster = dist_count >= 1
@@ -281,6 +343,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             watch_mode = False
             watch_peak = 0.0
             entry_shares = row.get("shares_yi")
+            quiet_buy = reason.startswith("缩量深底")  # 30日验证期+尾随仅缩量深底用
+            quiet_peak = close if quiet_buy else 0.0
             entry_price = close
             underwater_streak = 0
             peak_shares = entry_shares
@@ -301,6 +365,8 @@ def run_zz_strategy(rows: list[dict]) -> dict:
             cooldown = 0
             watch_mode = False
             watch_peak = 0.0
+            quiet_buy = False
+            quiet_peak = 0.0
             last_sell_price = close
             trades.append({"date": d, "action": "SELL", "price": close, "reason": reason})
 
