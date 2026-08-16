@@ -85,6 +85,13 @@ QUIET_MARGIN_MAX = 30.0  # 融资余额分位上限(杠杆出清=筹码沉淀, �
 QUIET_NO_ACCUM_DAYS = 10  # 近 N 日无 ACCUMULATE(防与放量信号重叠)
 QUIET_VERIFY_START = 20  # 缩量深底验证期起点(磨底慢, 比放量底10日长)
 QUIET_VERIFY_END = 30  # 缩量深底验证期终点(30日/3%通过率8/8)
+# 熊市热度顶止盈: 弱反弹顶(pp>=70+成交额热+破5日低)波段卖出, 只在熊市(ma250下行)生效
+# (2023-02-16 熊市顶卖+16.1% vs 持有+6.1%; 牛市主升 2025-07-31/2026-04-28 热度顶
+#  是常态不卖, 靠 ma250 斜率分治 — 924 政策牛的量价传导)
+HOT_PP_MIN = 70.0  # 热度顶 pp 下限
+HOT_TP_MIN = 80.0  # 成交额分位下限(热度)
+HOT_BREAK_DAYS = 5  # 破近 N 日最低确认
+BEAR_MA250_SLOPE = 0.0  # ma250 20日斜率<0 = 熊市(热度顶止盈仅熊市生效)
 # 缩量深底尾随止盈: 缩量底买入后可能进入阴跌年(2022-10-10 买后 2023 年
 # 慢阴跌无强卖出信号, 原体系扛到 -23%), 需高点回撤止盈兜底
 # (10%: 2022-10-10 +6.1%卖 vs -23%; 2024-09-18 +24.2%卖; 2022-04-22 +13.1%)
@@ -113,6 +120,15 @@ def _recent_accum(rows: list[dict], idx: int, window: int) -> bool:
         if rows[j].get("trade_direction") == "ACCUMULATE":
             return True
     return False
+
+
+def _ma250_slope(closes: list[float], idx: int) -> float:
+    """ma250 20日斜率(%/20日): 正=牛市(政策牛/上行), 负=熊市。"""
+    if idx < 249:
+        return 0.0
+    cur = sum(closes[idx - 249 : idx + 1]) / 250
+    prev = sum(closes[idx - 269 : idx - 19]) / 250
+    return (cur / prev - 1) * 100 if prev > 0 else 0.0
 
 
 def run_zz_strategy(rows: list[dict]) -> dict:
@@ -271,6 +287,20 @@ def run_zz_strategy(rows: list[dict]) -> dict:
                 if ret_pct < VERIFY_ESCAPE_PCT and shares_gain < VERIFY_SHARES_PCT:
                     action = "SELL"
                     reason = f"买入未验证: 第{hold_days}日累计{ret_pct:+.1f}%+份额{shares_gain:+.1f}%未承接"
+
+            # 熊市热度顶止盈: 弱反弹顶波段卖出(924 前熊市; 牛市热度顶是常态不卖)
+            # 案例: 2023-02-16 熊市顶 pp99+成交额热, 卖+16.1% vs 缩量深底尾随+6.1%;
+            # 牛市 2025-07-31 同样热度顶但 ma250 上行, 屏蔽避免卖飞 +33.1% 主升
+            # 缩量深底(quiet)也适用: 优先级高于 quiet 尾随(先看是否热度顶)
+            if action is None and hold_days > HOT_BREAK_DAYS:
+                slope = _ma250_slope(closes, i)
+                if slope < BEAR_MA250_SLOPE:
+                    tp = row.get("_tp")
+                    if pp is not None and pp >= HOT_PP_MIN and tp is not None and tp >= HOT_TP_MIN:
+                        low5 = min(closes[max(0, i - HOT_BREAK_DAYS) : i])
+                        if close < low5:
+                            action = "SELL"
+                            reason = f"熊市热度顶: pp{pp:.0f}+成交额{tp:.0f}分位破5日低"
 
             # 缩量深底尾随止盈: 高点回撤即离场(防阴跌年深套, 案例 2022-10-10)
             if quiet_buy:

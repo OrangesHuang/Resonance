@@ -106,3 +106,19 @@ def test_quiet_deep_bottom_not_with_recent_accum() -> None:
     # 205 是 ACCUMULATE+pp30+sp80+vr1.5 → 低位吸筹(pp30>25 不触发), 不买
     # 209 因近10日(205)有 ACCUMULATE → 缩量深底不触发
     assert all("缩量深底" not in t["reason"] for t in trades)
+
+
+def test_bear_heat_top_stop_sells() -> None:
+    # 熊市(ma250下行) 持仓中 pp>=70 且 _tp>=80 且破5日低 → 热度顶波段卖出
+    # 构造: 250+ 日缓降(ma250下行=熊市) -> 低位吸筹买 -> 反弹到 pp 高位 + tp 热 -> 破5日低
+    closes = [3.6 - i * 0.003 for i in range(270)] + [2.79, 2.85, 2.9, 2.95, 3.0, 3.05, 3.1, 3.12, 3.1, 3.05, 3.0]
+    caps = {270: {"pp": 5.0, "td": "ACCUMULATE", "sp": 90.0, "chg": -3.0, "vr": 1.5}}
+    rows = _mk(closes, caps)
+    # 注入 _tp 热(>=80) 和 pp 高(>=70) 在反弹高位
+    for i in (276, 277, 278, 279, 280):
+        rows[i]["price_position"] = 75.0
+        rows[i]["_tp"] = 85.0
+    res = run_zz_strategy(rows)
+    trades = res["trades"]
+    sells = [t for t in trades if t["action"] == "SELL"]
+    assert any("熊市热度顶" in t["reason"] for t in sells)
