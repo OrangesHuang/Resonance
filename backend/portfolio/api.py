@@ -20,7 +20,7 @@ from portfolio.analysis.simulator import simulate
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
-TRADE_START = "2025-01-01"
+TRADE_START = "2021-01-01"  # 回测起点 2021 起(2019-2020 数据仅用于指标暖机)
 INIT_CAPITAL = 1_000_000  # 100 万初始净值
 
 ALL_CODES = ["510300", "510050", "510500", "512100", "515080", "588000", "589680", "159780", "159352"]
