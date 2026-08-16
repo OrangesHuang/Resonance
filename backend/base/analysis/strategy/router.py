@@ -26,7 +26,6 @@ from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
 from base.analysis.strategy.sh50 import SH50_CODE, run_sh50_strategy
 from base.analysis.strategy.zz import ZZ_CODE, run_zz_strategy
 from base.analysis.strategy.zz500_v2 import ZZ500_CODE, run_zz500_strategy_v2
-from base.analysis.strategy.zz_stable import run_zz_strategy_stable
 
 # ---- 通用多指标共振(510300 等无专属策略的 ETF) ----
 SELL_PP = 80  # 卖出: 价格位置阈值
@@ -132,8 +131,8 @@ def _inject_percentile(rows: list[dict], t_pct: dict, m_pct: dict) -> list[dict]
 # 分位注入型策略用 _inject_closure 包装, 避免 lambda 闭包 t_pct 的引用 bug
 STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
     KC_CODE: run_kc_strategy,
-    # 中证1000 正式版 = 生产环境 zz 策略(6714ce0, TRADE_START 2024-01-01)
-    ZZ_CODE: lambda rows, tp=None, mp=None: run_zz_strategy_stable(_inject_percentile(rows, tp or {}, mp or {})),
+    # 中证1000 正式版 = zz.py 右侧量价记忆(2021 起全历史 + 验证期 + 缩量深底 + 热度顶, 2026-08-16 升级)
+    ZZ_CODE: run_zz_strategy,
     DIV_CODE: lambda rows, tp=None, mp=None: run_div_strategy(_inject_percentile(rows, tp or {}, mp or {})),
     SH50_CODE: run_sh50_strategy,
     SC50_CODE: run_sc50_strategy,
@@ -149,8 +148,6 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
 BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
     # 沪深300 beta = 调试中的 A+B 混合策略(验证期/跌势门槛/份额承接门槛)
     HS300_CODE: run_hs300_strategy,
-    # 中证1000 beta = 调试中的策略(验证期/缩量深底/量能门槛/热度顶止盈)
-    ZZ_CODE: run_zz_strategy,
 }
 
 
