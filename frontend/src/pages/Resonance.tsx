@@ -39,7 +39,7 @@ export default function Resonance() {
   const { data: tradesData } = useQuery({
     queryKey: ['resonanceTrades', code],
     queryFn: () => fetchResonanceTrades(code),
-    staleTime: 10 * 60 * 1000,
+    staleTime: 30 * 1000,
   })
 
   const tradeDates = useMemo(() => history?.kline.map(k => k.date) ?? [], [history])
@@ -130,6 +130,15 @@ export default function Resonance() {
     setDateWindow(prev => (prev && prev.start === w.start && prev.end === w.end ? prev : w))
   }
 
+  // 切换 ETF: 重置选中日/缩放窗口(旧 ETF 日期在新数据上无意义),
+  // 图表组件用 key={code} 强制重挂载, 避免 notMerge setOption 撞主流程
+  const handleCodeChange = (next: string) => {
+    if (next === code) return
+    setSelected(null)
+    setDateWindow(null)
+    setCode(next)
+  }
+
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
@@ -151,7 +160,7 @@ export default function Resonance() {
       <div className="sticky top-0 z-30 bg-gray-950/95 backdrop-blur -mx-4 px-4 py-2 border-b border-gray-800">
         <EtfSelector
           value={code}
-          onChange={setCode}
+          onChange={handleCodeChange}
           etfList={etfList ?? []}
         />
       </div>
@@ -208,6 +217,7 @@ export default function Resonance() {
       ) : null}
 
       <MarketSentimentSection
+        key={code}
         selectedDate={selected?.date ?? null}
         bridge={bridge}
         onSelectDate={selectDate}
@@ -225,6 +235,7 @@ export default function Resonance() {
         </div>
         {history ? (
           <ResonanceKline
+            key={code}
             kline={alignedKline}
             history={alignedHistory}
             signals={history.daily_signals}
@@ -244,6 +255,7 @@ export default function Resonance() {
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <h3 className="text-sm font-medium text-gray-300 mb-2">红绿灯走势（点击柱查看当日依据）</h3>
             <ResonanceChart
+              key={code}
               history={alignedHistory}
               selectedDate={selected?.date ?? null}
               onSelectDate={selectDate}
@@ -253,6 +265,7 @@ export default function Resonance() {
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <h3 className="text-sm font-medium text-gray-300 mb-2">指标状态热力图（点击单元格查看依据）</h3>
             <ResonanceHeatmap
+              key={code}
               data={heatmapData!}
               selectedDate={selected?.date ?? null}
               onSelect={selectCell}
