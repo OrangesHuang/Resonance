@@ -49,6 +49,11 @@ SELL_COOLDOWN = 15  # 牛市卖出后冷却天数(防连续打脸)
 #  +27.5% 大赢家, 2022-04-25 -5.3% +11.7%, 均不能被冷却误杀)
 BEAR_SELL_COOLDOWN = 10
 PANIC_SKIP_COOLDOWN_CHG = -3.0
+# 跌势成熟门槛: 熊市接刀要求 ma60 下行(2022-08-31 下跌刚1个月 ma60斜率+1.40%
+#  接刀-5.5%; 真底 2022-10-25 ma60斜-4.64% / 2024-08-28 -2.32% 全为负 —
+#  与"只抓跌透的底"哲学一致, 2021 顶部急跌假低位同样被拦)
+MA60_SLOPE_LOOKBACK = 20  # ma60 斜率回看窗口
+BEAR_MA60_SLOPE_MIN = -2.0  # 熊市接刀门槛: ma60 20日斜率<=此值(跌势成熟, %/20日)
 
 HS300_CODE = "510300"
 
@@ -122,6 +127,13 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                 # 卖出冷却: 卖出后 BEAR_SELL_COOLDOWN 日内不重复买(真恐慌单日大跌除外)
                 in_cooldown = (i - last_sell_idx) <= BEAR_SELL_COOLDOWN
                 panic_day = chg <= PANIC_SKIP_COOLDOWN_CHG
+                # 跌势成熟门槛: ma60 下行才接刀(2022-08-31 下跌刚1个月 ma60斜率+1.40%
+                #  接刀-5.5%; 真底 2022-10-25 ma60斜-4.64% / 2024-08-28 -2.32% 全为负)
+                m60_prev = _ma(closes, MA60_WINDOW, max(0, i - MA60_SLOPE_LOOKBACK))
+                # 斜率<=-2%: 跌势成熟才接刀(09-16 斜-0.5% 接刀-8.1%, 10-25 斜-4.6% 真底+10.1%)
+                trend_mature = (
+                    m60 is not None and m60_prev is not None and (m60 / m60_prev - 1) * 100 <= BEAR_MA60_SLOPE_MIN
+                )
                 if (
                     pp is not None
                     and pp <= BEAR_P1_PP_MAX
@@ -129,6 +141,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and sp is not None
                     and sp >= BEAR_P1_SHARE_MIN
                     and (not in_cooldown or panic_day)
+                    and trend_mature
                 ):
                     action, reason = "BUY", "恐慌吸筹P1"
                 elif (
@@ -140,6 +153,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and cp is not None
                     and cp >= BEAR_P2_CP_MIN
                     and not in_cooldown
+                    and trend_mature
                 ):
                     action, reason = "BUY", "低位强承接P2"
                 elif (
@@ -151,6 +165,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and chg <= PANIC_CRASH_PCT
                     and (not in_cooldown or panic_day)
                 ):
+                    # 单日大跌>=5%是极端事件(2025-04-07 -7.0% 关税暴跌), 不要求跌势成熟
                     action, reason = "BUY", "恐慌回踩(单日大跌+强承接)"
         else:
             hold_days += 1
