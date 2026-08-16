@@ -1,13 +1,11 @@
 """按 ETF 代码分派各专属策略, 统一生成买卖点。
 
-页面「共振买卖点」与「组合回测」共用本入口, 保证两边买卖点一致:
-  589680 科创综指 → strategy_kc      512100 中证1000 → strategy_zz(注入分位)
-  515080 中证红利 → strategy_div     510050 上证50   → strategy_sh50
-  159780 双创50   → strategy_sc50    588000 科创50   → strategy_kc50(参照科创综指)
-  510500 中证500  → strategy_zz500_v2 159352 中证A500 → strategy_a500(复用沪深300)
-  510300 沪深300  → strategy_hs300(熊市恐慌底波段+牛市趋势持有)
-  其余(如 563300) → 通用多指标共振(价格低位+吸筹+份额/成交额/概率共振)
+双槽位架构:
+  STABLE 槽位 — 正式版(生产使用, 所有 ETF 都有)
+  BETA   槽位 — 调试版(仅手动注册的 ETF 有; 候选升级, 必须回测优于正式版
+               才值得发布, 否则连 Beta 都无存在价值)
 
+页面「共振买卖点」与「组合回测」共用本入口, 保证两边买卖点一致。
 本模块纯函数无 I/O; 所需数据由调用方注入:
   t_pct / m_pct — {date: {percentile}} 成交额/融资余额分位(部分策略需要)
   hs300_rows    — 510300 日线(A500 复用其买卖点)
@@ -17,6 +15,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 from base.analysis.strategy.a500 import A500_CODE, run_a500_strategy
 from base.analysis.strategy.div import DIV_CODE, run_div_strategy
@@ -127,6 +126,37 @@ def _inject_percentile(rows: list[dict], t_pct: dict, m_pct: dict) -> list[dict]
     return out
 
 
+# ---- 正式版槽位(生产使用): 每只 ETF 的生产算法 ----
+# 未显式注册的 ETF 走 _run_default 通用多指标共振
+# 分位注入型策略用 _inject_closure 包装, 避免 lambda 闭包 t_pct 的引用 bug
+STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
+    KC_CODE: run_kc_strategy,
+    ZZ_CODE: lambda rows, tp=None, mp=None: run_zz_strategy(_inject_percentile(rows, tp or {}, mp or {})),
+    DIV_CODE: lambda rows, tp=None, mp=None: run_div_strategy(_inject_percentile(rows, tp or {}, mp or {})),
+    SH50_CODE: run_sh50_strategy,
+    SC50_CODE: run_sc50_strategy,
+    KC50_CODE: run_kc50_strategy,
+    ZZ500_CODE: run_zz500_strategy_v2,
+    # 沪深300 正式版 = 生产环境通用多指标共振(6714ce0)
+    HS300_CODE: lambda rows, tp=None, mp=None: _run_default(rows, tp or {}, mp or {}),
+    A500_CODE: run_a500_strategy,
+}
+
+# ---- Beta 槽位(调试版): 手动注册才有, 未注册的 ETF 无 Beta ----
+# 新增 beta 步骤: 在此注册 → 回测对比 STABLE → 优于才考虑升级正式版
+BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
+    # 沪深300 beta = 调试中的 A+B 混合策略(验证期/跌势门槛/份额承接门槛)
+    HS300_CODE: run_hs300_strategy,
+}
+
+
+def list_strategy_versions() -> dict[str, bool]:
+    """返回 {code: has_beta} 供前端控制 Beta 切换按钮显隐。"""
+    from base.config import ETFS
+
+    return {code: code in BETA_STRATEGIES for code in ETFS}
+
+
 def compute_trades(
     code: str,
     rows: list[dict],
@@ -140,34 +170,27 @@ def compute_trades(
     """生成与页面「共振买卖点」一致的交易信号。
 
     rows 必须为升序(由调用方从库里加载并排序)。
-    version: "stable"(正式版) / "beta"(调试版) — 仅沪深300 双版本;
-    其余 ETF 两版相同(当前实现)。
-    沪深300 正式版 = 生产环境通用多指标共振(6714ce0);
-    beta = 调试中的 A+B 混合策略。
+    version: "stable"(正式版) / "beta"(调试版)。
+    beta 未注册的 ETF 回退到正式版(前端应隐藏 Beta 按钮)。
     """
     t_pct = t_pct or {}
     m_pct = m_pct or {}
 
-    if code == KC_CODE:
-        return run_kc_strategy(rows)
-    if code == ZZ_CODE:
-        return run_zz_strategy(_inject_percentile(rows, t_pct, m_pct))
-    if code == DIV_CODE:
-        return run_div_strategy(_inject_percentile(rows, t_pct, m_pct))
-    if code == SH50_CODE:
-        return run_sh50_strategy(rows)
-    if code == SC50_CODE:
-        return run_sc50_strategy(rows)
-    if code == KC50_CODE:
-        return run_kc50_strategy(rows, kc_idx_rows)
-    if code == ZZ500_CODE:
-        return run_zz500_strategy_v2(rows)
-    if code == HS300_CODE:
-        # 沪深300: 正式版=生产通用多指标共振(_run_default, TRADE_START 2024-10-08);
-        # beta=调试版(A+B混合+验证期/跌势门槛/份额承接门槛等)
-        if version == "beta":
-            return run_hs300_strategy(rows)
+    fn = None
+    if version == "beta":
+        fn = BETA_STRATEGIES.get(code)
+    if fn is None:
+        fn = STABLE_STRATEGIES.get(code)
+
+    if fn is None:
         return _run_default(rows, t_pct, m_pct)
+    # 按需传参: kc50 需要 kc_idx_rows, a500 需要 hs300_rows,
+    # 分位注入型(zz/div)需要 t_pct/m_pct;
+    # hs300 beta(run_hs300_strategy) 只收 rows, stable 是 lambda 包装收 tp/mp
+    if code == KC50_CODE:
+        return fn(rows, kc_idx_rows)
     if code == A500_CODE:
-        return run_a500_strategy(rows, hs300_rows)
-    return _run_default(rows, t_pct, m_pct)
+        return fn(rows, hs300_rows)
+    if code in (ZZ_CODE, DIV_CODE) or (code == HS300_CODE and version == "stable"):
+        return fn(rows, t_pct, m_pct)
+    return fn(rows)

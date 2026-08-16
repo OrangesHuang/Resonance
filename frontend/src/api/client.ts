@@ -97,6 +97,10 @@ export function fetchResonanceTrades(code = '510300', version: 'stable' | 'beta'
   return get(`/resonance/trades?code=${code}&version=${version}`)
 }
 
+export function fetchStrategyVersions(): Promise<Record<string, boolean>> {
+  return get('/resonance/trades/versions')
+}
+
 export function fetchCalendarDays(year: number): Promise<CalendarDays> {
   return get(`/calendar/days?year=${year}`)
 }

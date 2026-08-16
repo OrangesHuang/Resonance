@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useResonance } from '../hooks/useResonance'
-import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, refreshEtf } from '../api/client'
+import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, fetchStrategyVersions, refreshEtf } from '../api/client'
 import ResonanceLights from '../components/resonance/ResonanceLights'
 import ResonanceKline from '../components/resonance/ResonanceKline'
 import ResonanceChart from '../components/resonance/ResonanceChart'
@@ -42,6 +42,12 @@ export default function Resonance() {
     queryFn: () => fetchResonanceTrades(code, algoVersion),
     staleTime: 30 * 1000,
   })
+  const { data: strategyVersions } = useQuery({
+    queryKey: ['strategyVersions'],
+    queryFn: fetchStrategyVersions,
+    staleTime: 5 * 60 * 1000,
+  })
+  const hasBeta = strategyVersions?.[code] ?? false
 
   const tradeDates = useMemo(() => history?.kline.map(k => k.date) ?? [], [history])
   const klineStart = tradeDates[0] ?? null
@@ -137,6 +143,8 @@ export default function Resonance() {
     if (next === code) return
     setSelected(null)
     setDateWindow(null)
+    // 切到无 beta 的 ETF 时复位算法版本(避免 UI 与数据错位)
+    if (!(strategyVersions?.[next] ?? false)) setAlgoVersion('stable')
     setCode(next)
   }
 
@@ -180,7 +188,7 @@ export default function Resonance() {
 
         <div className="ml-auto" />
 
-        <div className="flex items-center gap-1 rounded border border-gray-700 overflow-hidden" title="买卖点算法版本切换">
+        <div className="flex items-center gap-1 rounded border border-gray-700 overflow-hidden" title={hasBeta ? '买卖点算法版本切换' : '该 ETF 暂无 Beta 调试版'}>
           <button
             onClick={() => setAlgoVersion('stable')}
             className={"px-3 py-1.5 text-sm transition-colors " + (algoVersion === 'stable' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200')}
@@ -188,10 +196,11 @@ export default function Resonance() {
             正式版
           </button>
           <button
-            onClick={() => setAlgoVersion('beta')}
-            className={"px-3 py-1.5 text-sm transition-colors " + (algoVersion === 'beta' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200')}
+            onClick={() => hasBeta && setAlgoVersion('beta')}
+            disabled={!hasBeta}
+            className={"px-3 py-1.5 text-sm transition-colors " + (algoVersion === 'beta' && hasBeta ? 'bg-amber-600 text-white' : 'bg-gray-800 text-gray-400' + (hasBeta ? ' hover:text-gray-200' : '')) + (!hasBeta ? ' opacity-40 cursor-not-allowed' : '')}
           >
-            Beta
+            Beta{!hasBeta ? '（无）' : ''}
           </button>
         </div>
 

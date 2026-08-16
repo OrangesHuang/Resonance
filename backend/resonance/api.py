@@ -44,6 +44,14 @@ def resonance_day(code: str = DEFAULT_RESONANCE_CODE, date: str = ""):
     return detail
 
 
+@router.get("/trades/versions")
+def resonance_trades_versions():
+    """返回 {code: has_beta} 供前端控制 Beta 切换按钮显隐。"""
+    from base.analysis.strategy.router import list_strategy_versions
+
+    return list_strategy_versions()
+
+
 @router.get("/trades")
 def resonance_trades(code: str = DEFAULT_RESONANCE_CODE, version: str = "stable"):
     """页面「共振买卖点」— 按 ETF 代码分派各专属策略(与组合回测共用统一入口)。
