@@ -1,4 +1,4 @@
-"""沪深300 策略输出组装: 轮次指标 + 危险区(纯函数, 无 I/O)。"""
+"""沪深300 策略输出组装: 轮次指标(纯函数, 无 I/O)。"""
 
 from __future__ import annotations
 
@@ -50,36 +50,4 @@ def calc_metrics(trades: list[dict], last_close: float, position: float) -> dict
         "win_count": wins,
         "win_rate": round(wins / len(rounds) * 100, 1) if rounds else 0,
         "trade_count": len(trades),
-    }
-
-
-def build_danger_zone(rows: list[dict], trades: list[dict], min_gap_days: int = 60) -> dict | None:
-    """危险区: 第一段长空仓(卖出后 >=min_gap 个交易日无买点, 纯数据扫描)。
-
-    语义 = 策略主动空仓段的事后标注: 这段日子里买入条件每天都被数据门槛
-    拦截(绝望底 pp/sp/跌势成熟/深背离等), 系统判定无博弈机会。轮间短暂
-    衔接不标(2021-03-05 卖出 2 日后 03-09 再买); 2021-07-27 假低位轮认错
-    卖出后 9 个月无买点(熊市初期+崩盘前夜)才标。无任何日期常量。
-    """
-    if not rows or not trades:
-        return None
-    idx = {r["date"]: i for i, r in enumerate(rows)}
-    sell_d, buy_d = None, None
-    for t in trades:
-        if t["action"] == "SELL":
-            sell_d, buy_d = t["date"], None
-        elif sell_d is not None:
-            gap = idx.get(t["date"], 0) - idx.get(sell_d, 0)
-            if gap >= min_gap_days:
-                buy_d = t["date"]
-                break
-            sell_d, buy_d = None, None
-    if not sell_d or not buy_d:
-        return None
-    bi = idx.get(buy_d, 0)
-    return {
-        "start": sell_d,
-        "end": rows[bi - 1]["date"] if bi > 0 else buy_d,
-        "label": "危险区·无买点",
-        "reason": "跌势未成熟/承接不足, 策略判定无博弈机会, 主动空仓",
     }

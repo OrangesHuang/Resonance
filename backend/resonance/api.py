@@ -93,4 +93,4 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE, version: str = "stable"
     result = compute_trades(
         code, etf_rows, t_pct=t_pct, m_pct=m_pct, hs300_rows=hs300_rows, kc_idx_rows=kc_idx_rows, version=version
     )
-    return {"code": code, "trades": result["trades"], "version": version, "danger_zone": result.get("danger_zone")}
+    return {"code": code, "trades": result["trades"], "version": version}

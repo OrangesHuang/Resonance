@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import math
 
-from base.analysis.strategy.hs300_metrics import build_danger_zone, calc_metrics
+from base.analysis.strategy.hs300_metrics import calc_metrics
 
 TRADE_START = "2019-01-01"  # 策略交易起点: 2019 起(2019 年前数据仅预热)
 MA250_WINDOW = 250  # 牛熊状态: 长周期均线(250 日)
@@ -108,7 +108,7 @@ def _ma(closes: list[float], window: int, idx: int) -> float | None:
 def run_hs300_strategy(rows: list[dict]) -> dict:
     n = len(rows)
     if n < 30:
-        return {"code": HS300_CODE, "trades": [], "metrics": {}, "holding": False, "danger_zone": None}
+        return {"code": HS300_CODE, "trades": [], "metrics": {}, "holding": False}
     closes = [r.get("close_price") or 0.0 for r in rows]
 
     trades: list[dict] = []
@@ -289,5 +289,4 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         "trades": trades,
         "metrics": metrics,
         "holding": position > 0,
-        "danger_zone": build_danger_zone(rows, trades),
     }
