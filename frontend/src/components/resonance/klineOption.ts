@@ -24,6 +24,32 @@ interface BuildParams {
   isMobile: boolean
 }
 
+const BULL_BAND = 'rgba(34, 197, 94, 0.05)'
+const BEAR_BAND = 'rgba(239, 68, 68, 0.05)'
+
+function buildRegimeBands(kline: KlinePoint[], dates: string[]): Array<Array<{ xAxis: string; itemStyle?: object }>> {
+  // 牛熊背景带: close >= ma250 为牛(淡绿), close < ma250 为熊(淡红)
+  // (ma250 斜率更准, 但需逐点比较; 收盘 vs ma250 是可视化代理)
+  const bands: Array<Array<{ xAxis: string; itemStyle?: object }>> = []
+  let cur: Array<{ xAxis: string; itemStyle?: object }> = []
+  let curState: 'bull' | 'bear' | null = null
+  for (let i = 0; i < kline.length; i++) {
+    const k = kline[i]
+    const m = k.ma250
+    if (m == null) continue
+    const state: 'bull' | 'bear' = k.close >= m ? 'bull' : 'bear'
+    if (state !== curState) {
+      if (cur.length >= 2) bands.push(cur)
+      cur = [{ xAxis: dates[i], itemStyle: { color: state === 'bull' ? BULL_BAND : BEAR_BAND } }]
+      curState = state
+    } else {
+      cur.push({ xAxis: dates[i] })
+    }
+  }
+  if (cur.length >= 2) bands.push(cur)
+  return bands
+}
+
 export function buildKlineOption({ kline, history, signals, trades, selectedDate, rangeSel, rangeStats, isMobile }: BuildParams): { option: EChartsOption | null; dates: string[] } {
   if (kline.length === 0) return { option: null, dates: [] }
   const dates = kline.map(k => k.date)
@@ -147,6 +173,19 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
           markArea: { silent: true, data: sanitizeBands([...bands, ...tradeBands, ...rangeBand] as never[], dates) },
           markLine: markLineTop,
           markPoint,
+        },
+        {
+          name: 'MA250(牛熊线)',
+          type: 'line',
+          data: kline.map(k => k.ma250 ?? null),
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          showSymbol: false,
+          connectNulls: true,
+          silent: true,
+          lineStyle: { width: 1.2, color: '#f59e0b', type: 'dashed' },
+          // 牛熊区 markArea: 收盘 vs ma250 (ma250 斜率更准, 可视化用代理)
+          markArea: { silent: true, data: sanitizeBands(buildRegimeBands(kline, dates) as never[], dates) },
         },
         {
           name: '成交量',

@@ -49,10 +49,13 @@ def _build_kline_from_db(records: list[dict], limit: int) -> list[dict]:
     """从 etf_daily 表构建 K 线数据，不调外部 API。
 
     优先用真实 OHLC(open/high/low 已入库的), 否则退回重构。
+    附 ma250 序列(实时计算, 不持久化 — 派生数据入库会带来口径漂移风险,
+    任何历史回填/修复都会使其后全部 ma250 失效)。
     """
     recent = records[:limit][::-1]  # DESC → ASC
     result = []
-    for r in recent:
+    closes_all = [r.get("close_price") or 0 for r in recent]
+    for i, r in enumerate(recent):
         close = r.get("close_price")
         if close is None or close == 0:
             continue
@@ -68,6 +71,10 @@ def _build_kline_from_db(records: list[dict], limit: int) -> list[dict]:
                 op = close
             hi = round(max(op, close), 3)
             lo = round(min(op, close), 3)
+        # ma250: 前250日收盘均值(实时计算)
+        ma250 = None
+        if i >= 249:
+            ma250 = round(sum(closes_all[i - 249 : i + 1]) / 250, 4)
         result.append(
             {
                 "date": r["date"],
@@ -76,6 +83,7 @@ def _build_kline_from_db(records: list[dict], limit: int) -> list[dict]:
                 "high": hi,
                 "low": lo,
                 "volume": r.get("volume") or 0,
+                "ma250": ma250,
             }
         )
     return result

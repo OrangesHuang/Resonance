@@ -37,6 +37,7 @@ export interface KlinePoint {
   high: number
   low: number
   volume: number
+  ma250?: number | null
 }
 
 export interface ZoomWindow {
