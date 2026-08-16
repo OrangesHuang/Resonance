@@ -17,7 +17,8 @@ import { unionDates, alignKlineToDates, alignResonanceHistoryToDates } from '../
 const KLINE_DAYS = 2000  // 覆盖 2021 至今历史(2021-01 起约 1370 个交易日)
 
 export default function Resonance() {
-  const [code, setCode] = useState('159352')
+  const [code, setCode] = useState('510300')  // 默认沪深300
+  const [algoVersion, setAlgoVersion] = useState<'stable' | 'beta'>('stable')  // 算法版本: 正式版/Beta
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -37,8 +38,8 @@ export default function Resonance() {
     staleTime: 5 * 60 * 1000,
   })
   const { data: tradesData } = useQuery({
-    queryKey: ['resonanceTrades', code],
-    queryFn: () => fetchResonanceTrades(code),
+    queryKey: ['resonanceTrades', code, algoVersion],
+    queryFn: () => fetchResonanceTrades(code, algoVersion),
     staleTime: 30 * 1000,
   })
 
@@ -178,6 +179,21 @@ export default function Resonance() {
         </div>
 
         <div className="ml-auto" />
+
+        <div className="flex items-center gap-1 rounded border border-gray-700 overflow-hidden" title="买卖点算法版本切换">
+          <button
+            onClick={() => setAlgoVersion('stable')}
+            className={"px-3 py-1.5 text-sm transition-colors " + (algoVersion === 'stable' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200')}
+          >
+            正式版
+          </button>
+          <button
+            onClick={() => setAlgoVersion('beta')}
+            className={"px-3 py-1.5 text-sm transition-colors " + (algoVersion === 'beta' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200')}
+          >
+            Beta
+          </button>
+        </div>
 
         <button
           onClick={handleRefresh}

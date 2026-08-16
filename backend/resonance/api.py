@@ -45,10 +45,15 @@ def resonance_day(code: str = DEFAULT_RESONANCE_CODE, date: str = ""):
 
 
 @router.get("/trades")
-def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
-    """页面「共振买卖点」— 按 ETF 代码分派各专属策略(与组合回测共用统一入口)。"""
+def resonance_trades(code: str = DEFAULT_RESONANCE_CODE, version: str = "stable"):
+    """页面「共振买卖点」— 按 ETF 代码分派各专属策略(与组合回测共用统一入口)。
+
+    version: stable(正式版) / beta(调试版), 仅沪深300 双版本, 其余 ETF 相同。
+    """
     if code not in ETFS:
         raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
+    if version not in ("stable", "beta"):
+        version = "stable"
 
     from base.analysis.strategy.a500 import A500_CODE
     from base.analysis.strategy.kc50 import KC50_CODE
@@ -77,5 +82,7 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE):
     elif code == KC50_CODE:
         kc_idx_rows = list(reversed(get_by_code("589680")))
 
-    result = compute_trades(code, etf_rows, t_pct=t_pct, m_pct=m_pct, hs300_rows=hs300_rows, kc_idx_rows=kc_idx_rows)
-    return {"code": code, "trades": result["trades"]}
+    result = compute_trades(
+        code, etf_rows, t_pct=t_pct, m_pct=m_pct, hs300_rows=hs300_rows, kc_idx_rows=kc_idx_rows, version=version
+    )
+    return {"code": code, "trades": result["trades"], "version": version}

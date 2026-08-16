@@ -21,6 +21,7 @@ import math
 from base.analysis.strategy.a500 import A500_CODE, run_a500_strategy
 from base.analysis.strategy.div import DIV_CODE, run_div_strategy
 from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
+from base.analysis.strategy.hs300_stable import run_hs300_strategy_stable
 from base.analysis.strategy.kc import KC_CODE, run_kc_strategy
 from base.analysis.strategy.kc50 import KC50_CODE, run_kc50_strategy
 from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
@@ -135,10 +136,13 @@ def compute_trades(
     m_pct: dict | None = None,
     hs300_rows: list[dict] | None = None,
     kc_idx_rows: list[dict] | None = None,
+    version: str = "stable",
 ) -> dict:
     """生成与页面「共振买卖点」一致的交易信号。
 
     rows 必须为升序(由调用方从库里加载并排序)。
+    version: "stable"(正式版) / "beta"(调试版) — 仅沪深300 双版本;
+    其余 ETF 两版相同(当前实现)。
     """
     t_pct = t_pct or {}
     m_pct = m_pct or {}
@@ -158,8 +162,11 @@ def compute_trades(
     if code == ZZ500_CODE:
         return run_zz500_strategy_v2(rows)
     if code == HS300_CODE:
-        # 沪深300: 熊市恐慌底波段 + 牛市趋势持有(混合策略, 2021 起全历史)
-        return run_hs300_strategy(rows)
+        # 沪深300: 正式版=原始A+B混合(无调试补丁); beta=当前调试版
+        # (验证期/跌势门槛/份额承接门槛等)
+        if version == "beta":
+            return run_hs300_strategy(rows)
+        return run_hs300_strategy_stable(rows)
     if code == A500_CODE:
         return run_a500_strategy(rows, hs300_rows)
     return _run_default(rows, t_pct, m_pct)

@@ -93,8 +93,8 @@ export function fetchResonanceDay(code: string, date: string): Promise<Resonance
   return get(`/resonance/day?code=${code}&date=${date}`)
 }
 
-export function fetchResonanceTrades(code = '510300'): Promise<TradesResponse> {
-  return get(`/resonance/trades?code=${code}`)
+export function fetchResonanceTrades(code = '510300', version: 'stable' | 'beta' = 'stable'): Promise<TradesResponse> {
+  return get(`/resonance/trades?code=${code}&version=${version}`)
 }
 
 export function fetchCalendarDays(year: number): Promise<CalendarDays> {
