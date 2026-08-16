@@ -138,17 +138,15 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
     SC50_CODE: run_sc50_strategy,
     KC50_CODE: run_kc50_strategy,
     ZZ500_CODE: run_zz500_strategy_v2,
-    # 沪深300 正式版 = 生产环境通用多指标共振(6714ce0)
-    HS300_CODE: lambda rows, tp=None, mp=None: _run_default(rows, tp or {}, mp or {}),
+    # 沪深300 正式版 = hs300.py 牛熊分治(2019 起: 熊市绝望底/恐慌底/强承接底 +
+    # 牛市四路径 + 顶部确认卖, 全历史 +440.3% vs 通用共振 +69.3%, 2026-08-17 升级)
+    HS300_CODE: run_hs300_strategy,
     A500_CODE: run_a500_strategy,
 }
 
 # ---- Beta 槽位(调试版): 手动注册才有, 未注册的 ETF 无 Beta ----
 # 新增 beta 步骤: 在此注册 → 回测对比 STABLE → 优于才考虑升级正式版
-BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
-    # 沪深300 beta = 调试中的 A+B 混合策略(验证期/跌势门槛/份额承接门槛)
-    HS300_CODE: run_hs300_strategy,
-}
+BETA_STRATEGIES: dict[str, Callable[..., dict]] = {}
 
 
 def list_strategy_versions() -> dict[str, bool]:
@@ -186,7 +184,7 @@ def compute_trades(
     if fn is None:
         return _run_default(rows, t_pct, m_pct)
     # 分位注入型(zz/div/hs300-beta): 策略签名单参数 rows, 内部读 _tp/_mp, 统一注入
-    if code in (ZZ_CODE, DIV_CODE) or (code == HS300_CODE and version == "beta"):
+    if code in (ZZ_CODE, DIV_CODE, HS300_CODE):
         return fn(_inject_percentile(rows, t_pct, m_pct))
     # kc50 需要 kc_idx_rows, a500 需要 hs300_rows
     if code == KC50_CODE:
