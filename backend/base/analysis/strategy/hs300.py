@@ -130,7 +130,10 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         m250 = _ma(closes, MA250_WINDOW, i)
         m250_prev = _ma(closes, MA250_WINDOW, max(0, i - BULL_MA_LOOKBACK))
         m60 = _ma(closes, MA60_WINDOW, i)
-        bull = m250 is not None and m250_prev is not None and m250 > m250_prev and close > m250
+        # 牛熊判定加 2% 缓冲: close 在 ma250 下方 2% 内且 ma250 上行仍算牛市
+        # (2026-07-17 close4.589 vs ma250 4.598 差0.2%, 无缓冲会被判熊且贴线拒绝,
+        #  正式版无牛熊判定直接买; 缓冲后与正式版一致, 全历史仅影响12天)
+        bull = m250 is not None and m250_prev is not None and m250 > m250_prev and close > m250 * 0.98
 
         action = None
         reason = ""
