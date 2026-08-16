@@ -137,6 +137,12 @@ export default function ResonanceKline({ kline, history, signals, trades, select
   useEffect(() => {
     const inst = chartRef.current
     if (!inst || kline.length <= 1) return
+    // key 重挂载间隙实例可能已 dispose: dispatchAction 打警告, 先探活
+    try {
+      inst.getZr()
+    } catch {
+      return
+    }
     const { start, end } = windowToZoom(datesRef.current, dateWindow, DEFAULT_VISIBLE_BARS)
     inst.dispatchAction({ type: 'dataZoom', start, end })
   }, [dateWindow, kline])
@@ -149,6 +155,11 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     }
     const inst = chartRef.current
     if (!inst) return
+    try {
+      inst.getZr()
+    } catch {
+      return
+    }
     inst.dispatchAction({
       type: 'takeGlobalCursor',
       key: 'brush',

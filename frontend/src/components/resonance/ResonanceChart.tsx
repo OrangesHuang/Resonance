@@ -57,11 +57,18 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, br
     const redData = history.map(h => h.red)
     const greenData = history.map(h => -h.green)
     // notMerge 重建会重置 dataZoom: 从实例实时读当前缩放回填
-    const dz = instRef.current?.getOption().dataZoom as
-      | Array<{ start?: number; end?: number }>
-      | undefined
-    const zStart = dz?.[0]?.start ?? 0
-    const zEnd = dz?.[0]?.end ?? 100
+    // 实例可能刚被 dispose(key 重挂载间隙): getOption 抛错则回退全量
+    let zStart = 0
+    let zEnd = 100
+    try {
+      const dz = instRef.current?.getOption().dataZoom as
+        | Array<{ start?: number; end?: number }>
+        | undefined
+      zStart = dz?.[0]?.start ?? 0
+      zEnd = dz?.[0]?.end ?? 100
+    } catch {
+      // 实例已 dispose: 用默认全量缩放
+    }
     return {
       backgroundColor: 'transparent',
       animation: false,

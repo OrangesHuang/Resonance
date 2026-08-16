@@ -94,11 +94,18 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
   // option 用 useMemo 缓存: 缩放/dateWindow 变化不重建(避免 setOption 冲突)
   const option = useMemo(() => {
     // notMerge 重建会重置 dataZoom: 从实例实时读当前缩放回填
-    const dz = instRef.current?.getOption().dataZoom as
-      | Array<{ start?: number; end?: number }>
-      | undefined
-    const zStart = dz?.[0]?.start ?? 0
-    const zEnd = dz?.[0]?.end ?? 100
+    // 实例可能刚被 dispose(key 重挂载间隙): getOption 抛错则回退全量
+    let zStart = 0
+    let zEnd = 100
+    try {
+      const dz = instRef.current?.getOption().dataZoom as
+        | Array<{ start?: number; end?: number }>
+        | undefined
+      zStart = dz?.[0]?.start ?? 0
+      zEnd = dz?.[0]?.end ?? 100
+    } catch {
+      // 实例已 dispose: 用默认全量缩放
+    }
     type HeatCell = [number, number, number] | {
       value: [number, number, number]
       itemStyle: { borderColor: string; borderWidth: number; shadowBlur: number; shadowColor: string }
@@ -193,11 +200,19 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
             const yIdx = api.value(1)
             const [cx, cy] = api.coord([xIdx, yIdx])
             // 实时读实例 dataZoom(connect 组同步缩放后 dateWindow 不更新)
-            const dz = instRef.current?.getOption().dataZoom as
-              | Array<{ start?: number; end?: number }>
-              | undefined
-            const start = dz?.[0]?.start ?? 0
-            const end = dz?.[0]?.end ?? 100
+            // key 重挂载间隙实例可能已 dispose: getZr() 探活后读取
+            let start = 0
+            let end = 100
+            try {
+              instRef.current?.getZr()
+              const dz = instRef.current?.getOption().dataZoom as
+                | Array<{ start?: number; end?: number }>
+                | undefined
+              start = dz?.[0]?.start ?? 0
+              end = dz?.[0]?.end ?? 100
+            } catch {
+              // 实例已 dispose: 回退全量缩放
+            }
             const visibleRatio = Math.max((end - start) / 100, 0.001)
             const colWidth = api.getWidth() / (dates.length * visibleRatio)
             const cellW = Math.max(colWidth, 10)
