@@ -46,7 +46,7 @@ def job_recalc_composite(progress: ProgressFn) -> dict:
     unchanged = 0
     for i, code in enumerate(codes, 1):
         progress(i, len(codes), f"{code} {ETFS[code]['name']}")
-        rows = get_by_code(code)
+        rows = list(reversed(get_by_code(code)))  # 升序: _t5_return 需"过去4日"窗口
         for idx, r in enumerate(rows):
             vp = r.get("vol_prob")
             if vp is None:
