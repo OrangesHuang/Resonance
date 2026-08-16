@@ -143,7 +143,7 @@ def test_danger_zone_long_gap_after_sell() -> None:
         {"date": "2023-02-10", "action": "SELL"},
         {"date": "2023-05-01", "action": "BUY"},  # 间隔 80 交易日 >= 60
     ]
-    dz = build_danger_zone(rows, trades, "2021-01-01")
+    dz = build_danger_zone(rows, trades)
     assert dz is not None
     assert dz["start"] == "2023-02-10"
     assert dz["end"] == "2023-04-30"  # 下次买入前一日
@@ -160,4 +160,4 @@ def test_danger_zone_short_gap_not_marked() -> None:
         {"date": "2023-02-10", "action": "SELL"},
         {"date": "2023-02-12", "action": "BUY"},
     ]
-    assert build_danger_zone(rows, trades, "2021-01-01") is None
+    assert build_danger_zone(rows, trades) is None

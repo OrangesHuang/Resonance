@@ -32,8 +32,6 @@ import math
 from base.analysis.strategy.hs300_metrics import build_danger_zone, calc_metrics
 
 TRADE_START = "2019-01-01"  # 策略交易起点: 2019 起(2019 年前数据仅预热)
-DANGER_ZONE_START = "2021-01-01"  # 危险区标注起点: 2021 年大顶回落段标危险;
-# 2020 年是牛市(策略未启用)不标危险
 MA250_WINDOW = 250  # 牛熊状态: 长周期均线(250 日)
 MA20_WINDOW = 20  # 牛市回调买: 短期均线
 MA60_WINDOW = 60  # 牛市趋势破位卖
@@ -291,5 +289,5 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         "trades": trades,
         "metrics": metrics,
         "holding": position > 0,
-        "danger_zone": build_danger_zone(rows, trades, DANGER_ZONE_START),
+        "danger_zone": build_danger_zone(rows, trades),
     }

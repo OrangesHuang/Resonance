@@ -53,20 +53,19 @@ def calc_metrics(trades: list[dict], last_close: float, position: float) -> dict
     }
 
 
-def build_danger_zone(rows: list[dict], trades: list[dict], zone_start: str, min_gap_days: int = 60) -> dict | None:
-    """危险区: zone_start 后第一段长空仓(卖出后 >=min_gap 个交易日无买点)。
+def build_danger_zone(rows: list[dict], trades: list[dict], min_gap_days: int = 60) -> dict | None:
+    """危险区: 第一段长空仓(卖出后 >=min_gap 个交易日无买点, 纯数据扫描)。
 
-    数据驱动无时间硬编码: 2021-03-05 顶部卖出 2 日后 03-09 重新买入属轮间
-    衔接不标; 2021-07-27 假低位轮认错卖出后 9 个月无买点(熊市初期+崩盘
-    前夜, 绝望底门槛持续拦截)才标危险区。zone_start 之前的区段不标。
+    语义 = 策略主动空仓段的事后标注: 这段日子里买入条件每天都被数据门槛
+    拦截(绝望底 pp/sp/跌势成熟/深背离等), 系统判定无博弈机会。轮间短暂
+    衔接不标(2021-03-05 卖出 2 日后 03-09 再买); 2021-07-27 假低位轮认错
+    卖出后 9 个月无买点(熊市初期+崩盘前夜)才标。无任何日期常量。
     """
     if not rows or not trades:
         return None
     idx = {r["date"]: i for i, r in enumerate(rows)}
     sell_d, buy_d = None, None
     for t in trades:
-        if t["date"] < zone_start:
-            continue
         if t["action"] == "SELL":
             sell_d, buy_d = t["date"], None
         elif sell_d is not None:
