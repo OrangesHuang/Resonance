@@ -49,8 +49,17 @@ m_pct = percentile_series(
     SENTIMENT_ZONE_WINDOW,
     SENTIMENT_ZONE_MIN_PTS,
 )
-res_s = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, version="stable")
-res_b = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, version="beta")
+extra = {}
+if CODE == "588000":
+    from base.analysis.strategy.kc50 import KC_IDX_CODE
+
+    extra["kc_idx_rows"] = [
+        r
+        for r in reversed(get_by_code(KC_IDX_CODE))
+        if r.get("composite_prob") is not None
+    ]
+res_s = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, version="stable", **extra)
+res_b = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, version="beta", **extra)
 
 
 def seg(res):

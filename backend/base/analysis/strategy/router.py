@@ -22,6 +22,7 @@ from base.analysis.strategy.div import DIV_CODE, run_div_strategy
 from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
 from base.analysis.strategy.kc import KC_CODE, run_kc_strategy
 from base.analysis.strategy.kc50 import KC50_CODE, run_kc50_strategy
+from base.analysis.strategy.kc50_beta import run_kc50_beta_strategy
 from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
 from base.analysis.strategy.sh50 import SH50_CODE, run_sh50_strategy
 from base.analysis.strategy.zz import ZZ_CODE, run_zz_strategy
@@ -146,7 +147,10 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
 
 # ---- Beta 槽位(调试版): 手动注册才有, 未注册的 ETF 无 Beta ----
 # 新增 beta 步骤: 在此注册 → 回测对比 STABLE → 优于才考虑升级正式版
-BETA_STRATEGIES: dict[str, Callable[..., dict]] = {}
+BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
+    # 科创50 beta = 独立买卖点先行策略(不复用科创综指, 2020-12 起全历史)
+    KC50_CODE: run_kc50_beta_strategy,
+}
 
 
 def list_strategy_versions() -> dict[str, bool]:
@@ -184,7 +188,7 @@ def compute_trades(
     if fn is None:
         return _run_default(rows, t_pct, m_pct)
     # 分位注入型(zz/div/hs300-beta): 策略签名单参数 rows, 内部读 _tp/_mp, 统一注入
-    if code in (ZZ_CODE, DIV_CODE, HS300_CODE):
+    if code in (ZZ_CODE, DIV_CODE, HS300_CODE) or (code == KC50_CODE and version == "beta"):
         return fn(_inject_percentile(rows, t_pct, m_pct))
     # kc50 需要 kc_idx_rows, a500 需要 hs300_rows
     if code == KC50_CODE:
