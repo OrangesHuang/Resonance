@@ -50,7 +50,13 @@ PANIC_CRASH_PCT = -5.0  # 恐慌回踩: 单日跌幅下限(案例 2025-04-07 关
 BULL_PANIC_PP_MAX = 40  # 牛市恐慌回踩 pp 上限
 BULL_PP_MAX = 40  # 牛市回调 B1 pp 上限(只买低位回调, 2026-01-23 pp68高位被拦-2.2%,
 #  2024-10-30 pp52白做+0.4%被拦; 2026-03-23 pp5.5 +7.1%、2025-01-02 pp14 +2.1%保留)
-BULL_SHARE_MIN = 50.0  # B1 份额承接下限: 牛市初期弱承接(sp<50)假回调60日全负
+# 牛市买入四路径(移植正式版 _run_default 参数)
+STABLE_BUY_PP_MAX = 40.0  # 价格低位阈值
+STABLE_PP_EXTREME = 10.0  # 极低位阈值
+STABLE_PP_PANIC = 15.0  # 恐慌吸筹 pp 上限
+STABLE_SHARE_MIN = 65.0  # 份额净申购概率阈值
+STABLE_TP_COLD_MAX = 10.0  # 成交额极冷分位阈值
+STABLE_CP_MIN = 50.0  # 综合概率阈值
 # 出货共振卖出(移植正式版优势): 牛市真顶 = 出货信号 + 高位 + 杠杆高位
 # (2025-06-25 pp100+vr2.4 但融资88 中继震荡不卖; 2025-10-31 pp84+融资94 真顶卖)
 DIST_PP_MIN = 80.0  # 出货共振 pp 下限
@@ -105,8 +111,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
     entry_shares = None  # 买入时份额(验证期豁免用)
     dist_confirm = 0  # 出货确认计数(出货共振卖出)
     dist_threshold = 2  # 出货共振确认阈值(买入量比动态调整, 移植正式版)
-    sell_mode = "trend"  # 买入时确定: "trail"(恐慌/波段底) / "trend"(健康回踩=趋势持有)
-    pullback_buy = False  # 是否健康回调买入(牛市 B1)
+    buy_bull = False  # 买入时是否牛市(牛熊分治: 牛市买入不验证, 熊市买入验证)
 
     for i, row in enumerate(rows):
         d = row["date"]
@@ -120,7 +125,6 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
 
         m250 = _ma(closes, MA250_WINDOW, i)
         m250_prev = _ma(closes, MA250_WINDOW, max(0, i - BULL_MA_LOOKBACK))
-        m20 = _ma(closes, MA20_WINDOW, i)
         m60 = _ma(closes, MA60_WINDOW, i)
         bull = m250 is not None and m250_prev is not None and m250 > m250_prev and close > m250
 
@@ -129,8 +133,10 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
 
         if position == 0:
             if bull:
-                # 牛市: 恐慌回踩(大跌+强吸筹, 跳过冷却) / 回调买入(站上长均线+短期回踩)
+                # 牛市买入(移植正式版优势): 恐慌回踩 + 正式版四路径
+                # (B1 过度设计的 sp/ma60距离带 曾误伤 2025-11-21 sp45 真买点, 移除)
                 chg = row.get("change_pct") or 0
+                tp = row.get("_tp")  # 成交额分位(正式版路径用)
                 if (
                     pp is not None
                     and pp <= BULL_PANIC_PP_MAX
@@ -140,25 +146,16 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     and chg <= PANIC_CRASH_PCT
                 ):
                     action, reason = "BUY", "牛市恐慌回踩(大跌+强吸筹)"
-                else:
-                    low5 = min(closes[max(0, i - 4) : i + 1])
-                    # ma60 距离带: 贴ma60浅回调(0.97~1.01)危险(2025-02-28 +0.3%买后1日卖
-                    #  -0.3%、03-28 +0.6%买后2日卖), 深度回调(<=ma60*0.97)是机会
-                    #  (2026-07-17 距ma60-5.9% 后20日+3.0%; 03-23买持到07-13 +7.1%)
-                    if (
-                        m20 is not None
-                        and m60 is not None
-                        and close <= m20
-                        and close <= low5
-                        and (i - last_sell_idx) >= SELL_COOLDOWN
-                        and (close >= m60 * 1.01 or close <= m60 * 0.97)
-                        and pp is not None
-                        and pp <= BULL_PP_MAX
-                        and sp is not None
-                        and sp >= BULL_SHARE_MIN
-                    ):
-                        action, reason = "BUY", "牛市回调(站上ma250+回踩ma20)"
-                        pullback_buy = True
+                elif pp is not None and pp <= STABLE_BUY_PP_MAX and td == "ACCUMULATE":
+                    # 正式版四路径: 价格低位+吸筹 是前提, 份额/成交额/概率任一确认
+                    if sp is not None and sp >= STABLE_SHARE_MIN:
+                        action, reason = "BUY", "价格低位+份额净申购+吸筹"
+                    elif tp is not None and tp <= STABLE_TP_COLD_MAX:
+                        action, reason = "BUY", "价格低位+吸筹+成交额极冷"
+                    elif pp <= STABLE_PP_EXTREME and cp is not None and cp > STABLE_CP_MIN:
+                        action, reason = "BUY", "价格极低位+吸筹+概率>50%"
+                    elif pp <= STABLE_PP_PANIC:
+                        action, reason = "BUY", "恐慌吸筹: 极低位+吸筹信号"
             else:
                 # 熊市: 只买恐慌底/强承接(拒绝顶部急跌假低位)
                 chg = row.get("change_pct") or 0
@@ -208,8 +205,10 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
         else:
             hold_days += 1
             high_since_buy = max(high_since_buy, close)
-            # 买入验证期: 20日未脱离成本区(且份额未承接)即认错(防假买, 向中证1000对齐)
-            if hold_days == VERIFY_DAY:
+            # 买入验证期(仅熊市买入): 20日未脱离成本区即认错
+            # 牛市买入不验证 — 慢涨回调正常(2025-01-02 20日+2.1% 后加速),
+            # 交给出货共振/趋势破位; 熊市抄底需快速认错(2022-03-16 防阴跌)
+            if hold_days == VERIFY_DAY and not buy_bull:
                 ret_pct = (close / buy_price - 1) * 100 if buy_price else 0.0
                 cur_shares = row.get("shares_yi")
                 shares_gain = (
@@ -239,18 +238,17 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
                     )
                 elif hold_days >= TRAIL_MIN_HOLD and dist_confirm >= dist_threshold:
                     action, reason = "SELL", f"出货共振(第{dist_confirm}/{dist_threshold}次)+pp{pp:.0f}+融资{mp:.0f}"
-            if action is None and sell_mode == "trend":
-                # 趋势持有(买入时在 ma60 上方): 破位卖
-                if m60 is not None and close < m60:
-                    action, reason = "SELL", "趋势破位(跌破ma60)"
-            else:
-                # 波段/恐慌底(买入时在 ma60 下方): 尾随止盈
-                if (
-                    hold_days >= TRAIL_MIN_HOLD
-                    and high_since_buy > 0
-                    and close <= high_since_buy * (1 - TRAIL_PCT / 100)
-                ):
-                    action, reason = "SELL", "尾随止盈(回撤" + str(TRAIL_PCT) + "%)"
+            if (
+                action is None
+                and not buy_bull
+                and hold_days >= TRAIL_MIN_HOLD
+                and high_since_buy > 0
+                and close <= high_since_buy * (1 - TRAIL_PCT / 100)
+            ):
+                # 熊市买入: 尾随止盈(波段小亏封顶)
+                action, reason = "SELL", "尾随止盈(回撤" + str(TRAIL_PCT) + "%)"
+            # 牛市买入(buy_bull): 无趋势破位/尾随, 只靠出货共振卖出(正式版逻辑,
+            # 牛市回调买点天然在 ma60 下方, 趋势破位会次日误卖; 持仓可长持到出货)
 
         if action == "BUY":
             position = 1.0
@@ -259,11 +257,13 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
             buy_price = close
             entry_shares = row.get("shares_yi")
             dist_confirm = 0
-            # 动态出货阈值(正式版逻辑): 买入量比越高, 顶部需更多出货确认才卖
-            dist_threshold = max(2, math.ceil(2 + vr * 0.55)) if vr else 2
-            # 恐慌/波段底买入始终尾随(价格天然低于均线); 健康回调才可能趋势持有
-            sell_mode = "trend" if (pullback_buy and m60 is not None and close >= m60) else "trail"
-            pullback_buy = False
+            buy_bull = bull  # 记录买入时牛熊(验证期只对熊市买入生效)
+            # 动态出货阈值(正式版逻辑): 地量极冷买入阈值1(1次确认即卖),
+            # 其余按买入量比: 越高需越多确认
+            if reason.startswith("价格低位+吸筹+成交额极冷"):
+                dist_threshold = 1
+            else:
+                dist_threshold = max(2, math.ceil(2 + vr * 0.55)) if vr else 2
             trades.append({"date": d, "action": "BUY", "price": close, "reason": reason})
         elif action == "SELL":
             position = 0.0
