@@ -61,6 +61,18 @@ def test_outflow_cumulative_sell() -> None:
     assert any("顶部大流出" in t["reason"] for t in sells)
 
 
+def test_bull_crash_sell() -> None:
+    # 牛市持仓单日暴跌>=6% -> 果断离场(案例 2026-07-02 顶后次日 -7.5% 卖@2.119)
+    closes = [1.0 + i * 0.004 for i in range(290)] + [2.1, 2.0, 1.95]
+    caps = {
+        290: {"pp": 10.0, "sp": 95.0, "chg": -6.5, "td": "ACCUMULATE"},  # P1 买@2.1
+        291: {"pp": 50.0, "sp": 50.0, "chg": -7.5, "td": "NEUTRAL"},  # 跌4.8%不触止损, S6 离场
+    }
+    res = run_kc50_beta_strategy(_mk(closes, caps))
+    sells = [t for t in res["trades"] if t["action"] == "SELL"]
+    assert any("牛市暴跌" in t["reason"] for t in sells)
+
+
 def test_sell_then_same_day_rebuy() -> None:
     # 先卖后买同日接力: 止损卖出日同时满足 P1 恐慌底(案例 2026-03-23 尾随卖+同日买)
     closes = [2.0] * 290 + [1.88, 1.78, 1.9, 1.92, 1.95]
