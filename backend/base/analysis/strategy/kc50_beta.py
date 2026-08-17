@@ -21,8 +21,13 @@
   P5 放量大阳底(924式): 熊市 + vr>=2 + sp>=50 + 当日涨>=3%(2024-09-24)
   卖出: S1 硬止损-5% -> S2 加速赶顶观察(924 两天+20%不卖, 峰值回落3%确认)
   -> S6 牛市暴跌离场(单日跌>=6% 果断卖, 2026-07-02 顶后次日卖@2.119) ->
-  S3 顶部大流出(累计>=100亿: 2025-08-25 卖 1.356) -> S4 尾随
-  (熊市12%; 牛市18% 吃大波段, 波段内回调持有穿越);
+  S7 出货确认(综指移植, 过拟合探针: DIST+pp>=97+vr>=1.5+净赎回 -> 次日卖) ->
+  S3 顶部大流出(累计>=100亿) -> S4 尾随(熊市15% 让波段走完; 牛市18% 吃大波段);
+  规律挖掘(2026-08-17 过拟合探针结论): 588000 顶部分两类 —
+    净赎回顶(2023-04/2025-08, sd<0+DIST): S7 提前确认卖;
+    净申购顶(2022-08/2024-10/2026-06-30, sd>0): 靠量价兜底(S2 加速/S6 暴跌/尾随);
+  尾随参数 12/13/15 在三个案例上互相打架(8-31 vs 12-21 vs 12-22 边缘触发),
+  该参数不可泛化, 后续版本应让 S7/S6 承担卖出、尾随仅兜底。
   尾随与当日买入信号冲突时买入优先(继续持有, 不做同日换仓)；
   迭代备忘: "牛市顶背离卖"(2026-01-14 顶 vs 2025-08-14 主升同指纹矛盾)与
   "浮盈分档尾随"(波段内回调 3-17 卖 3-23 买, 把大波段切碎)均已撤回;
@@ -62,7 +67,11 @@ OUTFLOW_SUM_MIN = 100.0  # S3 累计流出(亿)确认卖: 持仓期 DISTRIBUTE �
 # 100亿才卖(2025-07-31~08-22 累计85亿洗盘不卖, 08-28 累计110亿卖@1.433 顶;
 # 2026-04-30 -29.3 + 05-06 -16.7 = 46亿不卖, 洗盘后 5 月继续涨)
 OUTFLOW_SD_MIN = 15.0  # S3 一般大流出(亿), 2 次确认才卖(洗盘 vs 真顶)
-TRAIL_PCT = 12.0  # S4 尾随(熊市): 2022-08 顶 -13.6% 才确认
+TRAIL_PCT = 15.0  # S4 尾随(熊市): 放宽让波段走完(2022-12 回调 -12% 持有穿越,
+# 2023-03-23 出货确认 -> 03-24 卖@1.104 vs 12% 尾随 12-21 卖@0.981; 13% 在 12-22
+# 边缘触发(0.971 vs 线0.970)过拟合弃用; 代价是 2022-08 顶后拖到 9-19 卖 1.021
+DIST_PP_MIN = 97.0  # S7 出货确认(综指移植): 顶部区 pp 门槛
+DIST_VR_MIN = 1.5  # S7 出货确认: 量比门槛(2026-06-24 vr1.2 缩量顶不误杀)
 TRAIL_BULL_PCT = 18.0  # S4 尾随(牛市): 吃大波段, 波段内回调(2026-01~03 -16%、
 # 2026-06 -14% 洗盘)持有穿越; 顶部确认(6-30 顶 2.344 后)才离场
 PANIC_SELL_CHG = 6.0  # S6 牛市暴跌离场: 牛市持仓单日跌>=6% 果断卖(与 S2 加速
@@ -150,6 +159,7 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
     watch_extreme = False  # S2 观察模式(加速赶顶后等回落确认)
     watch_peak = 0.0
     outflow_sum = 0.0  # S3 持仓期累计流出(亿)
+    pending_sell: str | None = None  # S7 出货确认信号日(次日卖, 综指 T+1 口径)
 
     for i, row in enumerate(rows):
         d = row["date"]
@@ -181,8 +191,23 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
             high_since_buy = max(high_since_buy, close)
             ret_pct = (close / buy_price - 1) * 100 if buy_price else 0.0
             trail_sell = False
+            # S7 出货确认(综指移植): 昨日 DIST+pp>=97+vr>=1.5+净赎回 -> 今日卖
+            # (2023-04-03 信号 -> 04-04 卖 1.172; 2025-08-22 信号 -> 08-25 卖 1.356;
+            #  净申购顶 2022-08-05/2024-10-08/2026-06-30 不触发, 靠量价兜底)
+            if pending_sell:
+                action, reason = "SELL", f"出货确认(信号{pending_sell})"
+                pending_sell = None
+            if (
+                action is None
+                and td == "DISTRIBUTE"
+                and pp is not None
+                and pp >= DIST_PP_MIN
+                and vr >= DIST_VR_MIN
+                and sd_yi < 0
+            ):
+                pending_sell = d
             # S1 硬止损
-            if ret_pct <= -STOP_LOSS_PCT:
+            if action is None and ret_pct <= -STOP_LOSS_PCT:
                 action, reason = "SELL", f"接刀止损(收盘{ret_pct:.1f}%)"
             # S6 牛市暴跌离场: 吃大波段的代价是顶部暴跌才跑(2026-07-02 案例)
             elif bull and chg <= -PANIC_SELL_CHG:
@@ -221,6 +246,7 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
             if action == "SELL":
                 position = 0.0
                 watch_extreme = False
+                pending_sell = None
                 trades.append({"date": d, "action": "SELL", "price": close, "reason": reason})
                 action, reason = None, ""
 
@@ -235,6 +261,7 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
             watch_extreme = False
             watch_peak = 0.0
             outflow_sum = 0.0
+            pending_sell = None
             trades.append({"date": d, "action": "BUY", "price": close, "reason": reason})
 
     metrics = calc_round_metrics(trades, closes[-1] if closes else 0.0, position)
