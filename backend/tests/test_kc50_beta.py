@@ -51,10 +51,10 @@ def test_outflow_cumulative_sell() -> None:
     closes = [2.0] * 290 + [1.88] + [1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5]
     caps = {
         290: {"pp": 10.0, "sp": 95.0, "chg": -6.0, "td": "ACCUMULATE"},
-        294: {"pp": 90.0, "td": "DISTRIBUTE", "sd": -16.0, "chg": 1.0, "vr": 1.2},
-        295: {"pp": 92.0, "td": "DISTRIBUTE", "sd": -16.0, "chg": 1.0, "vr": 1.2},
-        296: {"pp": 95.0, "td": "DISTRIBUTE", "sd": -16.0, "chg": 1.0, "vr": 1.2},
-        297: {"pp": 96.0, "td": "DISTRIBUTE", "sd": -16.0, "chg": 1.0, "vr": 1.2},
+        294: {"pp": 90.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
+        295: {"pp": 92.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
+        296: {"pp": 95.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
+        297: {"pp": 96.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
     }
     res = run_kc50_beta_strategy(_mk(closes, caps))
     sells = [t for t in res["trades"] if t["action"] == "SELL"]

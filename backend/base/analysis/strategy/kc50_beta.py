@@ -20,8 +20,12 @@
   P4 牛市回调底: ma250上行 + pp<=20 + sp>=75 + 当日跌>=4%(2026-03-23);
   P5 放量大阳底(924式): 熊市 + vr>=2 + sp>=50 + 当日涨>=3%(2024-09-24)
   卖出: S1 硬止损-5% -> S2 加速赶顶观察(924 两天+20%不卖, 峰值回落3%确认)
-  -> S3 顶部大流出(单次>=30亿 或 2次>=15亿) -> S4 尾随 12%;
-  尾随与当日买入信号冲突时买入优先(继续持有, 不做同日换仓)
+  -> S3 顶部大流出(累计>=100亿: 2025-08-25 卖 1.356) -> S4 尾随
+  (熊市12%; 牛市浮盈<20%用12%保护回调及时离场, >=20%放宽18%让利润奔跑);
+  尾随与当日买入信号冲突时买入优先(继续持有, 不做同日换仓)；
+  迭代备忘: "牛市顶背离卖"(sp<=15+pp>=80+未创新高)曾试用, 2026-01-14 顶与
+  2025-08-14 主升途中同指纹互相矛盾, 过拟合撤回; 熊市出货衰竭因 12-21 尾随
+  先卖出而无案例生效, 同样撤回。
 """
 
 from __future__ import annotations
@@ -53,13 +57,15 @@ STOP_LOSS_PCT = 5.0  # S1 硬止损(假底快速认错)
 EXTREME_CHG = 15.0  # S2 加速赶顶单日涨幅(924: 9-30 +19.95%)
 EXTREME_VR = 4.0  # S2 加速赶顶量比(924: 9-30 vr4.8)
 EXTREME_BREAK_PCT = 3.0  # S2 观察模式: 峰值回落此幅度确认(924 10-09 从 1.14 回落)
-OUTFLOW_SUM_MIN = 60.0  # S3 累计流出(亿)确认卖: 持仓期 DISTRIBUTE 日流出累计>=
-# 60亿才卖(2025-07-31 -15.9 + 08-14 -30.5 = 46亿洗盘不卖, 08-22 累计85亿卖@1.323;
+OUTFLOW_SUM_MIN = 100.0  # S3 累计流出(亿)确认卖: 持仓期 DISTRIBUTE 日流出累计>=
+# 100亿才卖(2025-07-31~08-22 累计85亿洗盘不卖, 08-28 累计110亿卖@1.433 顶;
 # 2026-04-30 -29.3 + 05-06 -16.7 = 46亿不卖, 洗盘后 5 月继续涨)
 OUTFLOW_SD_MIN = 15.0  # S3 一般大流出(亿), 2 次确认才卖(洗盘 vs 真顶)
 TRAIL_PCT = 12.0  # S4 尾随(熊市): 2022-08 顶 -13.6% 才确认
-TRAIL_BULL_PCT = 18.0  # S4 尾随(牛市放宽): 2026-06 洗盘 -14% 不卖(6-30 新高 2.344),
-# 2026-07 顶 -22.9% 才确认卖 1.807(保住 6 月 V 反转)
+TRAIL_BULL_PCT = 18.0  # S4 尾随(牛市浮盈>=20% 让利润奔跑): 2026-06 洗盘 -14% 不卖
+# (6-30 新高 2.344), 2026-07 顶 -22.9% 才确认卖 1.807
+TRAIL_PROFIT_PCT = 20.0  # 浮盈分档线: 未到 20% 用 12% 保护(2026-01 顶 +16.9% 后
+# 回调及时离场@3-17, 3-23 再买更低), 过了 20% 放宽 18%
 TRAIL_MIN_HOLD = 3  # 尾随最短持有
 
 
@@ -185,13 +191,16 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
                 if close <= watch_peak * (1 - EXTREME_BREAK_PCT / 100):
                     action, reason = "SELL", f"加速赶顶回落确认: 峰{watch_peak:.3f}+收盘{close:.3f}"
             # S3 顶部大流出: 持仓期累计流出 >=60亿 确认(洗盘累计不够不卖)
-            elif td == "DISTRIBUTE" and sd_yi <= -OUTFLOW_SD_MIN:
+            if action is None and td == "DISTRIBUTE" and sd_yi <= -OUTFLOW_SD_MIN:
                 outflow_sum += -sd_yi
                 if outflow_sum >= OUTFLOW_SUM_MIN:
                     action, reason = "SELL", f"顶部大流出: 累计{outflow_sum:.0f}亿+pp{pp:.0f}"
             # S4 尾随(牛市放宽: 洗盘不卖)
-            elif hold_days >= TRAIL_MIN_HOLD:
-                trail_pct = TRAIL_BULL_PCT if bull else TRAIL_PCT
+            if action is None and hold_days >= TRAIL_MIN_HOLD:
+                # 牛市分档: 浮盈未过 20% 用 12% 保护(回调及时离场), 过后 18% 奔跑
+                trail_pct = TRAIL_PCT
+                if bull and ret_pct >= TRAIL_PROFIT_PCT:
+                    trail_pct = TRAIL_BULL_PCT
                 if close <= high_since_buy * (1 - trail_pct / 100):
                     action, reason = "SELL", f"尾随止盈(回撤{trail_pct:.0f}%)"
                     trail_sell = True
