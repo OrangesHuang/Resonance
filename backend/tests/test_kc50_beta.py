@@ -39,7 +39,7 @@ def test_warmup_no_trade() -> None:
 def test_panic_bottom_buy() -> None:
     # 恐慌底: 单日跌>=6% + pp<=20(案例 2026-07-30 -6.0% pp3) -> 买入
     closes = [2.0] * 290 + [1.88] + [2.0] * 20
-    caps = {290: {"pp": 10.0, "sp": 95.0, "chg": -6.0, "td": "ACCUMULATE"}}
+    caps = {290: {"pp": 10.0, "sp": 95.0, "chg": -6.0, "td": "ACCUMULATE", "sd": 3.0}}
     res = run_kc50_beta_strategy(_mk(closes, caps))
     trades = res["trades"]
     assert len(trades) >= 1
@@ -50,11 +50,11 @@ def test_outflow_cumulative_sell() -> None:
     # 持仓后 DISTRIBUTE 日累计流出 >=60亿 -> 卖(案例 2025-07-31+08-14 洗盘不卖)
     closes = [2.0] * 290 + [1.88] + [1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5]
     caps = {
-        290: {"pp": 10.0, "sp": 95.0, "chg": -6.0, "td": "ACCUMULATE"},
-        294: {"pp": 90.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
-        295: {"pp": 92.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
-        296: {"pp": 95.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
-        297: {"pp": 96.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2},
+        290: {"pp": 10.0, "sp": 95.0, "chg": -6.0, "td": "ACCUMULATE", "sd": 3.0},
+        294: {"pp": 90.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2, "sp": 50.0},
+        295: {"pp": 92.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2, "sp": 50.0},
+        296: {"pp": 95.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2, "sp": 50.0},
+        297: {"pp": 96.0, "td": "DISTRIBUTE", "sd": -30.0, "chg": 1.0, "vr": 1.2, "sp": 50.0},
     }
     res = run_kc50_beta_strategy(_mk(closes, caps))
     sells = [t for t in res["trades"] if t["action"] == "SELL"]
@@ -65,7 +65,7 @@ def test_bull_crash_sell() -> None:
     # 牛市持仓单日暴跌>=6% -> 果断离场(案例 2026-07-02 顶后次日 -7.5% 卖@2.119)
     closes = [1.0 + i * 0.004 for i in range(290)] + [2.1, 2.0, 1.95]
     caps = {
-        290: {"pp": 10.0, "sp": 95.0, "chg": -6.5, "td": "ACCUMULATE"},  # P1 买@2.1
+        290: {"pp": 10.0, "sp": 95.0, "chg": -6.5, "td": "ACCUMULATE", "sd": 3.0},  # P1 买@2.1
         291: {"pp": 50.0, "sp": 50.0, "chg": -7.5, "td": "NEUTRAL"},  # 跌4.8%不触止损, S6 离场
     }
     res = run_kc50_beta_strategy(_mk(closes, caps))
@@ -77,8 +77,8 @@ def test_sell_then_same_day_rebuy() -> None:
     # 先卖后买同日接力: 止损卖出日同时满足 P1 恐慌底(案例 2026-03-23 尾随卖+同日买)
     closes = [2.0] * 290 + [1.88, 1.78, 1.9, 1.92, 1.95]
     caps = {
-        290: {"pp": 10.0, "sp": 95.0, "chg": -6.0, "td": "ACCUMULATE"},  # P1 买@1.88
-        291: {"pp": 8.0, "sp": 95.0, "chg": -6.2, "td": "ACCUMULATE"},  # 止损日 + 同日 P1 再买
+        290: {"pp": 10.0, "sp": 95.0, "chg": -6.0, "td": "ACCUMULATE", "sd": 3.0},  # P1 买@1.88
+        291: {"pp": 8.0, "sp": 95.0, "chg": -6.2, "td": "ACCUMULATE", "sd": 3.0},  # 止损日 + 同日 P1 再买
     }
     res = run_kc50_beta_strategy(_mk(closes, caps))
     trades = res["trades"]
