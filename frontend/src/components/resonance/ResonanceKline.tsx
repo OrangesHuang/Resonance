@@ -133,16 +133,24 @@ export default function ResonanceKline({ kline, history, signals, trades, select
     datesRef.current = dates
   }, [dates])
 
+  // 卸载清理: 注销桥 + 清防抖定时器(切换 ETF 时 key 重挂载, 旧实例必须
+  // 从桥中移除, 否则 mouseout/showTip 会打到已 dispose 实例, 累积导致 K线假死)
+  useEffect(() => {
+    return () => {
+      if (chartRef.current) bridgeRef.current?.unregister(chartRef.current)
+      if (zoomTimer.current != null) {
+        window.clearTimeout(zoomTimer.current)
+        zoomTimer.current = null
+      }
+    }
+  }, [])
+
   // 外部缩放(键盘步进/切换标的)经 dispatchAction 同步, 不走 option 重建
   useEffect(() => {
     const inst = chartRef.current
     if (!inst || kline.length <= 1) return
     // key 重挂载间隙实例可能已 dispose: dispatchAction 打警告, 先探活
-    try {
-      inst.getZr()
-    } catch {
-      return
-    }
+    if (inst.isDisposed?.()) return
     const { start, end } = windowToZoom(datesRef.current, dateWindow, DEFAULT_VISIBLE_BARS)
     inst.dispatchAction({ type: 'dataZoom', start, end })
   }, [dateWindow, kline])
@@ -154,12 +162,7 @@ export default function ResonanceKline({ kline, history, signals, trades, select
       return
     }
     const inst = chartRef.current
-    if (!inst) return
-    try {
-      inst.getZr()
-    } catch {
-      return
-    }
+    if (!inst || inst.isDisposed?.()) return
     inst.dispatchAction({
       type: 'takeGlobalCursor',
       key: 'brush',

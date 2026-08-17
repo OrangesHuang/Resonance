@@ -33,6 +33,7 @@ interface Props {
   /** 五图白线联动: 注册实例 + hover 上报 + 接收广播 */
   bridge?: {
     register: (inst: EChartsType, getDates: () => string[]) => void
+    unregister: (inst: EChartsType) => void
     show: (date: string | null, source?: EChartsType | null) => void
     zoom: (start: number, end: number, source: EChartsType | null) => void
   }
@@ -67,9 +68,16 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
   // 外部 hover 日期广播 → 白线跟随(按日期值定位, 与自身 dates 无关)
   useEffect(() => {
     const inst = chartRef.current
-    if (!inst) return
+    if (!inst || inst.isDisposed?.()) return
     inst.dispatchAction({ type: 'hideTip' })
   }, [selectedDate])
+
+  // 卸载清理: 从桥中移除已 dispose 实例
+  useEffect(() => {
+    return () => {
+      if (chartRef.current) bridge?.unregister(chartRef.current)
+    }
+  }, [bridge])
 
   if (dates.length === 0) {
     return <div className="text-gray-500 text-center py-10">暂无数据</div>
@@ -264,7 +272,7 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
       onChartReady={inst => {
         chartRef.current = inst
         onReady?.(inst)
-        bridge?.register(inst, () => datesRef.current)
+        if (!inst.isDisposed?.()) bridge?.register(inst, () => datesRef.current)
       }}
     />
   )

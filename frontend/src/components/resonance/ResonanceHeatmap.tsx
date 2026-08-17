@@ -88,6 +88,7 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
     // 实例重建(dispose 后新实例)时旧 Rect 已随旧 zr 销毁: 重置引用,
     // 否则后续 attr 操作死元素且永不重建(白线消失)
     hoverLineRef.current = null
+    if (inst.isDisposed?.()) return
     bridge?.register(inst, () => datesRef.current)
   }
 
@@ -200,9 +201,10 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
             const yIdx = api.value(1)
             const [cx, cy] = api.coord([xIdx, yIdx])
             // 实时读实例 dataZoom(connect 组同步缩放后 dateWindow 不更新)
-            // key 重挂载间隙实例可能已 dispose: getZr() 探活后读取
+            // key 重挂载间隙实例可能已 dispose: isDisposed 探活后读取
             let start = 0
             let end = 100
+            if (instRef.current?.isDisposed?.()) return
             try {
               instRef.current?.getZr()
               const dz = instRef.current?.getOption().dataZoom as

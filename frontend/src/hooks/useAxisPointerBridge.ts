@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { ECharts } from 'echarts'
 
 interface Registered {
@@ -28,11 +28,8 @@ export function useAxisPointerBridge() {
    *  已 dispose 的实例(StrictMode 双挂载/echarts-for-react 临时实例
    *  竞态残留)直接拒绝, 避免广播打到死实例上。 */
   const register = useCallback((inst: ECharts, getDates: () => string[]) => {
-    try {
-      inst.getZr()
-    } catch {
-      return
-    }
+    // isDisposed 探活: dispose 后 getZr 仍返回 null 不抛错, 会漏进广播名单
+    if (inst.isDisposed?.()) return
     if (!charts.current.some(c => c.inst === inst)) {
       charts.current.push({ inst, getDates })
     }
@@ -53,15 +50,9 @@ export function useAxisPointerBridge() {
   /** 缩放百分比即时广播: 除来源图外所有图同步 dataZoom(防环标志)。 */
   const zoom = useCallback((start: number, end: number, source: ECharts | null) => {
     if (zooming.current) return
-    // 清理已 dispose 的实例(与 show 一致): 死实例 dispatchAction 静默失效
-    charts.current = charts.current.filter(c => {
-      try {
-        c.inst.getZr()
-        return true
-      } catch {
-        return false
-      }
-    })
+    // 清理已 dispose 的实例: isDisposed 为真直接移除(dispose 后 dispatchAction
+    // 会打 "has been disposed" 警告并可能影响新实例联动, 必须清干净)
+    charts.current = charts.current.filter(c => !c.inst.isDisposed?.())
     // 去重: 相同缩放值短时间内重复广播直接忽略(防异步链循环)
     const now = Date.now()
     if (lastZoom.current) {
@@ -96,15 +87,8 @@ export function useAxisPointerBridge() {
     if (showing.current) return
     showing.current = true
     try {
-      // 清理已 dispose 的实例(dispose 后 getZr 抛错)
-      charts.current = charts.current.filter(c => {
-        try {
-          c.inst.getZr()
-          return true
-        } catch {
-          return false
-        }
-      })
+      // 清理已 dispose 的实例(dispose 后 dispatchAction 打警告, 直接按标记移除)
+      charts.current = charts.current.filter(c => !c.inst.isDisposed?.())
       for (const { inst, getDates } of charts.current) {
         if (inst === source) continue
         try {
@@ -140,7 +124,9 @@ export function useAxisPointerBridge() {
     }
   }, [])
 
-  return { register, unregister, subscribe, show, zoom }
+  // 引用稳定: 子组件 useEffect([bridge]) 卸载清理依赖此引用;
+  // 若每次渲染返回新对象, cleanup 会被反复触发把实例移出桥(联动失效)
+  return useMemo(() => ({ register, unregister, subscribe, show, zoom }), [register, unregister, subscribe, show, zoom])
 }
 
 export type AxisPointerBridge = ReturnType<typeof useAxisPointerBridge>

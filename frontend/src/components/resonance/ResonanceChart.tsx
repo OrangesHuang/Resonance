@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts } from 'echarts'
 import type { ResonanceHistoryPoint } from '../../api/types'
@@ -26,12 +26,20 @@ export default function ResonanceChart({ history, selectedDate, onSelectDate, br
 }) {
   const instRef = useRef<ECharts | null>(null)
   const boundZrRef = useRef<unknown>(null)
+  // 卸载清理: 从桥中移除已 dispose 实例(切换 ETF 重挂载, 防死实例广播)
+  useEffect(() => {
+    return () => {
+      if (instRef.current) bridge?.unregister(instRef.current)
+    }
+  }, [bridge])
+
   const dates = useMemo(() => history.map(h => h.date), [history])
   const datesRef = useRef(dates)
   datesRef.current = dates
 
   const onChartReady = (inst: ECharts) => {
     instRef.current = inst
+    if (inst.isDisposed?.()) return
     bridge?.register(inst, () => datesRef.current)
     // zr 层点击: 任意位置(白线所在列)点击都选中该日, 无需点中柱子
     const zr = inst.getZr()
