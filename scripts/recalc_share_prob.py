@@ -7,6 +7,7 @@ sp48 而非 78, 导致绝望底买点丢失)。本脚本按回填同款逻辑(ca
 
 用法: python3 scripts/recalc_share_prob.py
 """
+
 import sys
 from pathlib import Path
 
@@ -20,7 +21,11 @@ from resonance.analysis.factors import calc_share_probability_dual
 def main() -> None:
     total = 0
     for code in ETFS:
-        rows = [r for r in reversed(get_by_code(code)) if r.get("composite_prob") is not None]
+        rows = [
+            r
+            for r in reversed(get_by_code(code))
+            if r.get("composite_prob") is not None
+        ]
         hist: list[float] = []
         n = 0
         for r in rows:
