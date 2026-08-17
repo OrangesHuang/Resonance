@@ -20,7 +20,8 @@
   P4 牛市回调底: ma250上行 + pp<=20 + sp>=75 + 当日跌>=4%(2026-03-23);
   P5 放量大阳底(924式): 熊市 + vr>=2 + sp>=50 + 当日涨>=3%(2024-09-24)
   卖出: S1 硬止损-5% -> S2 加速赶顶观察(924 两天+20%不卖, 峰值回落3%确认)
-  -> S3 顶部大流出(单次>=30亿 或 2次>=15亿) -> S4 尾随 12%
+  -> S3 顶部大流出(单次>=30亿 或 2次>=15亿) -> S4 尾随 12%;
+  尾随与当日买入信号冲突时买入优先(继续持有, 不做同日换仓)
 """
 
 from __future__ import annotations
@@ -74,6 +75,59 @@ def _dd_from_high(closes: list[float], idx: int, window: int = 250) -> float:
     return (closes[idx] / hi - 1) * 100 if hi > 0 else 0.0
 
 
+def _buy_signal(
+    rows: list[dict],
+    closes: list[float],
+    i: int,
+    bull: bool,
+    dd250: float,
+    ma60_slope: float | None,
+    warmup_done: bool,
+) -> tuple[str | None, str]:
+    """买入信号判定(纯函数, 不改状态): 供空仓买入与"尾随让位"两处复用。"""
+    if not warmup_done:
+        return None, ""
+    row = rows[i]
+    pp = row.get("price_position")
+    td = row.get("trade_direction")
+    sp = row.get("share_prob")
+    vr = row.get("volume_ratio") or 0
+    chg = row.get("change_pct") or 0
+    if chg <= -PANIC_CHG_MIN and pp is not None and pp <= PANIC_PP_MAX:
+        return "BUY", f"恐慌底: 跌{chg:.1f}%+pp{pp:.0f}"
+    if (
+        not bull
+        and dd250 <= -BEAR_DD_MIN
+        and ma60_slope is not None
+        and ma60_slope >= BEAR_MA60_SLOPE_MIN
+        and pp is not None
+        and pp <= BEAR_PP_MAX
+        and sp is not None
+        and sp >= BEAR_SP_MIN
+    ):
+        return "BUY", f"熊市深回撤底: 距高{dd250:.0f}%+pp{pp:.0f}+sp{sp:.0f}"
+    if (
+        bull
+        and pp is not None
+        and pp <= BULL_PP_MAX
+        and sp is not None
+        and sp >= BULL_SP_MIN
+        and chg <= -BULL_CHG_MIN
+        and chg > -BULL_CHG_MAX
+    ):
+        return "BUY", f"牛市回调底: 跌{chg:.1f}%+pp{pp:.0f}+sp{sp:.0f}"
+    if (
+        not bull
+        and vr >= SNAP_VR_MIN
+        and sp is not None
+        and sp >= SNAP_SP_MIN
+        and chg >= SNAP_CHG_MIN
+        and td == "ACCUMULATE"
+    ):
+        return "BUY", f"放量大阳底: 涨{chg:.1f}%+vr{vr:.1f}+sp{sp:.0f}"
+    return None, ""
+
+
 def run_kc50_beta_strategy(rows: list[dict]) -> dict:
     n = len(rows)
     if n < 30:
@@ -96,7 +150,6 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
         close = closes[i]
         pp = row.get("price_position")
         td = row.get("trade_direction")
-        sp = row.get("share_prob")
         vr = row.get("volume_ratio") or 0
         chg = row.get("change_pct") or 0
         sd_yi = row.get("shares_delta_yi") or 0
@@ -113,10 +166,13 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
         action = None
         reason = ""
 
+        buy_candidate, buy_reason = _buy_signal(rows, closes, i, bull, dd250, ma60_slope, warmup_done)
+
         if position == 1:
             hold_days += 1
             high_since_buy = max(high_since_buy, close)
             ret_pct = (close / buy_price - 1) * 100 if buy_price else 0.0
+            trail_sell = False
             # S1 硬止损
             if ret_pct <= -STOP_LOSS_PCT:
                 action, reason = "SELL", f"接刀止损(收盘{ret_pct:.1f}%)"
@@ -138,51 +194,27 @@ def run_kc50_beta_strategy(rows: list[dict]) -> dict:
                 trail_pct = TRAIL_BULL_PCT if bull else TRAIL_PCT
                 if close <= high_since_buy * (1 - trail_pct / 100):
                     action, reason = "SELL", f"尾随止盈(回撤{trail_pct:.0f}%)"
+                    trail_sell = True
+            # 尾随让位: 当日同时出现强买入信号(如 2026-03-23 牛市回调底),
+            # 说明是洗盘而非趋势破坏 — 继续持有, 不做"同日卖+买"的无意义换仓;
+            # 虚拟换仓重置基准(peak/流出/持有天数), 否则旧 peak 的尾随线会卡死
+            # 后续持有(3-31 再次触发卖出, 反而更差)
+            if action == "SELL" and trail_sell and buy_candidate == "BUY":
+                action, reason = None, ""
+                hold_days = 0
+                high_since_buy = close
+                buy_price = close
+                outflow_sum = 0.0
+                watch_extreme = False
+                watch_peak = 0.0
             if action == "SELL":
                 position = 0.0
                 watch_extreme = False
                 trades.append({"date": d, "action": "SELL", "price": close, "reason": reason})
                 action, reason = None, ""
 
-        if position == 0:
-            if not warmup_done:
-                continue  # 牛熊斜率数据预热不足, 不交易
-            # P1 恐慌底
-            if chg <= -PANIC_CHG_MIN and pp is not None and pp <= PANIC_PP_MAX:
-                action, reason = "BUY", f"恐慌底: 跌{chg:.1f}%+pp{pp:.0f}"
-            # P3 熊市深回撤底(跌速趋缓才接)
-            elif (
-                not bull
-                and dd250 <= -BEAR_DD_MIN
-                and ma60_slope is not None
-                and ma60_slope >= BEAR_MA60_SLOPE_MIN
-                and pp is not None
-                and pp <= BEAR_PP_MAX
-                and sp is not None
-                and sp >= BEAR_SP_MIN
-            ):
-                action, reason = "BUY", f"熊市深回撤底: 距高{dd250:.0f}%+pp{pp:.0f}+sp{sp:.0f}"
-            # P4 牛市回调底(恐慌日让位 P1)
-            elif (
-                bull
-                and pp is not None
-                and pp <= BULL_PP_MAX
-                and sp is not None
-                and sp >= BULL_SP_MIN
-                and chg <= -BULL_CHG_MIN
-                and chg > -BULL_CHG_MAX
-            ):
-                action, reason = "BUY", f"牛市回调底: 跌{chg:.1f}%+pp{pp:.0f}+sp{sp:.0f}"
-            # P5 放量大阳底(924 式政策底)
-            elif (
-                not bull
-                and vr >= SNAP_VR_MIN
-                and sp is not None
-                and sp >= SNAP_SP_MIN
-                and chg >= SNAP_CHG_MIN
-                and td == "ACCUMULATE"
-            ):
-                action, reason = "BUY", f"放量大阳底: 涨{chg:.1f}%+vr{vr:.1f}+sp{sp:.0f}"
+        if position == 0 and buy_candidate == "BUY":
+            action, reason = buy_candidate, buy_reason
 
         if action == "BUY":
             position = 1.0
