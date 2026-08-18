@@ -95,18 +95,13 @@ bb_clean = [
 print("%s 版本对比(基准 %s 之后):" % (CODE, BASE))
 print("  正式版 %d 笔, Beta %d 笔" % (len(bs), len(bb_clean)))
 
-leaks = []
-if len(bs) != len(bb_clean):
-    leaks = ["笔数不同"]
-else:
-    for i in range(len(bs)):
-        if bs[i][:2] != bb_clean[i][:2]:
-            leaks.append(
-                "第%d笔: 正式版 %s vs Beta %s" % (i, bs[i][:2], bb_clean[i][:2])
-            )
+# Beta 允许比正式版多抓波段(高抛低吸)且可改进卖点, 但不得漏掉正式版的任何买点:
+# 正式版每个买点(日期+价格)都必须出现在 Beta 中(Beta 买点超集)。
+bb_keys = {(x[0], x[2]) for x in bb_clean if x[1] == "BUY"}
+leaks = [x for x in bs if x[1] == "BUY" and (x[0], x[2]) not in bb_keys]
 
 if leaks:
-    print("  差异:")
+    print("  漏笔:")
     for l in leaks:
         print("   ", l)
     # 打印完整明细辅助定位
@@ -118,7 +113,7 @@ if leaks:
         print("   ", x)
     sys.exit(1)
 else:
-    print("  逐笔一致 ✓ (Beta 未漏正式版买点)")
+    print("  Beta 覆盖正式版全部买点 ✓ (允许 Beta 多抓波段/改进卖点)")
 
 
 # 全历史收益对比

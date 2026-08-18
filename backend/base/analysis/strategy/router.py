@@ -23,6 +23,7 @@ from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
 from base.analysis.strategy.kc import KC_CODE, run_kc_strategy
 from base.analysis.strategy.kc50 import KC50_CODE, run_kc50_strategy
 from base.analysis.strategy.kc50_beta import run_kc50_beta_strategy
+from base.analysis.strategy.kc_beta import run_kc_beta_strategy
 from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
 from base.analysis.strategy.sh50 import SH50_CODE, run_sh50_strategy
 from base.analysis.strategy.zz import ZZ_CODE, run_zz_strategy
@@ -148,6 +149,8 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
 # ---- Beta 槽位(调试版): 手动注册才有, 未注册的 ETF 无 Beta ----
 # 新增 beta 步骤: 在此注册 → 回测对比 STABLE → 优于才考虑升级正式版
 BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
+    # 科创综指 beta = 正式版 + 高位散户顶/加速赶顶/洗盘回买(2026-08-18 上线)
+    KC_CODE: run_kc_beta_strategy,
     # 科创50 beta = 独立买卖点先行策略(不复用科创综指, 2020-12 起全历史)
     KC50_CODE: run_kc50_beta_strategy,
 }
