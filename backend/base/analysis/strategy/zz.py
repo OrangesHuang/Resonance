@@ -47,7 +47,8 @@ from base.analysis.strategy.zz_params import *
 ZZ_CODE = "512100"
 
 
-def run_zz_strategy(rows: list[dict]) -> dict:
+def run_zz_strategy(rows: list[dict], trade_start: str | None = None) -> dict:
+    """trade_start: 覆盖 TRADE_START(zz_beta 延伸验证用), None 走常量。"""
     n = len(rows)
     if n < 30:
         return {"code": ZZ_CODE, "trades": [], "metrics": {}, "holding": False}
@@ -85,7 +86,7 @@ def run_zz_strategy(rows: list[dict]) -> dict:
         chg = row.get("change_pct") or 0
         sd_yi = row.get("shares_delta_yi") or 0
 
-        if d < TRADE_START:
+        if d < (trade_start or TRADE_START):
             continue
 
         cooldown += 1

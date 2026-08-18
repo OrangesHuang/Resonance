@@ -28,6 +28,7 @@ from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
 from base.analysis.strategy.sh50 import SH50_CODE, run_sh50_strategy
 from base.analysis.strategy.zz import ZZ_CODE, run_zz_strategy
 from base.analysis.strategy.zz500_v2 import ZZ500_CODE, run_zz500_strategy_v2
+from base.analysis.strategy.zz_beta import run_zz_beta_strategy
 
 # ---- 通用多指标共振(510300 等无专属策略的 ETF) ----
 SELL_PP = 80  # 卖出: 价格位置阈值
@@ -149,6 +150,8 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
 # ---- Beta 槽位(调试版): 手动注册才有, 未注册的 ETF 无 Beta ----
 # 新增 beta 步骤: 在此注册 → 回测对比 STABLE → 优于才考虑升级正式版
 BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
+    # 中证1000 beta = 正式版规则 + 数据延伸至 2014-10-17 验证多轮牛熊
+    ZZ_CODE: run_zz_beta_strategy,
     # 科创综指 beta = 正式版 + 高位散户顶/加速赶顶/洗盘回买(2026-08-18 上线)
     KC_CODE: run_kc_beta_strategy,
     # 科创50 beta = 独立买卖点先行策略(不复用科创综指, 2020-12 起全历史)
