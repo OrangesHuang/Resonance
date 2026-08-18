@@ -59,7 +59,7 @@ def test_blowoff_sell() -> None:
 
 
 def test_washout_buy() -> None:
-    # 缩量连两日大跌 + 位置不高 + 机构未撤 -> 当日买(案例 2026-06-08)
+    # 两日累计跌>=5% + 当日仍跌 + 位置不高 + 机构未撤 -> 当日买(案例 2026-06-08)
     closes = [1.5] * 30 + [1.6] + [1.5, 1.47, 1.45, 1.45, 1.45]
     caps: dict = {i: {"sd": 0.1} for i in range(30, 34)}
     caps[34] = {"chg": -2.5, "sp": 80.0}
@@ -76,6 +76,16 @@ def test_washout_blocked_by_panic_volume() -> None:
     caps: dict = {i: {"sd": 0.1} for i in range(30, 34)}
     caps[34] = {"chg": -2.5, "sp": 80.0}
     caps[35] = {"pp": 55.0, "chg": -3.5, "vr": 2.1, "sp": 80.0, "sd": 0.1}
+    res = run_kc_beta_strategy(_mk(closes, caps))
+    assert res["trades"] == []
+
+
+def test_washout_blocked_by_shallow_drop() -> None:
+    # 两日累计跌幅不足 5% 不是洗盘(案例 2026-07-23 累计 -4.5% 拦)
+    closes = [1.5] * 30 + [1.6] + [1.5, 1.47, 1.45, 1.45, 1.45]
+    caps: dict = {i: {"sd": 0.1} for i in range(30, 34)}
+    caps[34] = {"chg": -2.0, "sp": 80.0}
+    caps[35] = {"pp": 55.0, "chg": -2.4, "vr": 0.8, "sp": 80.0, "sd": 0.1}
     res = run_kc_beta_strategy(_mk(closes, caps))
     assert res["trades"] == []
 
