@@ -36,6 +36,13 @@ BULL_CHG_MAX = 6.0  # P4 当日跌幅上限(恐慌日让位 P1: 2026-07-28 -6.6%
 SNAP_VR_MIN = 2.0  # P5 放量大阳底(924 前夜 vr2.09)
 SNAP_SP_MIN = 50.0  # P5 份额下限
 SNAP_CHG_MIN = 3.0  # P5 当日涨幅下限
+# P7 线上极冷底(2025-01-06: 价格在 ma250 上+17% 但被判熊, 成交额极冷+机构
+# 净申购+距60日高-12.5%; 不依赖牛熊判定)
+ONLINE_TP_MAX = 10.0  # 成交额极冷
+ONLINE_PP_MAX = 35.0
+ONLINE_DD60_MIN = 8.0  # 距60日高回撤下限(2022-01-19 -4.9% 顶后第一波拦)
+ONLINE_CHG_MAX = 6.0  # 恐慌日让位 P1(2026-07-28 不买)
+ONLINE_PREV_CHG_MIN = -3.0  # 前一日非暴跌(2026-07-29 暴跌次日不接)
 # 熊市回调底(2022-12-23: pp23.7 中位回调+距线-15.5%+申购5.3亿, 跌势衰竭)
 BEAR_RB_PP_LO = 15.0
 BEAR_RB_PP_HI = 30.0
@@ -105,6 +112,7 @@ def _buy_signal(
     vr = row.get("volume_ratio") or 0
     chg = row.get("change_pct") or 0
     sd_yi = row.get("shares_delta_yi") or 0
+    tp = row.get("_tp")
     if sd_yi <= 0:
         return None, ""  # 买点必须机构净申购(sd>0, 9 组无一例外)
     if chg <= -PANIC_CHG_MIN and pp is not None and pp <= PANIC_PP_MAX:
@@ -149,6 +157,17 @@ def _buy_signal(
         and td == "ACCUMULATE"
     ):
         return "BUY", f"放量大阳底: 涨{chg:.1f}%+vr{vr:.1f}+sp{sp:.0f}"
+    if (
+        div > 0
+        and tp is not None
+        and tp <= ONLINE_TP_MAX
+        and pp is not None
+        and pp <= ONLINE_PP_MAX
+        and _dd_from_high(closes, i, 60) <= -ONLINE_DD60_MIN
+        and chg > -ONLINE_CHG_MAX
+        and (rows[i - 1].get("change_pct") or 0) > ONLINE_PREV_CHG_MIN
+    ):
+        return "BUY", f"线上极冷底: pp{pp:.0f}+成交额{tp:.0f}分位+申购{sd_yi:.0f}亿"
     return None, ""
 
 
