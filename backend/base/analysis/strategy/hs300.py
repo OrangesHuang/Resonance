@@ -105,7 +105,8 @@ def _ma(closes: list[float], window: int, idx: int) -> float | None:
     return sum(closes[idx - window + 1 : idx + 1]) / window
 
 
-def run_hs300_strategy(rows: list[dict]) -> dict:
+def run_hs300_strategy(rows: list[dict], trade_start: str | None = None) -> dict:
+    """trade_start: 覆盖 TRADE_START(hs300_beta 延伸验证用), None 走常量。"""
     n = len(rows)
     if n < 30:
         return {"code": HS300_CODE, "trades": [], "metrics": {}, "holding": False}
@@ -128,7 +129,7 @@ def run_hs300_strategy(rows: list[dict]) -> dict:
 
     for i, row in enumerate(rows):
         d = row["date"]
-        if d < TRADE_START:
+        if d < (trade_start or TRADE_START):
             continue
         close = closes[i]
         pp = row.get("price_position")

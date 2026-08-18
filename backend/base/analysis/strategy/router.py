@@ -20,6 +20,7 @@ from collections.abc import Callable
 from base.analysis.strategy.a500 import A500_CODE, run_a500_strategy
 from base.analysis.strategy.div import DIV_CODE, run_div_strategy
 from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
+from base.analysis.strategy.hs300_beta import run_hs300_beta_strategy
 from base.analysis.strategy.kc import KC_CODE, run_kc_strategy
 from base.analysis.strategy.kc50 import KC50_CODE, run_kc50_strategy
 from base.analysis.strategy.kc50_beta import run_kc50_beta_strategy
@@ -150,6 +151,8 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
 # ---- Beta 槽位(调试版): 手动注册才有, 未注册的 ETF 无 Beta ----
 # 新增 beta 步骤: 在此注册 → 回测对比 STABLE → 优于才考虑升级正式版
 BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
+    # 沪深300 beta = 正式版规则 + 数据延伸至 2014-01-01 验证多轮牛熊
+    HS300_CODE: run_hs300_beta_strategy,
     # 中证1000 beta = 正式版规则 + 数据延伸至 2014-10-17 验证多轮牛熊
     ZZ_CODE: run_zz_beta_strategy,
     # 科创综指 beta = 正式版 + 高位散户顶/加速赶顶/洗盘回买(2026-08-18 上线)
