@@ -72,8 +72,14 @@ export interface TradePoint {
   reason: string
 }
 
+export interface RegimePoint {
+  date: string
+  regime: 'bull' | 'bear'
+}
+
 export interface TradesResponse {
   code: string
   trades: TradePoint[]
+  regimes?: RegimePoint[]
   version?: string
 }

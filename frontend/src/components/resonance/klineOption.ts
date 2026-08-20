@@ -1,6 +1,6 @@
 import type { EChartsOption } from 'echarts'
 import type { TooltipComponentOption } from 'echarts/components'
-import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../../api/types'
+import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint, RegimePoint } from '../../api/types'
 import { buildTradeBands, sanitizeBands } from '../kline/tradeBands'
 import { buildKlineTooltip } from '../kline/klineTooltip'
 import { buildMarks } from '../kline/klineMarks'
@@ -18,6 +18,7 @@ interface BuildParams {
   history: ResonanceHistoryPoint[]
   signals: DailySignal[]
   trades: TradePoint[]
+  regimes?: RegimePoint[]
   selectedDate: string | null
   rangeSel: { sel: RangeSelection; band: Array<{ xAxis: string; itemStyle?: object }>; mode: boolean }
   rangeStats: RangeStats | null
@@ -26,6 +27,26 @@ interface BuildParams {
 
 const BULL_BAND = 'rgba(34, 197, 94, 0.05)'
 const BEAR_BAND = 'rgba(239, 68, 68, 0.05)'
+
+function buildRegimeBandsFromPoints(regimes: RegimePoint[], dates: string[]): Array<Array<{ xAxis: string; itemStyle?: object }>> {
+  const byDate = new Map(regimes.map(r => [r.date, r.regime]))
+  const bands: Array<Array<{ xAxis: string; itemStyle?: object }>> = []
+  let cur: Array<{ xAxis: string; itemStyle?: object }> = []
+  let curState: 'bull' | 'bear' | null = null
+  for (let i = 0; i < dates.length; i++) {
+    const st = byDate.get(dates[i])
+    if (st == null) continue
+    if (st !== curState) {
+      if (cur.length >= 2) bands.push(cur)
+      cur = [{ xAxis: dates[i], itemStyle: { color: st === 'bull' ? BULL_BAND : BEAR_BAND } }]
+      curState = st
+    } else {
+      cur.push({ xAxis: dates[i], itemStyle: { color: st === 'bull' ? BULL_BAND : BEAR_BAND } })
+    }
+  }
+  if (cur.length >= 2) bands.push(cur)
+  return bands
+}
 
 function buildRegimeBands(kline: KlinePoint[], dates: string[]): Array<Array<{ xAxis: string; itemStyle?: object }>> {
   // 牛熊背景带: close >= ma250 为牛(淡绿), close < ma250 为熊(淡红)
@@ -50,7 +71,7 @@ function buildRegimeBands(kline: KlinePoint[], dates: string[]): Array<Array<{ x
   return bands
 }
 
-export function buildKlineOption({ kline, history, signals, trades, selectedDate, rangeSel, rangeStats, isMobile }: BuildParams): { option: EChartsOption | null; dates: string[] } {
+export function buildKlineOption({ kline, history, signals, trades, regimes, selectedDate, rangeSel, rangeStats, isMobile }: BuildParams): { option: EChartsOption | null; dates: string[] } {
   if (kline.length === 0) return { option: null, dates: [] }
   const dates = kline.map(k => k.date)
   const ohlc = kline.map(k => [k.open, k.close, k.low, k.high])
@@ -77,6 +98,9 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
 
   // 买卖点区间蒙布: 持仓段淡绿 / 空仓段淡红
   const tradeBands = sanitizeBands(buildTradeBands(trades, dates[dates.length - 1]), dates)
+  const regimeBands = regimes?.length
+    ? sanitizeBands(buildRegimeBandsFromPoints(regimes, dates) as never[], dates)
+    : sanitizeBands(buildRegimeBands(kline, dates) as never[], dates)
   // 区间统计选中段蒙布
   const rangeBand = rangeSel.band.length ? [rangeSel.band] : []
   // 区间统计激活: 禁用 inside 拖拽平移(拖拽=框选)
@@ -169,7 +193,7 @@ export function buildKlineOption({ kline, history, signals, trades, selectedDate
             borderColor: UP_COLOR,
             borderColor0: DOWN_COLOR,
           },
-          markArea: { silent: true, data: sanitizeBands([...bands, ...tradeBands, ...rangeBand] as never[], dates) },
+          markArea: { silent: true, data: sanitizeBands([...regimeBands, ...bands, ...tradeBands, ...rangeBand] as never[], dates) },
           markLine: markLineTop,
           markPoint,
         },

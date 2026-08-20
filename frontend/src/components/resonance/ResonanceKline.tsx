@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts } from 'echarts'
-import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint } from '../../api/types'
+import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint, RegimePoint } from '../../api/types'
 import useIsMobile from '../../hooks/useIsMobile'
 import type { AxisPointerBridge } from '../../hooks/useAxisPointerBridge'
 import { windowToZoom, zoomToWindow, DEFAULT_VISIBLE_BARS, type DateWindow } from '../common/chartZoom'
@@ -31,11 +31,12 @@ interface BrushEvent {
 
 const ZOOM_SYNC_DEBOUNCE_MS = 250
 
-export default function ResonanceKline({ kline, history, signals, trades, selectedDate, onSelectDate, dateWindow, onZoomChange, bridge }: {
+export default function ResonanceKline({ kline, history, signals, trades, regimes, selectedDate, onSelectDate, dateWindow, onZoomChange, bridge }: {
   kline: KlinePoint[]
   history: ResonanceHistoryPoint[]
   signals: DailySignal[]
   trades: TradePoint[]
+  regimes?: RegimePoint[]
   selectedDate: string | null
   onSelectDate: (date: string) => void
   dateWindow: DateWindow | null
@@ -126,8 +127,8 @@ export default function ResonanceKline({ kline, history, signals, trades, select
 
   // 数据驱动的 option 用 useMemo 缓存: 拖动缩放只改 zoom, 不重建整个图表
   const { option, dates } = useMemo(() =>
-    buildKlineOption({ kline, history, signals, trades, selectedDate, rangeSel, rangeStats, isMobile }),
-  [kline, signals, history, trades, selectedDate, rangeSel, rangeStats, isMobile])
+    buildKlineOption({ kline, history, signals, trades, regimes, selectedDate, rangeSel, rangeStats, isMobile }),
+  [kline, signals, history, trades, regimes, selectedDate, rangeSel, rangeStats, isMobile])
 
   useEffect(() => {
     datesRef.current = dates

@@ -174,5 +174,14 @@ def run_band_strategy(rows: list[dict]) -> dict:
             entry_price = 0.0
             trades.append({"date": d, "action": "SELL", "price": close, "reason": reason})
 
+    # 牛熊 regime 序列(斜率>0.3=牛), 供前端蒙版
+    regimes: list[dict] = []
+    for i in range(len(rows)):
+        d = rows[i]["date"]
+        if d < TRADE_START:
+            continue
+        slope = _ma_slope(closes, i, 250)
+        regimes.append({"date": d, "regime": "bull" if (slope is not None and slope > BULL_SLOPE) else "bear"})
+
     metrics = {"total": 0.0}
-    return {"code": BAND_CODE, "trades": trades, "metrics": metrics, "holding": position > 0}
+    return {"code": BAND_CODE, "trades": trades, "regimes": regimes, "metrics": metrics, "holding": position > 0}
