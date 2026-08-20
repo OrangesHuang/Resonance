@@ -60,7 +60,7 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE, version: str = "stable"
     """
     if code not in ETFS:
         raise HTTPException(status_code=404, detail=f"unknown ETF code: {code}")
-    if version not in ("stable", "beta"):
+    if version not in ("stable", "beta", "band"):
         version = "stable"
 
     from base.analysis.strategy.a500 import A500_CODE

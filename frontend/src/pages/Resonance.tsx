@@ -18,7 +18,7 @@ const KLINE_DAYS = 3200  // 覆盖 2014-10 至今(中证1000 数据延伸起点,
 
 export default function Resonance() {
   const [code, setCode] = useState('510300')  // 默认沪深300
-  const [algoVersion, setAlgoVersion] = useState<'stable' | 'beta'>('stable')  // 算法版本: 正式版/Beta
+  const [algoVersion, setAlgoVersion] = useState<'stable' | 'beta' | 'band'>('stable')  // 算法版本: 正式版/Beta/波段
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -47,7 +47,9 @@ export default function Resonance() {
     queryFn: fetchStrategyVersions,
     staleTime: 5 * 60 * 1000,
   })
-  const hasBeta = strategyVersions?.[code] ?? false
+  const versions = strategyVersions?.[code] ?? ['stable']
+  const hasBeta = versions.includes('beta')
+  const hasBand = versions.includes('band')
 
   const tradeDates = useMemo(() => history?.kline.map(k => k.date) ?? [], [history])
   const klineStart = tradeDates[0] ?? null
@@ -144,7 +146,7 @@ export default function Resonance() {
     setSelected(null)
     setDateWindow(null)
     // 切到无 beta 的 ETF 时复位算法版本(避免 UI 与数据错位)
-    if (!(strategyVersions?.[next] ?? false)) setAlgoVersion('stable')
+    if (!((strategyVersions?.[next] ?? ['stable']).includes(algoVersion))) setAlgoVersion('stable')
     setCode(next)
   }
 
@@ -201,6 +203,14 @@ export default function Resonance() {
             className={"px-3 py-1.5 text-sm transition-colors " + (algoVersion === 'beta' && hasBeta ? 'bg-amber-600 text-white' : 'bg-gray-800 text-gray-400' + (hasBeta ? ' hover:text-gray-200' : '')) + (!hasBeta ? ' opacity-40 cursor-not-allowed' : '')}
           >
             Beta{!hasBeta ? '（无）' : ''}
+          </button>
+          <button
+            onClick={() => hasBand && setAlgoVersion('band')}
+            disabled={!hasBand}
+            className={"px-3 py-1.5 text-sm transition-colors " + (algoVersion === 'band' && hasBand ? 'bg-emerald-600 text-white' : 'bg-gray-800 text-gray-400' + (hasBand ? ' hover:text-gray-200' : '')) + (!hasBand ? ' opacity-40 cursor-not-allowed' : '')}
+            title={hasBand ? '波段: 高抛3指纹+低吸3指纹(2014起回测+55.6%)' : '本 ETF 无波段策略'}
+          >
+            波段{!hasBand ? '（无）' : ''}
           </button>
         </div>
 

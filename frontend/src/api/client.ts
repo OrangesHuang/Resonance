@@ -93,11 +93,13 @@ export function fetchResonanceDay(code: string, date: string): Promise<Resonance
   return get(`/resonance/day?code=${code}&date=${date}`)
 }
 
-export function fetchResonanceTrades(code = '510300', version: 'stable' | 'beta' = 'stable'): Promise<TradesResponse> {
+export type AlgoVersion = 'stable' | 'beta' | 'band'
+
+export function fetchResonanceTrades(code = '510300', version: AlgoVersion = 'stable'): Promise<TradesResponse> {
   return get(`/resonance/trades?code=${code}&version=${version}`)
 }
 
-export function fetchStrategyVersions(): Promise<Record<string, boolean>> {
+export function fetchStrategyVersions(): Promise<Record<string, AlgoVersion[]>> {
   return get('/resonance/trades/versions')
 }
 

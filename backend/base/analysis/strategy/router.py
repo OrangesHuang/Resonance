@@ -18,6 +18,7 @@ import math
 from collections.abc import Callable
 
 from base.analysis.strategy.a500 import A500_CODE, run_a500_strategy
+from base.analysis.strategy.band import run_band_strategy
 from base.analysis.strategy.div import DIV_CODE, run_div_strategy
 from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
 from base.analysis.strategy.hs300_beta import run_hs300_beta_strategy
@@ -150,6 +151,14 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
 
 # ---- Beta 槽位(调试版): 手动注册才有, 未注册的 ETF 无 Beta ----
 # 新增 beta 步骤: 在此注册 → 回测对比 STABLE → 优于才考虑升级正式版
+# ---- Band 槽位(波段策略, 独立版本) ----
+# 512100 波段 = 高抛3指纹(S1高位涨3%/S2缩量反弹/S3破位) + 低吸3指纹
+# (B1恐慌承接/B2中继回踩/B3右侧确认), 2026-08-20 上线, 2014起回测 +55.6%
+BAND_STRATEGIES: dict[str, Callable[..., dict]] = {
+    ZZ_CODE: run_band_strategy,
+}
+
+
 BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
     # 沪深300 beta = 正式版规则 + 数据延伸至 2014-01-01 验证多轮牛熊
     HS300_CODE: run_hs300_beta_strategy,
@@ -162,11 +171,19 @@ BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
 }
 
 
-def list_strategy_versions() -> dict[str, bool]:
-    """返回 {code: has_beta} 供前端控制 Beta 切换按钮显隐。"""
+def list_strategy_versions() -> dict[str, list[str]]:
+    """返回 {code: [可用版本]} 供前端控制 正式/Beta/波段 切换。"""
     from base.config import ETFS
 
-    return {code: code in BETA_STRATEGIES for code in ETFS}
+    out: dict[str, list[str]] = {}
+    for code in ETFS:
+        versions = ["stable"]
+        if code in BETA_STRATEGIES:
+            versions.append("beta")
+        if code in BAND_STRATEGIES:
+            versions.append("band")
+        out[code] = versions
+    return out
 
 
 def compute_trades(
@@ -191,6 +208,8 @@ def compute_trades(
     fn = None
     if version == "beta":
         fn = BETA_STRATEGIES.get(code)
+    elif version == "band":
+        fn = BAND_STRATEGIES.get(code)
     if fn is None:
         fn = STABLE_STRATEGIES.get(code)
 
