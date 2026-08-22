@@ -231,8 +231,16 @@ export default function ResonanceKline({ kline, history, signals, trades, regime
     datazoom: (e: ZoomEvent) => {
       const z = e.batch ? e.batch[0] : e
       if (z.start == null || z.end == null) return
+      // 事件进入时若 bridge 正在广播(zooming 栈内), 说明本事件是其他图
+      // 缩放广播来的「外部驱动」——必须在本图转发广播(把联动继续传给
+      // 其余图)之前记录, 转发结束后 zooming 已复位, 无法再判断。
+      const external = bridgeRef.current?.isZooming() ?? false
       // 即时广播缩放百分比到所有图(原生手感, 无 React 延迟)
       bridgeRef.current?.zoom(z.start, z.end, chartRef.current)
+      // 外部驱动不回写 dateWindow: 曾因 情绪缩放 → 本图回写 dateWindow
+      // → 情绪图 notMerge 重建 → 再触发 datazoom → 再广播 的跨图反馈
+      // 风暴导致假死(2026-08)。dateWindow 只由用户直接操作本图时更新。
+      if (external) return
       const w = zoomToWindow(datesRef.current, z.start, z.end)
       if (!w) return
       // 防抖: 拖动期间只更新一次父级状态, 避免每帧重建 React 层

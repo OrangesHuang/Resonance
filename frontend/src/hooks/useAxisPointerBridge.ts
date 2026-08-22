@@ -47,6 +47,11 @@ export function useAxisPointerBridge() {
     }
   }, [])
 
+  /** 是否正处于 zoom 广播栈内: 其他图广播来的 dataZoom 事件在此栈内
+   *  同步触发, 订阅方可据此区分「外部驱动」与「用户直接操作」——外部
+   *  驱动的事件不得回写缩放状态(dateWindow), 否则形成跨图反馈风暴。 */
+  const isZooming = useCallback(() => zooming.current, [])
+
   /** 缩放百分比即时广播: 除来源图外所有图同步 dataZoom(防环标志)。 */
   const zoom = useCallback((start: number, end: number, source: ECharts | null) => {
     if (zooming.current) return
@@ -126,7 +131,7 @@ export function useAxisPointerBridge() {
 
   // 引用稳定: 子组件 useEffect([bridge]) 卸载清理依赖此引用;
   // 若每次渲染返回新对象, cleanup 会被反复触发把实例移出桥(联动失效)
-  return useMemo(() => ({ register, unregister, subscribe, show, zoom }), [register, unregister, subscribe, show, zoom])
+  return useMemo(() => ({ register, unregister, subscribe, show, zoom, isZooming }), [register, unregister, subscribe, show, zoom, isZooming])
 }
 
 export type AxisPointerBridge = ReturnType<typeof useAxisPointerBridge>

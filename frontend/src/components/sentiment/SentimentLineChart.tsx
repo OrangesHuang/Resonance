@@ -231,12 +231,12 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
           datazoom: e => {
             const z = e.batch ? e.batch[0] : e
             if (z.start == null || z.end == null) return
-            // 不再向 bridge 广播缩放(假死根因, 2026-08 修复):
-            // 曾因 情绪缩放 → bridge → K线被外部 dataZoom 驱动 → K线
-            // 回写 dateWindow → 情绪图 notMerge 整图重建 → 又触发本事件
-            // → 再广播 的跨图反馈风暴, 导致 K线假死。
-            // 缩放主控权归 K线: 两张情绪图间缩放同步靠 SENTIMENT_SYNC_GROUP
-            // 原生 connect; K线缩放经 bridge 单向广播到此图, 本图仅跟随。
+            // 缩放百分比广播到所有图(K线/红绿灯/热力图跟随), 双向联动。
+            // 反馈环已切断: K线对外部驱动(广播栈内触发)的 datazoom 不回写
+            // dateWindow(见 ResonanceKline), 故本图缩放不会引发
+            // 「K线回写 → 本图 notMerge 重建 → 再广播」的假死风暴。
+            // 本图不回写 dateWindow(缩放状态归 K线维护)。
+            bridge?.zoom(z.start, z.end, chartRef.current)
           },
           globalout: () => {
             // 移出图表 → 清除全图白线(与 K线一致, 防止残留)
