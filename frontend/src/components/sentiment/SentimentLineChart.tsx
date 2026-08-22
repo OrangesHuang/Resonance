@@ -28,8 +28,8 @@ interface Props {
   onReady?: (instance: EChartsType) => void
   selectedDate?: string | null
   onSelectDate?: (date: string) => void
+  /** 仅跟随: K线为缩放主控, dateWindow 变化时重建当前缩放窗口 */
   dateWindow?: DateWindow | null
-  onZoomChange?: (w: DateWindow) => void
   /** 五图白线联动: 注册实例 + hover 上报 + 接收广播 */
   bridge?: {
     register: (inst: EChartsType, getDates: () => string[]) => void
@@ -60,7 +60,7 @@ interface TooltipParam {
 const AXIS_LABEL = '#6b7280'
 const SPLIT_LINE = '#1f2937'
 
-export default function SentimentLineChart({ dates, lines, bars, height = 320, yFormatter, barFormatter, lineTip, barTip, onReady, selectedDate, onSelectDate, dateWindow, onZoomChange, bridge }: Props) {
+export default function SentimentLineChart({ dates, lines, bars, height = 320, yFormatter, barFormatter, lineTip, barTip, onReady, selectedDate, onSelectDate, dateWindow, bridge }: Props) {
   const chartRef = useRef<EChartsType | null>(null)
   const datesRef = useRef(dates)
   datesRef.current = dates
@@ -208,7 +208,7 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
   }
 
   const onEvents: Record<string, (params: ClickParam & DataZoomEvent & { x?: number }) => void> | undefined =
-    onSelectDate || onZoomChange || bridge
+    onSelectDate || bridge
       ? {
           click: params => {
             if (!onSelectDate || params.dataIndex == null) return
@@ -231,10 +231,12 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
           datazoom: e => {
             const z = e.batch ? e.batch[0] : e
             if (z.start == null || z.end == null) return
-            // 即时广播缩放百分比到所有图(含 K线/红绿灯/热力图)
-            bridge?.zoom(z.start, z.end, chartRef.current)
-            // 不再 onZoomChange 上报: dateWindow 仅由 K线维护,
-            // 市场日期与 ETF 日期序列不同, 双写上报告导致窗口横跳死循环
+            // 不再向 bridge 广播缩放(假死根因, 2026-08 修复):
+            // 曾因 情绪缩放 → bridge → K线被外部 dataZoom 驱动 → K线
+            // 回写 dateWindow → 情绪图 notMerge 整图重建 → 又触发本事件
+            // → 再广播 的跨图反馈风暴, 导致 K线假死。
+            // 缩放主控权归 K线: 两张情绪图间缩放同步靠 SENTIMENT_SYNC_GROUP
+            // 原生 connect; K线缩放经 bridge 单向广播到此图, 本图仅跟随。
           },
           globalout: () => {
             // 移出图表 → 清除全图白线(与 K线一致, 防止残留)

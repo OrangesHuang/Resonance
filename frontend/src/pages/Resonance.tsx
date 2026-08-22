@@ -257,7 +257,6 @@ export default function Resonance() {
         bridge={bridge}
         onSelectDate={selectDate}
         dateWindow={dateWindow}
-        onZoomChange={handleZoom}
         alignDates={alignDates}
       />
 

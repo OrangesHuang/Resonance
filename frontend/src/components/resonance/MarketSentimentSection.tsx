@@ -14,12 +14,12 @@ const ZONE_TEXT: Record<ZoneKey, string> = {
 }
 
 /** 共振页底部市场情绪区: 成交额/融资两图 + 情绪分区概览（与情绪页共用数据源）。 */
-export default function MarketSentimentSection({ selectedDate, bridge, onSelectDate, dateWindow, onZoomChange, alignDates }: {
+export default function MarketSentimentSection({ selectedDate, bridge, onSelectDate, dateWindow, alignDates }: {
   selectedDate: string | null
   bridge: ReturnType<typeof useAxisPointerBridge>
   onSelectDate: (date: string) => void
+  // 缩放主控权归 K线: 情绪图不拥有 dateWindow, 仅跟随 K线广播的缩放窗口
   dateWindow: DateWindow | null
-  onZoomChange: (w: DateWindow) => void
   // 五图统一日期轴(K线 ∪ 共振历史): 情绪数据缺失的日期补 null,
   // 保证缩放百分比窗口与 K线/红绿灯/热力图逐日对齐
   alignDates: string[]
@@ -79,7 +79,6 @@ export default function MarketSentimentSection({ selectedDate, bridge, onSelectD
             bridge={bridge}
             onSelectDate={onSelectDate}
             dateWindow={dateWindow}
-            onZoomChange={onZoomChange}
             onReady={onSentimentReady}
             lines={[
               { name: '成交额', data: turnoverAmount, color: '#3b82f6', width: 1.5 },
@@ -99,7 +98,6 @@ export default function MarketSentimentSection({ selectedDate, bridge, onSelectD
             bridge={bridge}
             onSelectDate={onSelectDate}
             dateWindow={dateWindow}
-            onZoomChange={onZoomChange}
             onReady={onSentimentReady}
             lines={[
               { name: '融资余额', data: marginLine, color: '#a855f7', width: 1.5 },
