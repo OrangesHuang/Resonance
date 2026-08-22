@@ -64,6 +64,38 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
   const chartRef = useRef<EChartsType | null>(null)
   const datesRef = useRef(dates)
   datesRef.current = dates
+  const onSelectDateRef = useRef(onSelectDate)
+  onSelectDateRef.current = onSelectDate
+  // 本图缩放状态(用户拖滑块 或 K线广播)持久化: option 以 notMerge 重建时
+  // 若回退到 windowToZoom(dateWindow) 会把手动缩放重置为全量,
+  // 必须用 zoomRef 保持最近一次缩放(2026-08 修复「点击后缩放到最大」)。
+  const zoomRef = useRef<{ start: number; end: number } | null>(null)
+  const boundZrRef = useRef<unknown>(null)
+
+  // 点击定位走 zr 层: 任意位置(不必命中折线)像素→日期索引→选中该日,
+  // 与 K线/红绿灯一致。绑在 onChartReady(echarts-for-react 首渲染 ref 是
+  // 临时实例, mount effect 绑定会失效); boundZrRef 防 StrictMode 重复绑。
+  const onChartReady = (inst: EChartsType) => {
+    chartRef.current = inst
+    onReady?.(inst)
+    if (!inst.isDisposed?.()) bridge?.register(inst, () => datesRef.current)
+    const zr = inst.getZr()
+    if (!zr || boundZrRef.current === zr) return
+    boundZrRef.current = zr
+    zr.on('click', (e: { offsetX?: number }) => {
+      try {
+        if (e.offsetX == null) return
+        const px = inst.convertFromPixel({ xAxisIndex: 0 }, e.offsetX) as number | null
+        const idx = px != null && !Number.isNaN(px) ? Math.round(px) : -1
+        if (idx < 0 || idx >= datesRef.current.length) return
+        const d = datesRef.current[idx]
+        if (!d || !onSelectDateRef.current) return
+        onSelectDateRef.current(d)
+      } catch {
+        // 忽略坐标转换异常
+      }
+    })
+  }
 
   // 外部 hover 日期广播 → 白线跟随(按日期值定位, 与自身 dates 无关)
   useEffect(() => {
@@ -153,7 +185,10 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
     })
   }
 
-  const zoom = windowToZoom(dates, dateWindow ?? null)
+  // 初始(无缩放历史)跟随 K线 dateWindow; 一旦本图发生过缩放(K线广播
+  // 或用户拖动), 以 zoomRef 为准 — 否则点击选中日期触发 notMerge 重建
+  // 会把缩放重置回 windowToZoom(dateWindow)(dateWindow 为 null 即全量)。
+  const zoom = zoomRef.current ?? windowToZoom(dates, dateWindow ?? null)
 
   const option = {
     backgroundColor: 'transparent',
@@ -210,11 +245,8 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
   const onEvents: Record<string, (params: ClickParam & DataZoomEvent & { x?: number }) => void> | undefined =
     onSelectDate || bridge
       ? {
-          click: params => {
-            if (!onSelectDate || params.dataIndex == null) return
-            const d = dates[params.dataIndex]
-            if (d) onSelectDate(d)
-          },
+          // 点击定位由 zr 层处理(onChartReady 绑定): 任意位置即可,
+          // ECharts series click 需命中折线才给 dataIndex, 体验割裂
           updateAxisPointer: params => {
             // 情绪图在 SENTIMENT_SYNC_GROUP connect 组内: 这里再广播会与
             // connect 的组内传播形成回路(卡死), 且事件不带像素 x 本就无法
@@ -231,6 +263,9 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
           datazoom: e => {
             const z = e.batch ? e.batch[0] : e
             if (z.start == null || z.end == null) return
+            // 持久化最近一次缩放(用户拖动 或 K线广播): notMerge 重建时
+            // 保持当前窗口, 避免点击选中日期把缩放重置回全量
+            zoomRef.current = { start: z.start, end: z.end }
             // 缩放百分比广播到所有图(K线/红绿灯/热力图跟随), 双向联动。
             // 反馈环已切断: K线对外部驱动(广播栈内触发)的 datazoom 不回写
             // dateWindow(见 ResonanceKline), 故本图缩放不会引发
@@ -271,11 +306,7 @@ export default function SentimentLineChart({ dates, lines, bars, height = 320, y
       style={{ height }}
       notMerge
       lazyUpdate
-      onChartReady={inst => {
-        chartRef.current = inst
-        onReady?.(inst)
-        if (!inst.isDisposed?.()) bridge?.register(inst, () => datesRef.current)
-      }}
+      onChartReady={onChartReady}
     />
   )
 }
