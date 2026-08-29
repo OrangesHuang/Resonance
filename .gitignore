@@ -25,3 +25,10 @@ dist/
 # IDE
 .idea/
 nohup.out
+
+# 部署产物
+prod.out
+prod.pid
+
+# 参考文档(不入库)
+*.pdf

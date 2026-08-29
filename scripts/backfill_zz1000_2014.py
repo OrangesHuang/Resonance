@@ -1,11 +1,10 @@
 # mypy: ignore-errors
 """中证1000 (512100) 数据延伸回填: 2014-10-17(指数发布日) 起。
 
-512100 腾讯K线仅到 2016-11-04, 更早用中证1000指数(000852, 同接口
-2014-10-17 起)按固定比例缩放为价格代理(C = 上市首日 ETF收盘/指数收盘,
-价格指数分红未计, 误差<2%); 份额上交所接口 2016-11 起可得; 两市成交额
-与融资余额(akshare 合计)2012 起可得。代理期 shares 全 None, 份额规则降级。
-幂等可重入, 份额逐日跳库续传, 约 15~25 分钟。--skip-shares 可跳份额。
+512100 腾讯K线仅到 2016-11-04, 更早用中证1000指数(000852, 同接口 2014-10-17
+起)按上市首日收盘比缩放为价格代理(分红未计, 误差<2%); 份额上交所接口
+2016-11 起可得; 两市成交额与融资余额(akshare 合计)2012 起可得。代理期
+shares 全 None, 份额规则降级。幂等可重入, 检查点续传。--skip-shares 可跳份额。
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from base.config import SHARE_WINDOW
 from base.fetch.kline import fetch_kline
 from base.fetch.sentiment import fetch_margin_series, fetch_turnover_range
 from base.fetch.shares import fetch_shares_sse
-from base.store.calendar_repo import get_range
 from base.store.daily_repo import (
     get_by_code,
     update_direction_signal,
@@ -112,14 +110,12 @@ def _relaxed_analyze(
 def fetch_klines() -> tuple[list[dict], list[dict]]:
     """返回 (合并后ETF价序列, 指数序列), 代理段按 C 缩放。"""
     idx = fetch_kline(INDEX, start_date=PROXY_START, end_date=END)
-    print(f"[ZZ1000] 指数K线 {len(idx)} 根", flush=True)
     etf = fetch_kline(CODE, start_date=ETF_START, end_date=END)
-    print(f"[ZZ1000] ETF K线 {len(etf)} 根", flush=True)
     idx_map = {b["date"]: b for b in idx}
     etf_map = {b["date"]: b for b in etf}
     seam = min(etf_map)
     c = etf_map[seam]["close"] / idx_map[seam]["close"]
-    print(f"[ZZ1000] 指数 {len(idx)} 根 / ETF {len(etf)} 根, 缩放系数 C={c:.8f}")
+    print(f"[ZZ1000] 指数 {len(idx)} 根 / ETF {len(etf)} 根, C={c:.8f}", flush=True)
     merged: list[dict] = []
     for d in sorted(idx_map):
         if d >= seam:
@@ -136,63 +132,74 @@ def fetch_klines() -> tuple[list[dict], list[dict]]:
     return merged, idx
 
 
+def _load_shares_checkpoint() -> tuple[dict[str, dict], float | None, list[float]]:
+    import json
+
+    try:
+        with open("/tmp/zz1000_shares_checkpoint.json", encoding="utf-8") as f:
+            data = json.load(f)
+        return data["share_map"], data.get("prev_yi"), data.get("hist", [])
+    except (FileNotFoundError, KeyError, ValueError):
+        return {}, None, []
+
+
+def _save_shares_checkpoint(
+    share_map: dict[str, dict], prev_yi: float | None, hist: list[float]
+) -> None:
+    import json
+
+    with open("/tmp/zz1000_shares_checkpoint.json", "w", encoding="utf-8") as f:
+        json.dump({"share_map": share_map, "prev_yi": prev_yi, "hist": hist}, f)
+
+
 def backfill_shares(merged: list[dict]) -> dict[str, dict]:
-    """2016-11-04 起逐日拉上交所份额, 跳库续传, 返回 {date: share dict}。"""
+    """2016-11-04 起逐日拉上交所份额, 检查点续传, 返回 {date: share dict}。"""
     dates = [b["date"] for b in merged if b["date"] >= ETF_START]
     existing = {
         r["date"]
         for r in get_by_code(CODE, ETF_START, END)
         if r.get("shares_yi") is not None
     }
-    share_map: dict[str, dict] = {}
-    prev_yi: float | None = None
-    hist: list[float] = []
+    share_map, prev_yi, hist = _load_shares_checkpoint()
+    share_map = {d: v for d, v in share_map.items() if d not in existing}
+    if share_map:
+        prev_dates = sorted(share_map)
+        prev_yi = share_map[prev_dates[-1]]["shares_yi"]
+        hist = [share_map[d]["shares_yi"] for d in prev_dates[-SHARE_WINDOW:]]
+        print(f"[ZZ1000] 检查点续传 {len(share_map)} 日", flush=True)
     for i, d in enumerate(dates):
-        if d in existing:
-            # 已入库: 从库里重建 prev 链
-            rows = {r["date"]: r for r in get_by_code(CODE, ETF_START, END)}
-            for dd in dates:
-                r = rows.get(dd)
-                if r and r.get("shares_yi") is not None:
-                    share_map[dd] = {
-                        "shares_yi": r["shares_yi"],
-                        "delta_yi": r.get("shares_delta_yi"),
-                        "delta_pct": r.get("shares_delta_pct"),
-                        "sp": r.get("share_prob"),
-                    }
-            print(f"[ZZ1000] 份额已入库 {len(share_map)} 日, 续传跳过")
-            return share_map
+        if d in existing or d in share_map:
+            continue
         yi = fetch_shares_sse(d).get(CODE)
         if yi is None:
             print(f"[ZZ1000] 份额 {d} 无数据")
-        else:
-            delta_yi = delta_pct = None
-            if prev_yi is not None and prev_yi > 0:
-                delta_yi = round(yi - prev_yi, 4)
-                delta_pct = round(delta_yi / prev_yi * 100, 3)
-            sp = calc_share_probability_dual(delta_pct, yi, list(hist), SHARE_WINDOW)
-            share_map[d] = {
-                "shares_yi": round(yi, 4),
-                "delta_yi": delta_yi,
-                "delta_pct": delta_pct,
-                "sp": sp,
-            }
-            hist.append(yi)
-            if len(hist) > SHARE_WINDOW:
-                hist.pop(0)
-            prev_yi = yi
+            continue
+        delta_yi = delta_pct = None
+        if prev_yi is not None and prev_yi > 0:
+            delta_yi = round(yi - prev_yi, 4)
+            delta_pct = round(delta_yi / prev_yi * 100, 3)
+        sp = calc_share_probability_dual(delta_pct, yi, list(hist), SHARE_WINDOW)
+        share_map[d] = {
+            "shares_yi": round(yi, 4),
+            "delta_yi": delta_yi,
+            "delta_pct": delta_pct,
+            "sp": sp,
+        }
+        hist.append(yi)
+        if len(hist) > SHARE_WINDOW:
+            hist.pop(0)
+        prev_yi = yi
         if (i + 1) % 60 == 0:
             print(f"[ZZ1000] 份额 {d} ({i + 1}/{len(dates)})", flush=True)
+            _save_shares_checkpoint(share_map, prev_yi, hist)
         time.sleep(SLEEP_SEC)
+    _save_shares_checkpoint(share_map, prev_yi, hist)
     print(f"[ZZ1000] 份额拉取完成 {len(share_map)} 日")
     return share_map
 
 
 def backfill_sentiment() -> None:
     """两市成交额(按年分块) + 融资余额(合计, 一次全量)回填。"""
-    if not get_range(PROXY_START, END):
-        print("[ZZ1000] 日历无 2014-2018 交易日, 跳过情绪回填")
-        return
     chunks: list[tuple[str, str]] = [
         ("2014-10-17", "2014-12-31"),
         ("2015-01-01", "2015-12-31"),
@@ -221,10 +228,8 @@ def backfill_rows(
 ) -> int:
     """逐日分析指标并写入 etf_daily(预热段用放宽版, 之后用生产版)。"""
     idx_map = {b["date"]: b for b in idx}
-    idx_aligned = [idx_map[b["date"]] for b in merged if b["date"] in idx_map]
-    if len(idx_aligned) != len(merged):
-        print("[ZZ1000] 警告: 指数与ETF日期未完全对齐, 按ETF日期裁剪")
-        merged = [b for b in merged if b["date"] in idx_map]
+    merged = [b for b in merged if b["date"] in idx_map]
+    idx_aligned = [idx_map[b["date"]] for b in merged]
     n = 0
     for target_idx, bar in enumerate(merged):
         d = bar["date"]
@@ -236,7 +241,6 @@ def backfill_rows(
             else _relaxed_analyze(merged, idx_aligned, sdp, target_idx)
         )
         if result is None:
-            print(f"[ZZ1000] {d} 分析失败(预热不足)")
             continue
         upsert_daily(d, CODE, result)
         if sm and sm.get("shares_yi") is not None:
@@ -244,8 +248,6 @@ def backfill_rows(
                 d, CODE, sm["shares_yi"], sm["delta_yi"], sm["delta_pct"], sm["sp"]
             )
         n += 1
-        if (target_idx + 1) % 120 == 0:
-            print(f"[ZZ1000] 指标 {d} ({target_idx + 1}/{len(merged)})")
     print(f"[ZZ1000] 指标写入 {n} 行")
     return n
 
@@ -282,19 +284,16 @@ def recalc_extended() -> int:
         level = classify_signal(cp)
         update_direction_signal(r["date"], CODE, round(dp, 1), cp, level)
         updated += 1
-    print(f"[ZZ1000] 重算 dp/cp/signal {updated} 行")
     return updated
 
 
 def main() -> None:
     skip_shares = "--skip-shares" in sys.argv
-    t0 = time.time()
     merged, idx = fetch_klines()
-    share_map = {} if skip_shares else backfill_shares(merged)
     backfill_sentiment()
+    share_map = {} if skip_shares else backfill_shares(merged)
     backfill_rows(merged, idx, share_map)
     recalc_extended()
-    print(f"[ZZ1000] 完成, 耗时 {time.time() - t0:.0f}s")
 
 
 if __name__ == "__main__":
