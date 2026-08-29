@@ -1,6 +1,6 @@
 import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, DataSettings, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse, ScheduledTaskInfo } from './types'
 
-const BASE = '/api'
+const BASE = `${__APP_BASE__}/api`
 
 async function parseError(res: Response): Promise<Error> {
   let msg = `API error: ${res.status}`

@@ -12,7 +12,7 @@ import ScheduledTasks from './pages/ScheduledTasks'
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={__APP_BASE__ || undefined}>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate to="/resonance" replace />} />

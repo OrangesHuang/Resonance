@@ -66,7 +66,7 @@ sleep 1
 
 UVICORN_CMD=(
   "$VENV_DIR/bin/python" -m uvicorn main:app
-  --host 0.0.0.0 --port "$PORT"
+  --host "${HOST:-0.0.0.0}" --port "$PORT"
 )
 
 if [ "$DAEMON" = true ]; then
