@@ -8,12 +8,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from base.config import ETFS, REFRESH_MIN_INTERVAL_SEC, SENTIMENT_BACKFILL_DAYS, SHARE_WINDOW
+from base.config import ETFS, MANUAL_REFRESH_DAYS, REFRESH_MIN_INTERVAL_SEC, SENTIMENT_BACKFILL_DAYS, SHARE_WINDOW
 from base.fetch.calendar import fetch_trade_dates
 from base.fetch.kline import fetch_index_kline, fetch_kline
 from base.fetch.sentiment import fetch_margin_series, fetch_market_turnover
 from base.fetch.shares import calc_share_delta
 from base.scheduler import state
+from base.scheduler.etf_daily_jobs import job_backfill_etf_daily
+from base.scheduler.shares_jobs import job_backfill_shares
 from base.store.calendar_repo import (
     get_calendar_count,
     get_last_trading_day,
@@ -107,21 +109,43 @@ def task_fetch_shares() -> dict:
     return {"status": "empty", "shares_date": None}
 
 
+def _noop_progress(*args: object, **kwargs: object) -> None:
+    """后台任务进度回调占位: 手动刷新同步执行, 无需上报进度。"""
+
+
 def task_manual_refresh() -> dict:
-    """手动刷新限速: 距上次刷新过近直接返回, 不触网(防被封)。"""
+    """手动刷新: 补齐最近 MANUAL_REFRESH_DAYS 个交易日(而非仅当天)。
+
+    本地错过数天未重启时定时任务欠账 → 手动刷新一次补齐区间缺失日:
+    份额 T+1 已发布的历史日可直接拉到, 日度/份额回填均幂等跳过已有
+    (先日度后份额: 份额补拉依赖当日行存在)。限速不变, 距上次过近
+    直接返回不触网(防被封)。
+    """
     now = datetime.now()
     if state._last_manual_refresh and (now - state._last_manual_refresh).total_seconds() < REFRESH_MIN_INTERVAL_SEC:
         return {"status": "skipped", "reason": f"距上次刷新不足 {REFRESH_MIN_INTERVAL_SEC}s, 已跳过"}
     state._last_manual_refresh = now
-    shares_result = task_fetch_shares()
-    result = task_daily_analysis()
-    result["shares"] = shares_result
+
+    # 自然日跨度放大覆盖最近 N 个交易日(多拉无害, 幂等跳过已有)
+    start = (now - timedelta(days=int(MANUAL_REFRESH_DAYS * 2.5))).strftime("%Y-%m-%d")
+    end = now.strftime("%Y-%m-%d")
+    daily = job_backfill_etf_daily(_noop_progress, start_date=start, end_date=end)
+    shares = job_backfill_shares(_noop_progress, start_date=start, end_date=end)
     try:
-        result["sentiment"] = task_fetch_sentiment()
+        sentiment = task_fetch_sentiment()
     except Exception as e:
         print(f"[SCHEDULER] manual sentiment fetch failed: {e}")
-        result["sentiment"] = {"status": "error", "error": str(e)}
-    return result
+        sentiment = {"status": "error", "error": str(e)}
+    return {
+        "status": "ok",
+        "count": int(daily.get("written", 0)),
+        "date": end,
+        "shares": {
+            "status": "ok" if shares.get("written", 0) or shares.get("fetched_dates", 0) else "empty",
+            "shares_date": None,
+        },
+        "sentiment": sentiment,
+    }
 
 
 def task_cleanup() -> None:

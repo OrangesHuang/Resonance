@@ -79,6 +79,7 @@ KLINE_CACHE_TTL_SEC = 60  # K线内存缓存有效期(秒)
 KLINE_FAIL_COOLDOWN_SEC = 30  # K线拉取失败后的冷却(秒, 冷却期内直接返回空)
 FETCH_SLEEP_SEC = 0.3  # 相邻 ETF 拉取间隔(秒)
 REFRESH_MIN_INTERVAL_SEC = 120  # 手动刷新接口最小间隔(秒)
+MANUAL_REFRESH_DAYS = 5  # 手动刷新补齐最近 N 个交易日(错过数天未重启时一次补齐)
 SHARES_RETRY = 2  # 份额单日拉取失败重试次数
 SHARES_RETRY_BACKOFF_SEC = 5  # 份额重试递进间隔基数(秒, 每次×递增)
 SHARE_WINDOW = 10  # 份额概率双基准窗口: 当日 vs 前N日均值取强(持续吸筹放大)
