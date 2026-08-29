@@ -12,7 +12,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 # backend/base/api/static.py → 仓库根/frontend/dist
 FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
@@ -27,7 +26,20 @@ def mount_frontend(app: FastAPI) -> bool:
         return False
 
     assets_dir = FRONTEND_DIST / "assets"
-    app.mount(_ASSETS_PREFIX, StaticFiles(directory=assets_dir), name="assets")
+
+    # 哈希文件名资源: 永久缓存(immutable)。本版本 StaticFiles 不支持
+    # headers 参数, 用自定义路由 + FileResponse 加缓存头; 曾漏加缓存头
+    # 导致浏览器启发式缓存 index.html, 部署后旧页面不失效(2026-08 修复)。
+    @app.get(f"{_ASSETS_PREFIX}/{{path:path}}", include_in_schema=False)
+    def assets_file(path: str):
+        target = (assets_dir / path).resolve()
+        if not target.is_file() or not target.is_relative_to(assets_dir.resolve()):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return FileResponse(target, headers={"Cache-Control": _ASSETS_TTL})
+
+    # SPA 入口: no-cache → 每次请求重新协商(ETag/Last-Modified),
+    # 部署后新 index.html 自动生效, 无需用户强刷
+    _INDEX_HEADERS = {"Cache-Control": "no-cache"}
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(request: Request, full_path: str):
@@ -38,7 +50,7 @@ def mount_frontend(app: FastAPI) -> bool:
             target = FRONTEND_DIST / full_path
             # 防目录穿越: 只服务 dist 内的真实文件
             if target.is_file() and target.resolve().is_relative_to(FRONTEND_DIST.resolve()):
-                return FileResponse(target)
-        return FileResponse(INDEX_HTML)
+                return FileResponse(target, headers=_INDEX_HEADERS)
+        return FileResponse(INDEX_HTML, headers=_INDEX_HEADERS)
 
     return True
