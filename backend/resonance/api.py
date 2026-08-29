@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException
 
 from base.analysis.sentiment.core import enrich_turnover, percentile_series, turnover_value
@@ -9,6 +11,7 @@ from base.config import (
     SENTIMENT_ZONE_MIN_PTS,
     SENTIMENT_ZONE_WINDOW,
 )
+from base.store.calendar_repo import get_safe_cache_end
 from base.store.daily_repo import get_by_code
 from base.store.sentiment_repo import get_margin_series, get_turnover_series
 from resonance.analysis.core import compute_resonance
@@ -28,9 +31,14 @@ def _load_series(code: str):
 
 
 @router.get("/overview")
-def resonance_overview(code: str = DEFAULT_RESONANCE_CODE):
+def resonance_overview(code: str = DEFAULT_RESONANCE_CODE, since: str | None = None):
     etf_rows, turnover, margin = _load_series(code)
-    return compute_resonance(code, etf_rows, turnover, margin)
+    # indicators/五灯为当前状态(全量计算), 增量只过滤 history 历史行
+    result = compute_resonance(code, etf_rows, turnover, margin)
+    if since:
+        result["history"] = [h for h in result["history"] if h["date"] > since]
+    result["safe_end"] = get_safe_cache_end(datetime.now().strftime("%Y-%m-%d"))
+    return result
 
 
 @router.get("/day")

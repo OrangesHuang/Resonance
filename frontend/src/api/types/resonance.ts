@@ -1,4 +1,7 @@
 // 多指标共振类型（共振页）
+// 前端缓存结构版本: 共振/策略字段或算法变更时 +1, 旧缓存全量失效重拉
+export const CACHE_SCHEMA = 1
+
 export type LightState = 'red' | 'green' | 'gray'
 
 export interface ResonanceIndicator {
@@ -29,6 +32,8 @@ export interface ResonanceOverview {
   total: number
   verdict: string
   history: ResonanceHistoryPoint[]
+  /** 缓存安全截止日: 增量接口 since 参数, 最近 N 个交易日不入缓存 */
+  safe_end?: string
 }
 
 export interface IndicatorEvidence {

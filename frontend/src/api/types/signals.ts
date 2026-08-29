@@ -64,6 +64,8 @@ export interface EtfHistoryResponse {
   idx: string
   kline: KlinePoint[]
   daily_signals: DailySignal[]
+  /** 缓存安全截止日: 增量接口 since 参数, 最近 N 个交易日不入缓存 */
+  safe_end?: string
 }
 
 export interface EtfInfo {

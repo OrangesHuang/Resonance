@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useDataStatus, useDataJobs, useDataSettings, useStartJob } from '../hooks/useData'
+import { cacheClear } from '../utils/idbCache'
 import SourceCard from '../components/data/SourceCard'
 import RecalcCard from '../components/data/RecalcCard'
 import FlowSteps from '../components/data/FlowSteps'
@@ -31,7 +33,23 @@ export default function DataManage() {
   const [force, setForce] = useState(false)
   const [slotStart, setSlotStart] = useState<string>('')
   const [slotSaved, setSlotSaved] = useState(true)
+  const [cacheCleared, setCacheCleared] = useState(false)
   const rangeTouched = useRef(false)
+  const queryClient = useQueryClient()
+
+  // 清除前端缓存(IndexedDB) → 相关 query 失效, 下次进入全量重拉
+  const clearFrontendCache = async () => {
+    try {
+      await cacheClear()
+      queryClient.invalidateQueries({ queryKey: ['etfHistory'] })
+      queryClient.invalidateQueries({ queryKey: ['resonance'] })
+      queryClient.invalidateQueries({ queryKey: ['sentiment'] })
+      setCacheCleared(true)
+      setTimeout(() => setCacheCleared(false), 3000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '清除缓存失败')
+    }
+  }
 
   const status = useDataStatus(polling)
   const jobs = useDataJobs(polling)
@@ -185,6 +203,20 @@ export default function DataManage() {
             {runningTasks.has('refresh_calendar_slots') ? '刷新中…' : '刷新槽位台账'}
           </button>
         </div>
+      </div>
+
+      {/* 前端缓存(IndexedDB): ETF择时总览的 K线/共振/情绪历史缓存于浏览器本地,
+          清除后下次进入共振页全量重拉(历史数据不可变, 平时只拉最近5个交易日增量) */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-4 flex items-center gap-3 flex-wrap">
+        <h3 className="text-sm font-semibold text-white">前端缓存（IndexedDB）</h3>
+        <span className="text-xs text-gray-500">共振页历史数据存于浏览器本地，正常无需处理；如需强制全量刷新（如数据异常/想重拉）可清除</span>
+        <button
+          onClick={clearFrontendCache}
+          disabled={anyRunning}
+          className="ml-auto px-3 py-1.5 rounded text-sm bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {cacheCleared ? '已清除，重新拉取中…' : '清除缓存'}
+        </button>
       </div>
 
       <div className="flex items-center gap-4 mb-4 flex-wrap text-xs text-gray-500">

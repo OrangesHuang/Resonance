@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { useResonance } from '../hooks/useResonance'
-import { fetchEtfList, fetchEtfHistory, fetchResonanceTrades, fetchStrategyVersions, refreshEtf } from '../api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useResonance, useEtfHistory } from '../hooks/useResonance'
+import { fetchEtfList, fetchResonanceTrades, fetchStrategyVersions, refreshEtf } from '../api/client'
 import ResonanceLights from '../components/resonance/ResonanceLights'
 import ResonanceKline from '../components/resonance/ResonanceKline'
 import ResonanceChart from '../components/resonance/ResonanceChart'
@@ -31,12 +31,7 @@ export default function Resonance() {
     queryFn: fetchEtfList,
     staleTime: Infinity,
   })
-  const { data: history } = useQuery({
-    queryKey: ['etfHistory', code],
-    queryFn: () => fetchEtfHistory(code, KLINE_DAYS),
-    placeholderData: keepPreviousData,
-    staleTime: 5 * 60 * 1000,
-  })
+  const { data: history } = useEtfHistory(code, KLINE_DAYS)
   const { data: tradesData } = useQuery({
     queryKey: ['resonanceTrades', code, algoVersion],
     queryFn: () => fetchResonanceTrades(code, algoVersion),

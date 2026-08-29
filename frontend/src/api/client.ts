@@ -53,8 +53,10 @@ export function fetchSignalsByDate(date: string): Promise<SignalResponse> {
   return get(`/signals/${date}`)
 }
 
-export function fetchEtfHistory(code: string, days = 60): Promise<EtfHistoryResponse> {
-  return get(`/etf/${code}/history?days=${days}`)
+export function fetchEtfHistory(code: string, days = 60, since?: string): Promise<EtfHistoryResponse> {
+  const q = new URLSearchParams({ days: String(days) })
+  if (since) q.set('since', since)
+  return get(`/etf/${code}/history?${q}`)
 }
 
 export function fetchEtfList(): Promise<EtfInfo[]> {
@@ -77,16 +79,20 @@ export function fetchStats(): Promise<StatsResponse> {
   return get('/stats')
 }
 
-export function fetchMarketSentiment(): Promise<SentimentOverview> {
-  return get('/sentiment/overview')
+export function fetchMarketSentiment(since?: string): Promise<SentimentOverview> {
+  const q = new URLSearchParams()
+  if (since) q.set('since', since)
+  return get(q.size ? `/sentiment/overview?${q}` : '/sentiment/overview')
 }
 
 export function refreshSentiment(): Promise<SentimentRefreshResult> {
   return post('/sentiment/refresh')
 }
 
-export function fetchResonance(code = '510300'): Promise<ResonanceOverview> {
-  return get(`/resonance/overview?code=${code}`)
+export function fetchResonance(code = '510300', since?: string): Promise<ResonanceOverview> {
+  const q = new URLSearchParams({ code })
+  if (since) q.set('since', since)
+  return get(`/resonance/overview?${q}`)
 }
 
 export function fetchResonanceDay(code: string, date: string): Promise<ResonanceDayDetail> {

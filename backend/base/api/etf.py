@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Query
 
 from base.config import ETFS
 from base.scheduler.daily_tasks import task_manual_refresh
+from base.store.calendar_repo import get_safe_cache_end
 from base.store.daily_repo import get_by_code
 from base.store.realtime_repo import get_today_snapshots
 
@@ -28,13 +31,20 @@ def etf_list():
 
 
 @router.get("/{code}/history")
-def etf_history(code: str, days: int = Query(default=640, ge=1, le=3200)):
+def etf_history(
+    code: str,
+    days: int = Query(default=640, ge=1, le=3200),
+    since: str | None = Query(default=None, description="增量起点(不含此日): 前端缓存末尾日期"),
+):
     if code not in ETFS:
         return {"error": f"unknown ETF code: {code}"}
 
     daily_records = get_by_code(code)
-    # 从本地数据库构建K线，避免每次请求调腾讯API被封禁
+    # ma250 必须基于全量计算, 增量请求只过滤输出, 不截断计算窗口
     kline = _build_kline_from_db(daily_records, days)
+    if since:
+        kline = [k for k in kline if k["date"] > since]
+        daily_records = [r for r in daily_records[:days] if r["date"] > since]
 
     return {
         "code": code,
@@ -42,6 +52,7 @@ def etf_history(code: str, days: int = Query(default=640, ge=1, le=3200)):
         "idx": ETFS[code]["idx"],
         "kline": kline,
         "daily_signals": daily_records[:days],
+        "safe_end": get_safe_cache_end(datetime.now().strftime("%Y-%m-%d")),
     }
 
 

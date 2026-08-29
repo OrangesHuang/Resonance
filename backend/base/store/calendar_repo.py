@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from base.config import CACHE_BUFFER_DAYS, CACHE_END_SENTINEL
 from base.store.database import get_connection
 
 _trade_dates: set[str] | None = None
@@ -16,6 +17,22 @@ def get_last_trading_day(date: str) -> str:
     while d.weekday() >= 5:
         d -= timedelta(days=1)
     return d.strftime("%Y-%m-%d")
+
+
+def get_safe_cache_end(date: str, buffer_days: int = CACHE_BUFFER_DAYS) -> str:
+    """前端缓存安全截止日: 最新已收盘交易日往前 buffer_days 个交易日。
+
+    最近 buffer_days 个交易日数据可能被修正(T+1 份额/复权/数据源), 不进
+    前端缓存、每次从接口热拉; 更早历史不可变可安全缓存。增量接口
+    since 参数即此值。交易日不足 buffer_days 时返回哨兵(增量起点=全量)。
+    """
+    settled = get_last_trading_day(date)
+    days = get_trade_days(None, settled)
+    if not days:
+        return CACHE_END_SENTINEL
+    if len(days) <= buffer_days:
+        return CACHE_END_SENTINEL
+    return days[-buffer_days - 1]
 
 
 def upsert_trade_dates(dates: list[str]) -> None:
