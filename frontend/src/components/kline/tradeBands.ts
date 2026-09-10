@@ -61,5 +61,9 @@ export function buildTradeBands(trades: TradePoint[], lastDate: string): Array<[
   if (pendingBuy && pendingBuy < lastDate) {
     bands.push([{ xAxis: pendingBuy, itemStyle: { color: BAND_GREEN }, label: HOLD_LABEL }, { xAxis: lastDate }])
   }
+  // 未回补: 最后一次卖出至今仍未买入 → 当前处于空仓, 延伸红色危险区到最后一日
+  if (lastSell && lastSell < lastDate) {
+    bands.push([{ xAxis: lastSell, itemStyle: { color: BAND_RED }, label: EMPTY_LABEL }, { xAxis: lastDate }])
+  }
   return bands
 }

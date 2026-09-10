@@ -303,6 +303,7 @@ export default function ResonanceHeatmap({ data, selectedDate, onSelect, bridge 
       onEvents={onEvents}
       style={{ height: 260 }}
       notMerge
+      lazyUpdate
     />
   )
 }
