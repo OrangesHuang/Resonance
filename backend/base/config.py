@@ -14,6 +14,7 @@ ETFS = {
     "588000": {"name": "华夏科创50ETF", "idx": "科创50", "market": "sh"},
     "589680": {"name": "鹏华科创综指ETF", "idx": "科创综指", "market": "sh"},
     "159780": {"name": "华宝中证双创50ETF", "idx": "双创50", "market": "sz"},
+    "159781": {"name": "易方达中证科创创业50ETF", "idx": "双创50", "market": "sz"},
     "515080": {"name": "招商中证红利ETF", "idx": "中证红利", "market": "sh"},
     "159352": {"name": "南方中证A500ETF", "idx": "中证A500", "market": "sz"},
     "563300": {"name": "华泰柏瑞中证2000ETF", "idx": "中证2000", "market": "sh"},
