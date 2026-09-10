@@ -4,7 +4,8 @@ import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint, Regime
 import { buildTradeBands, sanitizeBands } from '../kline/tradeBands'
 import { buildKlineTooltip } from '../kline/klineTooltip'
 import { buildMarks } from '../kline/klineMarks'
-import { buildMacdPanel, buildMacdOverlay } from './macdOption'
+import { buildMacdPanel } from './macdOption'
+import { buildEmaOverlay } from './emaOverlay'
 import type { RangeSelection } from '../kline/rangeSelect'
 import type { RangeStats } from '../kline/rangeStats'
 
@@ -80,8 +81,8 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
 
   // 标准 MACD 三件套 (DIF 12/26 + DEA + 红绿柱), 独立面板在综合概率下方
   const macdPanel = buildMacdPanel(kline, dates)
-  // 主图右轴叠加 DIF/DEA, 便于在价格图上直接看两条线交叉
-  const macdOverlay = buildMacdOverlay(kline)
+  // 主图叠加长周期价格均线 EMA120/EMA350(价格量纲, 共享价格轴 → 缩放不跳)
+  const emaOverlay = buildEmaOverlay(kline)
 
   const sigByDate = new Map<string, DailySignal>()
   for (const s of signals) sigByDate.set(s.date, s)
@@ -188,7 +189,6 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
         { scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9 } },
         { min: 0, max: 100, gridIndex: 3, splitNumber: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9, formatter: '{value}%' } },
         macdPanel.yAxis,
-        macdOverlay.yAxis,
       ],
       series: [
         {
@@ -250,7 +250,7 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
           markLine: probMarkLine,
         },
         ...macdPanel.series,
-        ...macdOverlay.series,
+        ...emaOverlay.series,
       ],
       dataZoom: [
         insideZoom,
