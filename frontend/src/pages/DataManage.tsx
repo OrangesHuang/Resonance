@@ -115,7 +115,9 @@ export default function DataManage() {
 
   const LEVEL_TEXT = { ok: '充足', warn: '部分缺失', empty: '空' }
 
-  const missingShares = s.etf_daily.total_records - s.etf_daily.records_with_shares
+  // 「可补」口径(后端已剔除上市前/无基准的日期), 避免把 512100 上市前的 2876 天算成缺口
+  const missingShares =
+    s.etf_daily.missing_shares_fillable ?? s.etf_daily.total_records - s.etf_daily.records_with_shares
   const missingEtfDays = s.etf_daily.missing_days ?? 0
   const missingEtfRange = s.etf_daily.missing_ranges?.map(r => `${r[0]}~${r[1]}`).join(' / ') ?? ''
 
@@ -264,7 +266,7 @@ export default function DataManage() {
           running={runningTasks.has('backfill_shares')}
           progress={progressFor('backfill_missing_shares') ?? progressFor('backfill_shares')}
           secondaryLabel={missingShares > 0 ? `补全缺失 (${missingShares})` : undefined}
-          secondaryOnAction={missingShares > 0 ? () => run('backfill_missing_shares') : undefined}
+          secondaryOnAction={missingShares > 0 ? () => run('backfill_missing_shares', rangeParams) : undefined}
           secondaryDisabled={runningTasks.has('backfill_missing_shares') || rebuildRunning}
           secondaryRunning={runningTasks.has('backfill_missing_shares')}
           flow={flowOf('backfill_shares')} />

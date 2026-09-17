@@ -56,6 +56,8 @@ export interface DailySignal {
   shares_delta_yi: number | null
   shares_delta_pct: number | null
   share_prob: number | null
+  /** 份额折算/合并比例(>1 拆分、<1 合并); 非空表示该日份额变动为折算, 不是申赎 */
+  share_adjust: number | null
 }
 
 export interface EtfHistoryResponse {

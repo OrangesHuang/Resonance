@@ -9,6 +9,13 @@ function fmtFlow(v: number): string {
   return `${v >= 0 ? '+' : ''}${v.toFixed(2)} 亿份`
 }
 
+const ADJUST_COLOR = '#a78bfa'
+
+function fmtAdjustNote(ratio: number): string {
+  const kind = ratio >= 1 ? '份额折算' : '份额合并'
+  return `<span style="color:${ADJUST_COLOR}">（${kind} ×${ratio.toFixed(3)} 已扣除，非申赎）</span>`
+}
+
 function rangeBlock(stats: RangeStats): string {
   const flow = stats.net_flow_yi
   const flowHtml = flow == null
@@ -35,6 +42,7 @@ export function buildKlineTooltip(kline: KlinePoint[],
     if (!k) return ''
     const s = sigByDate.get(k.date)
     const delta = s?.shares_delta_yi
+    const adjust = s?.share_adjust
     const prob = s?.composite_prob
     const cpDir =
       prob == null ? null : prob >= 45 ? '吸筹' : prob <= 35 ? '出货' : '中性'
@@ -48,7 +56,8 @@ export function buildKlineTooltip(kline: KlinePoint[],
       `<b>${k.date}</b><br/>` +
       `开 ${k.open} · 收 ${k.close} · 高 ${k.high} · 低 ${k.low}<br/>` +
       `成交量：${k.volume.toLocaleString('zh-CN')}<br/>` +
-      `份额净申赎：${delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 亿份` : '-'}<br/>` +
+      `份额净申赎：${delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 亿份` : '-'}` +
+      (adjust != null ? fmtAdjustNote(adjust) : '') + `<br/>` +
       `综合概率：${prob != null ? `${prob.toFixed(1)}%` : '-'}` +
       (cpDir != null ? `（<span style="color:${cpColor}"><b>${cpDir}</b></span>）` : '') + `<br/>` +
       tradeHtml +

@@ -18,6 +18,9 @@ ETFS = {
     "515080": {"name": "招商中证红利ETF", "idx": "中证红利", "market": "sh"},
     "159352": {"name": "南方中证A500ETF", "idx": "中证A500", "market": "sz"},
     "563300": {"name": "华泰柏瑞中证2000ETF", "idx": "中证2000", "market": "sh"},
+    "515880": {"name": "国泰中证全指通信设备ETF", "idx": "通信设备", "market": "sh"},
+    "588200": {"name": "嘉实上证科创板芯片ETF", "idx": "科创芯片", "market": "sh"},
+    "159740": {"name": "大成恒生科技ETF", "idx": "恒生科技", "market": "sz"},
 }
 
 INDEX_CODE = "sh000300"
@@ -66,8 +69,8 @@ MAX_RETRY = 2
 MARKET_TURNOVER_SYMBOLS = "sh000001,sz399001"  # 上证指数+深证成指
 TURNOVER_POLL_INTERVAL_SEC = 300  # 5 分钟一次
 
-KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,{limit},qfq"
-KLINE_URL_RANGE = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,{start},{end},{limit},qfq"  # 日期区间拉取(回填历史用)
+KLINE_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,{limit},{fq}"
+KLINE_URL_RANGE = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,{start},{end},{limit},{fq}"  # 日期区间拉取(回填历史用)
 REALTIME_URL = "http://qt.gtimg.cn/q={symbols}"
 SINA_KLINE_URL = (
     "https://quotes.sina.cn/cn/api/json_v2.php/"
@@ -88,6 +91,10 @@ SHARES_RETRY_BACKOFF_SEC = 5  # 份额重试递进间隔基数(秒, 每次×递�
 SHARE_WINDOW = 10  # 份额概率双基准窗口: 当日 vs 前N日均值取强(持续吸筹放大)
 SHARES_FAIL_PAUSE_AFTER = 3  # 连续失败达到此数后暂停
 SHARES_FAIL_PAUSE_SEC = 60  # 连续失败暂停时长(秒, 给远端喘息)
+# 轮末重试轮数: 同一次任务里对"整日拉取失败"的日期在末尾重跑。
+# 即时重试(SHARES_RETRY)只覆盖秒级抖动; 持续限流要靠错开时间的轮末重试,
+# 否则一次抖动就留下永久缺口(588200 的 2025-09-26~10-20 共 11 天即如此)。
+SHARES_RETRY_PASSES = 2
 
 # 市场情绪模块
 SENTIMENT_MA_WINDOW = 5  # 成交额均线窗口

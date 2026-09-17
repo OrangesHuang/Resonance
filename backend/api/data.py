@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from base.config import (
     DEFAULT_ETF_SEED_DAYS,
     DEFAULT_SHARES_BACKFILL_DAYS,
+    ETFS,
     JOB_DAYS_MAX,
     JOB_LIST_LIMIT,
     SENTIMENT_BACKFILL_DAYS,
@@ -21,7 +22,7 @@ from base.scheduler.job_registry import JOB_DEFS, JOB_FNS
 from base.scheduler.scheduled_defs import SCHEDULED_DEFS
 from base.scheduler.tasks import scheduler
 from base.store.calendar_repo import get_calendar_count, get_last_sync, get_range, get_trade_days
-from base.store.daily_repo import get_distinct_dates, get_stats
+from base.store.daily_repo import count_fillable_missing_shares, get_distinct_dates, get_stats
 from base.store.sentiment_repo import (
     get_margin_count,
     get_margin_series,
@@ -123,6 +124,8 @@ def data_status():
                 **get_stats(),
                 "missing_days": slots["missing_days"],
                 "missing_ranges": slots["missing_ranges"],
+                # "可补"的份额缺口(已剔除上市前/无基准的日期), 供页面显示真实的补全量
+                "missing_shares_fillable": count_fillable_missing_shares(list(ETFS), get_setting("data_slot_start")),
             },
             "turnover": {"count": get_turnover_count(), "range": _series_range(turnover)},
             "margin": {"count": get_margin_count(), "range": _series_range(margin)},

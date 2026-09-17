@@ -39,6 +39,8 @@ export interface EtfDailyStats {
   // 以交易日历为填充槽: 数据区间内应有数据却缺失的交易日(区间拉取截断/中断等成因)
   missing_days?: number
   missing_ranges?: [string, string][]
+  // "可补"的份额缺口(已剔除各标的上市前/无基准的日期), 与补全任务口径一致
+  missing_shares_fillable?: number
 }
 
 export interface SeriesStats {

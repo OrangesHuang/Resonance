@@ -25,9 +25,9 @@ RANGE_CHUNK_LIMIT = 650  # 每块请求 limit(覆盖块内最大交易日数)
 _CACHE: dict[tuple, tuple[float, list[dict] | None]] = {}
 
 
-def _cached(code: str, limit: int, start_date: str | None = None, end_date: str | None = None):
+def _cached(code: str, limit: int, start_date: str | None = None, end_date: str | None = None, fq: str = "qfq"):
     """内存 TTL 缓存: 有效期内直接返回, 失败也冷却缓存避免重试风暴。"""
-    key = (code, limit, start_date, end_date)
+    key = (code, limit, start_date, end_date, fq)
     now = time.time()
     hit = _CACHE.get(key)
     if hit is None:
@@ -43,9 +43,14 @@ def _cached(code: str, limit: int, start_date: str | None = None, end_date: str 
 
 
 def _store(
-    code: str, limit: int, data: list[dict] | None, start_date: str | None = None, end_date: str | None = None
+    code: str,
+    limit: int,
+    data: list[dict] | None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    fq: str = "qfq",
 ) -> None:
-    _CACHE[(code, limit, start_date, end_date)] = (time.time(), data)
+    _CACHE[(code, limit, start_date, end_date, fq)] = (time.time(), data)
 
 
 def _market_prefix(code: str) -> tuple[str, str]:
@@ -140,8 +145,9 @@ def fetch_kline(
     limit: int = KLINE_LIMIT,
     start_date: str | None = None,
     end_date: str | None = None,
+    fq: str = "qfq",
 ) -> list[dict]:
-    """拉取日K线(前复权)。
+    """拉取日K线(默认前复权 qfq; 传 fq="bfq" 取不复权, 用于识别份额折算)。
 
     不带日期: 返回最近 limit 根(腾讯接口单次上限约 640~700 根);
     带日期: 返回 [start_date, end_date] 区间内全部K线。区间超过单次上限
@@ -149,7 +155,7 @@ def fetch_kline(
     (曾因单次大区间只返回最近 640 根, 2021~2023 中间段永久拉不到)。
     新浪降级源不支持日期区间, 仅无日期路径可用。
     """
-    cached = _cached(code, limit, start_date, end_date)
+    cached = _cached(code, limit, start_date, end_date, fq)
     if cached is not None:
         return cached
 
@@ -162,7 +168,7 @@ def fetch_kline(
         e = end_date or datetime.now().strftime("%Y-%m-%d")
         merged: list[dict] = []
         for ws, we in _iter_date_windows(s, e):
-            url = KLINE_URL_RANGE.format(symbol=symbol, start=ws, end=we, limit=RANGE_CHUNK_LIMIT)
+            url = KLINE_URL_RANGE.format(symbol=symbol, start=ws, end=we, limit=RANGE_CHUNK_LIMIT, fq=fq)
             bars = _fetch_tencent(symbol, url) or []
             if not bars:
                 print(f"[FETCH] kline {code} 区间 {ws}~{we} 无数据")
@@ -173,17 +179,17 @@ def fetch_kline(
             if r["date"] not in seen:
                 seen.add(r["date"])
                 result.append(r)
-        _store(code, limit, result, start_date, end_date)
+        _store(code, limit, result, start_date, end_date, fq)
         return result
 
     # 无日期路径: 最近 limit 根(腾讯不可达时降级新浪)
-    url = KLINE_URL.format(symbol=symbol, limit=limit)
+    url = KLINE_URL.format(symbol=symbol, limit=limit, fq=fq)
     recent_bars: list[dict] | None = _fetch_tencent(symbol, url)
     if recent_bars is None:
         recent_bars = _fetch_sina(code, limit)  # 降级新浪
     if recent_bars is None:
         recent_bars = []
-    _store(code, limit, recent_bars, start_date, end_date)
+    _store(code, limit, recent_bars, start_date, end_date, fq)
     return recent_bars
 
 

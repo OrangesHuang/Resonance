@@ -113,6 +113,7 @@ def init_db() -> None:
         _migrate_add_direction_columns(conn)
         _migrate_add_ohlc_columns(conn)
         _migrate_add_calendar_slot_columns(conn)
+        _migrate_add_share_adjust_column(conn)
         _migrate_drop_etf_kline(conn)
         conn.commit()
     finally:
@@ -143,6 +144,18 @@ def _migrate_add_calendar_slot_columns(conn: sqlite3.Connection) -> None:
     for col in ("etf_daily_ok", "shares_ok", "turnover_ok", "margin_ok"):
         if col not in existing:
             conn.execute(f"ALTER TABLE trade_calendar ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
+
+
+def _migrate_add_share_adjust_column(conn: sqlite3.Connection) -> None:
+    """etf_daily 增加份额折算标记列: 非 NULL 表示该日为份额折算/合并日,
+    存放折算比例 k(>1 拆分、<1 合并), 当日份额变化不计入申赎。
+
+    依据: 折算按 k 改变份额但不涉及资金, 若不标记会被当成天量申赎
+    (515880 2026-07-03 的 2:1 折算曾被记为 +333.13 亿份申购)。
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(etf_daily)")}
+    if "share_adjust" not in existing:
+        conn.execute("ALTER TABLE etf_daily ADD COLUMN share_adjust REAL")
 
 
 def _migrate_drop_etf_kline(conn: sqlite3.Connection) -> None:

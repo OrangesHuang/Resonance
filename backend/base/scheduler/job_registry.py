@@ -16,6 +16,7 @@ from base.scheduler.etf_daily_jobs import job_backfill_etf_daily, job_backfill_m
 from base.scheduler.rebuild import job_rebuild_all
 from base.scheduler.recalc import job_recalc_composite
 from base.scheduler.sentiment_jobs import job_fetch_etf_latest, job_fetch_sentiment
+from base.scheduler.share_adjust_jobs import job_fix_share_splits
 from base.scheduler.shares_jobs import job_backfill_missing_shares, job_backfill_shares
 
 JOB_DEFS: dict[str, dict] = {
@@ -90,10 +91,14 @@ JOB_DEFS: dict[str, dict] = {
     "backfill_missing_shares": {
         "label": "补全缺失份额",
         "exclusive": False,
-        "defaults": {},
+        "defaults": {"start_date": None, "end_date": None},
         "data_flow": [
-            {"step": "derive", "text": "扫描 etf_daily 缺份额的标的/日期（远端拉失败、T+1 发布拉空等成因）"},
+            {
+                "step": "derive",
+                "text": "扫描缺份额/缺 delta 的交易日（可按区间收窄），并剔除各标的上市前的日期",
+            },
             {"step": "fetch", "text": "仅对缺失标的拉取对应日期份额"},
+            {"step": "retry", "text": "轮末对整日失败的日期重试（错开时间规避持续限流，防永久缺口）"},
             {"step": "write", "text": "写回份额 4 列，已有数据不覆盖"},
         ],
     },
@@ -123,6 +128,26 @@ JOB_DEFS: dict[str, dict] = {
             {"step": "fetch", "text": "拉取最新交易日 K 线 + 份额（份额 T+1 自动回溯）"},
             {"step": "derive", "text": "完整指标链：量能/方向/位置/份额 → 综合概率 → 信号"},
             {"step": "write", "text": "upsert 当日行到 etf_daily"},
+        ],
+    },
+    "fix_share_splits": {
+        "label": "修正份额折算(拆分/合并)",
+        "exclusive": False,
+        "defaults": {"dry_run": False},
+        "data_flow": [
+            {
+                "step": "scan",
+                "text": "扫描 |单日份额变化%| ≥ 30% 的候选事件(折算或天量申赎都可能触发)",
+            },
+            {
+                "step": "derive",
+                "text": "拉事件日附近复权因子(不复权/前复权)找跳变: 份额比例 ≈ 因子比例 → 判定为折算",
+            },
+            {
+                "step": "write",
+                "text": "折算日写入扣除折算后的真实净申赎 + share_adjust 标记, 并按折算后基准重算该日及后 10 日 share_prob",
+            },
+            {"step": "note", "text": "完成后建议再跑「重算综合概率」以对齐 composite_prob / signal_level"},
         ],
     },
     "recalc_composite": {
@@ -164,6 +189,7 @@ JOB_FNS: dict[str, Callable[..., dict]] = {
     "refresh_calendar_slots": job_refresh_calendar_slots,
     "backfill_shares": job_backfill_shares,
     "backfill_missing_shares": job_backfill_missing_shares,
+    "fix_share_splits": job_fix_share_splits,
     "fetch_sentiment": job_fetch_sentiment,
     "fetch_etf_latest": job_fetch_etf_latest,
     "recalc_composite": job_recalc_composite,

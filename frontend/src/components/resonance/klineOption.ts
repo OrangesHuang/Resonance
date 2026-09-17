@@ -14,6 +14,7 @@ const DANGER_BAND = 'rgba(239, 68, 68, 0.08)'
 const CHANCE_BAND = 'rgba(34, 197, 94, 0.08)'
 const UP_COLOR = '#ef4444'
 const DOWN_COLOR = '#22c55e'
+const SHARE_ADJUST_COLOR = '#a78bfa' // 份额折算/合并日(非申赎)
 
 interface BuildParams {
   kline: KlinePoint[]
@@ -87,7 +88,10 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
   const sigByDate = new Map<string, DailySignal>()
   for (const s of signals) sigByDate.set(s.date, s)
   const flowData = dates.map(d => {
-    const v = sigByDate.get(d)?.shares_delta_yi
+    const sig = sigByDate.get(d)
+    const v = sig?.shares_delta_yi
+    // 折算/合并日: 份额数量的机械变动(非资金申赎), 用紫色区分, 避免被读成天量申购
+    if (sig?.share_adjust != null) return { value: v ?? 0, itemStyle: { color: SHARE_ADJUST_COLOR } }
     if (v == null) return { value: null, itemStyle: { color: '#374151' } }
     return { value: v, itemStyle: { color: v >= 0 ? DOWN_COLOR : UP_COLOR } }
   })

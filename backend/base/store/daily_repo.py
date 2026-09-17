@@ -88,6 +88,62 @@ def update_share_data(
         conn.close()
 
 
+def update_share_adjust(
+    date: str,
+    code: str,
+    delta_yi: float | None,
+    delta_pct: float | None,
+    share_prob: float | None,
+    adjust_ratio: float,
+) -> None:
+    """修正折算日的份额字段: 写入扣除折算后的真实净申赎 + 折算比例标记。
+
+    只动份额相关列(不含 shares_yi —— 份额总数是交易所真实值)与 share_adjust
+    标记, 不触碰价格/成交/方向等其它字段。
+    """
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE etf_daily
+            SET shares_delta_yi=?, shares_delta_pct=?, share_prob=?, share_adjust=?,
+                updated_at=datetime('now','localtime')
+            WHERE date=? AND code=?
+        """,
+            (delta_yi, delta_pct, share_prob, adjust_ratio, date, code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_share_prob(date: str, code: str, share_prob: float | None) -> None:
+    """只更新 share_prob 一列(折算后重算尾随日概率用, 不改折算标记)。"""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE etf_daily SET share_prob=?, updated_at=datetime('now','localtime') WHERE date=? AND code=?",
+            (share_prob, date, code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def clear_share_adjust(date: str, code: str) -> None:
+    """清除折算标记(复核后确认非折算时的自愈路径)。"""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE etf_daily SET share_adjust=NULL, updated_at=datetime('now','localtime') "
+            "WHERE date=? AND code=? AND share_adjust IS NOT NULL",
+            (date, code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def update_composite_signal(date: str, code: str, composite_prob: float, signal_level: str) -> None:
     """重算对齐: 只更新综合概率与信号等级两列, 不动其他字段。"""
     conn = get_connection()
@@ -156,15 +212,81 @@ def shares_complete_for(date: str) -> bool:
     return all(c in rows for c in ETFS)
 
 
-def get_missing_share_dates() -> list[str]:
-    """份额缺失的交易日(升序): 当日有 K 线记录但至少一只 ETF 缺 shares_yi。"""
+def get_missing_share_dates(start: str | None = None, end: str | None = None) -> list[str]:
+    """份额缺失的交易日(升序): 当日有 K 线记录但至少一只 ETF 缺份额字段。
+
+    可按 [start, end] 收窄 —— 补全任务支持区间, 避免动辄从 2005 年全量扫描。
+    """
+    conn = get_connection()
+    try:
+        sql = "SELECT date, COUNT(*) AS total, COUNT(shares_yi) AS with_shares FROM etf_daily"
+        conds: list[str] = []
+        params: list = []
+        if start:
+            conds.append("date >= ?")
+            params.append(start)
+        if end:
+            conds.append("date <= ?")
+            params.append(end)
+        if conds:
+            sql += " WHERE " + " AND ".join(conds)
+        sql += " GROUP BY date HAVING with_shares < total ORDER BY date"
+        rows = conn.execute(sql, params).fetchall()
+        return [r["date"] for r in rows]
+    finally:
+        conn.close()
+
+
+def get_first_share_dates() -> dict[str, str]:
+    """各标的**已有份额的最早日期**(完全没有份额的标的不在返回中)。
+
+    用途: 剔除"ETF 尚未成立"的日期。曾因此踩坑 —— 补全任务从 2005-01-17 起
+    扫 512100 等标的上市前的日期, 远端必然返回空, 每 3 次失败暂停 60s,
+    5258 个日期几小时都跑不完。
+    """
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT date, COUNT(*) AS total, COUNT(shares_yi) AS with_shares "
-            "FROM etf_daily GROUP BY date HAVING with_shares < total ORDER BY date"
+            "SELECT code, MIN(date) AS d FROM etf_daily WHERE shares_yi IS NOT NULL GROUP BY code"
         ).fetchall()
-        return [r["date"] for r in rows]
+        return {r["code"]: r["d"] for r in rows}
+    finally:
+        conn.close()
+
+
+def count_fillable_missing_shares(codes: list[str] | None = None, start: str | None = None) -> int:
+    """可被「补全缺失份额」真正补上的缺失记录数(单条 SQL, 供状态页展示)。
+
+    口径与任务一致:
+      - 缺 shares_yi 或缺 delta;
+      - 日期不早于该标的已有份额的最早日期(剔除上市前, 否则会把 512100 上市前
+        的 2876 天算成缺口);
+      - 只统计 codes(默认全部; 调用方传在册标的, 以免把已移除标的的历史空洞
+        算进来 —— 库里的 510880/159919/510310/510330 就是这种遗留行);
+      - 可传 start 与任务的范围(数据槽位起点)对齐;
+      - 排除**结构性缺失**: 各标的"首个有份额的日子"没有前一日可比, delta
+        必然为空, 不算可补缺口。
+    """
+    conn = get_connection()
+    try:
+        sql = """
+            SELECT COUNT(*) AS c FROM etf_daily d
+            JOIN (SELECT code, MIN(date) AS f FROM etf_daily
+                  WHERE shares_yi IS NOT NULL GROUP BY code) s ON s.code = d.code
+            WHERE (d.shares_yi IS NULL OR d.shares_delta_yi IS NULL)
+              AND d.date >= s.f
+              AND NOT (d.shares_yi IS NOT NULL AND d.shares_delta_yi IS NULL AND d.date = s.f)
+        """
+        params: list = []
+        if start:
+            sql += " AND d.date >= ?"
+            params.append(start)
+        if codes:
+            placeholders = ",".join(["?"] * len(codes))
+            sql += f" AND d.code IN ({placeholders})"
+            params.extend(codes)
+        row = conn.execute(sql, params).fetchone()
+        return int(row["c"])
     finally:
         conn.close()
 
