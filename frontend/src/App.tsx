@@ -9,6 +9,12 @@ import KlineCompare from './pages/KlineCompare'
 import PortfolioBacktest from './pages/PortfolioBacktest'
 import DataManage from './pages/DataManage'
 import ScheduledTasks from './pages/ScheduledTasks'
+import Methodology from './pages/Methodology'
+import PolicyBackdrop from './pages/PolicyBackdrop'
+import MacroLeverage from './pages/MacroLeverage'
+import RealRate from './pages/RealRate'
+import HouseholdGov from './pages/HouseholdGov'
+import Response from './pages/Response'
 
 export default function App() {
   return (
@@ -25,6 +31,12 @@ export default function App() {
           <Route path="/calendar" element={<TradeCalendar />} />
           <Route path="/data" element={<DataManage />} />
           <Route path="/tasks" element={<ScheduledTasks />} />
+          <Route path="/framework" element={<Methodology />} />
+          <Route path="/policy" element={<PolicyBackdrop />} />
+          <Route path="/macro" element={<MacroLeverage />} />
+          <Route path="/real-rate" element={<RealRate />} />
+          <Route path="/household" element={<HouseholdGov />} />
+          <Route path="/response" element={<Response />} />
         </Route>
       </Routes>
     </BrowserRouter>

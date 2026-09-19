@@ -8,15 +8,29 @@ const TOP_NAV = [
   { to: '/portfolio', label: 'ETF组合回测' },
 ]
 
-const AUX_NAV = [
-  { to: '/sentiment', label: '市场宏观指标' },
-  { to: '/monitor', label: 'ETF流向分析' },
-  { to: '/data', label: '数据管理' },
-  { to: '/tasks', label: '定时任务' },
-  { to: '/calendar', label: '交易日历' },
+const NAV_GROUPS = [
+  {
+    label: '逻辑说明',
+    items: [
+      { to: '/framework', label: '交易框架' },
+      { to: '/policy', label: '政策底色' },
+      { to: '/macro', label: '宏观杠杆' },
+      { to: '/real-rate', label: '实际利率' },
+      { to: '/household', label: '居民 vs 政府' },
+      { to: '/response', label: '实战配置' },
+    ],
+  },
+  {
+    label: '辅助数据',
+    items: [
+      { to: '/sentiment', label: '市场宏观指标' },
+      { to: '/monitor', label: 'ETF流向分析' },
+      { to: '/data', label: '数据管理' },
+      { to: '/tasks', label: '定时任务' },
+      { to: '/calendar', label: '交易日历' },
+    ],
+  },
 ]
-
-const AUX_PATHS = new Set(AUX_NAV.map(i => i.to))
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `block px-3 py-2 rounded text-sm transition-colors ${
@@ -25,40 +39,34 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
       : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
   }`
 
-function SidebarNav() {
+function NavGroup({ label, items }: { label: string; items: { to: string; label: string }[] }) {
   const location = useLocation()
-  const [auxOpen, setAuxOpen] = useState(false)
+  const active = items.some(i => i.to === location.pathname)
+  const [open, setOpen] = useState(active)
 
-  const auxActive = AUX_PATHS.has(location.pathname)
+  useEffect(() => { if (active) setOpen(true) }, [active])
 
   return (
-    <nav className="flex-1 px-3 py-4 space-y-1">
-      {TOP_NAV.map(item => (
-        <NavLink key={item.to} to={item.to} className={linkClass}>
-          {item.label}
-        </NavLink>
-      ))}
+    <div>
       <button
-        onClick={() => setAuxOpen(o => !o)}
+        onClick={() => setOpen(o => !o)}
         className={`flex w-full items-center justify-between px-3 py-2 rounded text-sm transition-colors ${
-          auxActive
-            ? 'text-white'
-            : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+          active ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
         }`}
       >
-        <span>辅助数据</span>
+        <span>{label}</span>
         <svg
           width="14" height="14" viewBox="0 0 20 20" fill="none"
           stroke="currentColor" strokeWidth="2" strokeLinecap="round"
           strokeLinejoin="round"
-          className={`transition-transform ${auxOpen ? 'rotate-90' : ''}`}
+          className={`transition-transform ${open ? 'rotate-90' : ''}`}
         >
           <polyline points="7 4 13 10 7 16" />
         </svg>
       </button>
-      {auxOpen && (
+      {open && (
         <div className="space-y-1">
-          {AUX_NAV.map(item => (
+          {items.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -70,6 +78,21 @@ function SidebarNav() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function SidebarNav() {
+  return (
+    <nav className="flex-1 px-3 py-4 space-y-1">
+      {TOP_NAV.map(item => (
+        <NavLink key={item.to} to={item.to} className={linkClass}>
+          {item.label}
+        </NavLink>
+      ))}
+      {NAV_GROUPS.map(group => (
+        <NavGroup key={group.label} label={group.label} items={group.items} />
+      ))}
     </nav>
   )
 }
