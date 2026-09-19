@@ -3,10 +3,47 @@
 > 本文件是本项目（QoderCN / opencode 等任何 Agent）的行为准则：代码开发规范 + 金融量化算法推演方法论。
 > 所有新增/修改代码必须符合本规范；与本规范冲突的旧代码，修改时一并修正。
 
+## 0. 快速上手（Agent 必读）
+
+命令在对应子目录执行（`backend/`、`frontend/`）。
+
+```bash
+./start.sh                  # 一键启动前后端；交互终端下自动 nohup 后台化（日志 nohup.out）
+./start.sh --foreground     # 前台运行（退出时统一清理）
+# 停止后台服务: pkill -f 'uvicorn main:app.*--port 8001'
+./start-prod.sh [--daemon|--skip-build]   # 生产: 前端构建 dist 由后端单进程托管
+# 手动: cd backend && python3 -m uvicorn main:app --port 8001   (API :8001)
+#       cd frontend && npm run dev                              (UI :5174, /api 代理到 :8001)
+```
+
+检查框架（提交前必须全过，见第 5 节）：
+
+```bash
+cd backend && ruff check . && ruff format --check . && mypy .
+cd backend && pytest -q                        # 全量测试
+cd backend && pytest tests/test_zz.py -q       # 单文件（pytest.ini 已设 pythonpath=.）
+cd frontend && npm run lint                    # eslint，0 error（react-refresh warning 属容忍）
+cd frontend && npm run build                   # = tsc && vite build（无独立 typecheck 脚本）
+cd frontend && npx tsc --noEmit                # 仅类型检查
+python3 scripts/backtest_portfolio.py          # 组合回测验证
+```
+
+- 数据库：`~/.etf-monitor/etf_monitor.db`（`ETF_MONITOR_HOME` 覆盖）；空库首次启动只回填情绪，ETF 日度需在「数据管理」页点「一键重建」。
+- `./start.sh` 会先 `kill -9` 8001/5174 端口并删 `__pycache__`：不要并发跑多个实例。
+- `nohup.out` 是运行日志（已 gitignore，可达数 MB）：排查用 `tail`，**不要整体读取**。
+- 工具配置的**有意容忍项，勿"顺手修"**：
+  - ruff：`target=py39, line-length=120`，故意 `ignore DTZ005/DTZ007`（中国市场 naive datetime 约定）与 `BLE001`（第三方库宽异常）。
+  - mypy：对 `akshare/requests/apscheduler/fastapi/pydantic` 忽略缺失 stubs。
+  - eslint：`react-hooks/set-state-in-effect`、`react-hooks/refs` 显式关闭（React 18 合法模式），勿重新开启。
+  - tsc 开启 `noUnusedLocals/noUnusedParameters`：未用变量会让 `npm run build` 失败。
+- `cli/resonance.py` / `cli/band.py` 已与 `base/` 重构脱节（import 仍是 `from config`/`from store...`；`band.py` 另有 py3.9 f-string 语法错误），当前不可用，勿据此判断数据问题。
+- 方法论/数据文档：`docs/strategy_algorithms.md`、`docs/data_lineage.md`、`docs/algorithm_technical.md`、根目录《量化买卖规律发现方法论与可靠性评估.md》（`scripts/event_study.py` 的方法论依据）。
+
 ## 1. 核心铁律
 
 1. **单文件 ≤ 300 行**：任何源码文件（`.py` / `.ts` / `.tsx`）严禁超过 300 行；接近 250 行时必须拆分。
    例外：`package.json`、`tsconfig.json`、`ruff.toml` 等纯配置文件。
+   存量超标文件（`base/store/daily_repo.py`、`pages/Resonance.tsx`、`pages/DataManage.tsx`、`components/sentiment/SentimentLineChart.tsx`、`components/resonance/ResonanceHeatmap.tsx`）改动时顺手拆分，禁止继续往里堆逻辑。
 2. **按领域组织目录**：代码按领域放对应目录，禁止在无关目录或根目录散落新文件；新增领域先建目录，禁止在已有大文件里堆功能。
 3. **提交前必须通过代码检查框架**：后端 ruff + mypy，前端 tsc + eslint（见第 5 节）。
 
@@ -19,22 +56,26 @@
 ```
 backend/
 ├── base/            # 共用功能（多页面领域共用）
-│   ├── config.py    # 系统级命名常量
-│   ├── fetch/       # HTTP 请求与原始数据解析
-│   ├── store/       # 全部 SQLite 操作（参数化查询）
-│   ├── scheduler/   # 任务编排（data_jobs/tasks/job_registry/rebuild、etf_daily_jobs/shares_jobs 回填）
+│   ├── config.py    # 系统级命名常量（ETF 清单/阈值/窗口/调度/限流）
+│   ├── fetch/       # HTTP 请求与原始数据解析（kline/realtime/shares/sentiment/calendar/adjust_factor/turnover_official）
+│   ├── store/       # 全部 SQLite 操作（参数化查询；database 连接建表迁移 + 各表 repo）
+│   ├── scheduler/   # 任务编排（tasks/daily_tasks/intraday_tasks/job_manager/job_registry/
+│   │                #   scheduled_defs/rebuild/recalc/time_guard/state + 各回填 jobs + calendar_slots）
 │   ├── analysis/    # 共用纯函数计算
 │   │   ├── sentiment/   # 市场情绪（共振页 + 情绪页共用）
-│   │   └── strategy/    # 各 ETF 专属买卖点（共振页 + 组合回测共用）
-│   └── api/         # 共用接口（etf.py 列表/K线/刷新、sentiment.py 情绪概览）
+│   │   ├── strategy/    # 各 ETF 专属买卖点（共振页 + 组合回测共用）
+│   │   └── shares_adjust.py  # 份额复权
+│   └── api/         # 共用接口（etf.py 列表/K线/刷新、sentiment.py 情绪概览、static.py 静态托管）
 ├── resonance/       # 多指标共振页面领域
-│   ├── analysis/    # core.py 共振计算、evidence.py 日级证据、composite.py 综合概率、factors.py 份额因子、intraday.py 盘中信号
+│   ├── analysis/    # core.py 共振计算、evidence*.py 日级证据、composite.py 综合概率、factors.py 份额因子、intraday.py 盘中信号
 │   └── api.py       # /api/resonance 路由（overview/day/trades）
 ├── portfolio/       # 组合回测页面领域
 │   ├── analysis/    # simulator.py 净值模拟（纯函数）
 │   └── api.py       # /api/portfolio 路由（backtest，买卖点复用 base/analysis/strategy）
 ├── api/             # 其余页面接口（calendar/data/realtime/signals/stats，迁移完成前暂存）
+└── tests/           # pytest 单测（策略/信号/组合/份额复权）
 
+# 顶层: cli/（外部 Agent 读库出口，见第 0 节失效说明）、scripts/（直跑脚本）、docs/（算法/数据血缘文档）
 # 注意: K线对比页(EtfDetail/KlineCompare)无专属后端代码,
 # 其数据源(/etf/list、/etf/{code}/history、/resonance/trades)均为跨页面共用, 已在 base/api/etf.py 与共振领域
 ```
@@ -44,8 +85,9 @@ backend/
 - 新增页面领域：建 `<领域>/` 目录（`analysis/` + `api.py`），从 `api/` 迁入专属代码；共用代码留在/迁入 `base/`。
 - 依赖方向：`base/fetch/ → 领域 analysis → base/store → 领域 api`，严禁反向引用；`base/scheduler/` 为编排层，允许依赖各领域 `analysis` 的计算函数（如共振信号回填任务调 `resonance.analysis.composite`）。
 - 策略按标的拆文件：`base/analysis/strategy/<后缀>.py`，统一经 `base/analysis/strategy/router.py` 分派。
-- 新任务必须在 `base/scheduler/job_registry.py` 注册（标签/独占/默认参数）并在 `api/data.py` 校验参数。
-- 时间范围参数统一 `start_date`/`end_date`（`YYYY-MM-DD`），`days` 仅作无日期时的回退。
+- 新任务必须在 `base/scheduler/job_registry.py` 注册（标签/独占/默认参数）并在 `api/data.py` 校验参数；定时任务另在 `scheduled_defs.py` 登记。
+- 时间范围参数统一 `start_date`/`end_date`（`YYYY-MM-DD`），`days` 仅作无日期时的回退；日期在 akshare 边界转 `YYYYMMDD`。
+- `scripts/` 为直跑脚本：靠 `sys.path.insert` 注入 `backend/`，部分带 `# ruff: noqa` / `# mypy: ignore-errors`，不要纳入包内引用。
 
 ### 2.2 前端 `frontend/src/`（按功能域聚合）
 
@@ -53,19 +95,21 @@ backend/
 |---|---|
 | `pages/` | 路由页面组件（每页一文件，超 300 行拆子组件） |
 | `components/common/` | 跨域通用（`Layout`、`EtfSelector`、`chartZoom` 缩放工具） |
-| `components/resonance/` | 共振页（`ResonanceChart/Heatmap/Lights/EvidencePanel/MethodNote`、K线 option 构建） |
+| `components/resonance/` | 共振页（`ResonanceChart/Heatmap/Lights/EvidencePanel/MethodNote`、`klineOption`/`macdOption`/`emaOverlay`） |
 | `components/monitor/` | 大盘监控（`EtfSignalGrid`、`SignalCard`） |
-| `components/kline/` | K线/对比图（`KlineChart`、`CompareKline`、`SignalHistoryChart` 及 option 构建、区间统计/标记工具） |
+| `components/kline/` | K线/对比图（`KlineChart`、`CompareKline`、`SignalHistoryChart`、`RangeStatsPanel` 及 option 构建、区间统计/标记工具） |
 | `components/portfolio/` | 组合回测（`PortfolioChart`、`TradePopups`） |
 | `components/sentiment/` | 市场情绪（`SentimentLineChart`） |
 | `components/calendar/` | 交易日历（`MiniMonth`） |
-| `components/data/` | 数据管理（`JobsPanel`、`SchedulerPanel`、`SourceCard`） |
-| `hooks/` | 业务 hooks（数据请求、状态逻辑） |
-| `api/` | `client.ts`（全部 HTTP 封装）+ `types.ts`（全部类型定义） |
+| `components/data/` | 数据管理（`JobsPanel`、`SchedulerPanel`、`SourceCard`、`FlowSteps`、`RecalcCard`） |
+| `hooks/` | React Query 数据 hooks + 图表联动（`useChartSync`、`useAxisPointerBridge`）、`useLocalStorage`/`usePinnedEtfs` 等 |
+| `utils/` | 通用工具（`calendar`、`idbCache` 前端历史缓存） |
+| `api/` | `client.ts`（全部 HTTP 封装）+ `types.ts`（`types/*.ts` 按领域拆分后的聚合出口） |
 
 - 页面私有子组件就近放 `components/<域>/` 或独立组件文件，禁止在页面文件内堆全部代码。
 - 图表 option 构建（数据驱动、无副作用）拆为 `<域>/xxxOption.ts` 纯函数返回 `{ option, dates }`，组件用 `useMemo` 调用并缓存。
-- 数据获取统一走 `api/client.ts` + React Query hooks，禁止组件内直接 `fetch()`。
+- 数据获取统一走 `api/client.ts` + React Query hooks，禁止组件内直接 `fetch()`；新类型就近放 `api/types/<域>.ts` 并从 `types.ts` 聚合出口导出。
+- 子路径部署：构建时 `VITE_APP_BASE=/resonance npm run build`，代码中经 `__APP_BASE__` 读取。
 
 ## 3. 编码规范
 
@@ -80,7 +124,7 @@ backend/
 ### 3.2 TypeScript
 
 - `strict` 模式；函数组件 + hooks；禁止 `any`（唯一例外：ECharts option 对象）。
-- 类型定义集中在 `api/types.ts`，禁止组件内散落重复类型。
+- 类型定义集中在 `api/types/`（经 `types.ts` 聚合），禁止组件内散落重复类型。
 - 网络请求统一走 `client.ts`（带超时 + 错误解析），失败时页面优雅降级。
 - **ECharts 性能**：数据驱动的 option 必须 `useMemo` 缓存；缩放/拖动类交互不得每帧重建 option（用 `dispatchAction` 同步外部变化，事件回调防抖）。
 - **ECharts merge 语义**：条件性标记（`markPoint`/`markLine`/`markArea`）必须**始终定义为对象**、数据为空数组即清除——用 `undefined` 表示"清除"在 merge 模式下会导致旧数据残留（如切换 ETF 后旧买卖点残留）。
@@ -93,18 +137,19 @@ backend/
 
 ## 5. 代码检查框架（强制）
 
+配置项的有意容忍见第 0 节，勿擅自放开。
+
 ### 5.1 后端（Python）
 
 | 工具 | 配置 | 强制要求 |
 |---|---|---|
-| ruff | `ruff.toml`（或 `pyproject.toml`） | lint + format 零错误 |
-| mypy | `mypy.ini` | 类型检查零错误 |
-| pytest | `backend/tests/` | 关键计算逻辑（策略/信号/组合）必须有测试 |
+| ruff | `backend/ruff.toml` | lint + format 零错误 |
+| mypy | `backend/mypy.ini` | 类型检查零错误 |
+| pytest | `backend/tests/`（`pytest.ini` 设 `pythonpath=.`） | 关键计算逻辑（策略/信号/组合）必须有测试 |
 
-验收命令（提交前必须通过）：
+验收命令（提交前必须通过，在 `backend/` 下执行）：
 
 ```bash
-cd backend
 ruff check . && ruff format --check . && mypy .
 pytest -q
 ```
@@ -113,15 +158,14 @@ pytest -q
 
 | 工具 | 配置 | 强制要求 |
 |---|---|---|
-| tsc | `tsconfig.json`（strict） | `tsc --noEmit` 零错误 |
-| eslint | `eslint.config.js` | lint 零错误 |
+| tsc | `frontend/tsconfig.json`（strict + noUnused*） | `npm run build` 内 `tsc` 零错误 |
+| eslint | `frontend/eslint.config.js` | lint 零 **error**（warning 可接受） |
 
-验收命令（提交前必须通过）：
+验收命令（提交前必须通过，在 `frontend/` 下执行）：
 
 ```bash
-cd frontend
-npm run lint     # eslint . （配置后生效）
-npm run build    # tsc && vite build
+npm run lint
+npm run build   # tsc && vite build
 ```
 
 ### 5.3 提交门槛
@@ -151,23 +195,30 @@ npm run build    # tsc && vite build
 - 文件 docstring 必须写明：核心认知（资产特征）、历史教训（买太早/卖太早/假反弹的实际案例）、算法结构。
 - 回测用真实库数据跑全历史（`scripts/backtest_portfolio.py` 或内联脚本），核对每轮买卖点与收益，并检查"买入后 10 日最大回撤"。
 
-### 双槽位策略架构（正式版 / Beta）
+### 三槽位策略架构（正式版 / Beta / 波段）
 
-`base/analysis/strategy/router.py` 内两个注册表：
+`base/analysis/strategy/router.py` 内三个注册表，`list_strategy_versions()` 汇总给前端控制按钮；`compute_trades(..., version=...)` 取 `"stable"|"beta"|"band"`，未注册即回退正式版：
 
-- **STABLE_STRATEGIES（正式版槽位）**：所有 ETF 的生产算法，给人用；未注册的走 `_run_default` 通用多指标共振。
-- **BETA_STRATEGIES（Beta 槽位）**：**代码层面手动注册才有**；未注册的 ETF 无 Beta，前端 Beta 按钮自动禁用（`/api/resonance/trades/versions` 驱动）。
+- **STABLE_STRATEGIES（正式版）**：所有 ETF 的生产算法，给人用；未注册的走 `_run_default` 通用多指标共振。
+- **BETA_STRATEGIES（Beta）**：**代码层面手动注册才有**；未注册的 ETF 无 Beta，前端 Beta 按钮自动禁用（`/api/resonance/trades/versions` 驱动）。
+- **BAND_STRATEGIES（波段）**：独立于牛熊持有的波段策略槽位，同样手动注册（当前仅 512100）。
 
 **工作流（算法优化内建验收基准）**：
 
-1. 决定调试某 ETF → 写 beta 策略（`<后缀>.py` 现文件改，或新建 `<后缀>_beta.py`）→ 在 `BETA_STRATEGIES` 注册一行。
+1. 决定调试某 ETF → 写 beta 策略（改现文件，或新建 `<后缀>_beta.py`）→ 在 `BETA_STRATEGIES` 注册一行。
 2. 页面切到该 ETF → Beta 按钮自动亮起 → 所有人可对比两版买卖点。
 3. **自动比对（每次改 Beta 必跑）**：`python3 scripts/compare_strategy_versions.py <code> [--base YYYY-MM-DD]`——逐笔比对基准日（默认 2024-10-08，正式版 TRADE_START）后的买卖点，确认 Beta 未漏正式版买点且全历史累计收益 ≥ 正式版；退出码 0=通过、1=漏笔、2=Beta 跑输。
 4. **验收门槛**：beta 回测必须**优于正式版**才值得发布——连自己都判断不出优于正式版，就没有发布价值。
 5. 升级：beta 优于 stable → 把 beta 实现移入 STABLE 槽位、删 BETA 注册（旧正式版可存档 `<后缀>_stable.py` 或丢弃）。
 6. 放弃：beta 无优势 → 直接删除注册，不留垃圾。
 
-**当前状态**：沪深300 正式版=hs300.py 牛熊分治（2019 起：恐慌底/强承接底/绝望底/牛市四路径/顶部确认卖，全历史 +440.3%，2026-08-17 升级）；中证1000 正式版=zz.py（2019 起：恐慌底/急跌末端/验证期首日锁定/加速赶顶熊市限定）。科创50 正式版=复用科创综指信号(2025 起)、Beta=独立买卖点先行策略(2020-12 起：恐慌底/熊市深回撤底/牛市回调底/放量大阳底，全历史 +208.9% vs 正式版 +146.4%)。其余 ETF 仅正式版。
+**当前槽位状态**（以 `router.py` 注册表与各策略文件 docstring 为唯一事实来源，收益数字均摘自代码注释）：
+
+- 沪深300 `510300`：stable=`hs300.py` 牛熊分治（2019 起；恐慌底/强承接底/绝望底 + 牛市四路径 + 顶部确认卖，全历史约 +440%）；beta=`hs300_beta.py`（同规则数据延至 2014，验证槽位不升级）。
+- 中证1000 `512100`：stable=`zz.py` 右侧量价记忆（`zz_params.TRADE_START=2019-01-01`，2026-08-16 由 beta 升级）；beta=`zz_beta.py`（延至 2006 验证）；band=`band.py` 波段 v3（2014 起，注册在 `BAND_STRATEGIES`）。
+- 科创综指 `589680`：stable=`kc.py`；beta=`kc_beta.py`（高位散户顶/加速赶顶/洗盘回买）。
+- 科创50 `588000`：stable=`kc50.py`（复用科创综指买卖日期）；beta=`kc50_beta.py`（独立买卖点先行，不复用科创综指）。
+- 其余仅 stable：`div`(515080)、`sh50`(510050)、`sc50`(159780)、`zz500_v2`(510500)、`a500`(159352，复用 510300 买卖点)。
 
 ### 波段遗漏审计
 
@@ -187,19 +238,7 @@ npm run build    # tsc && vite build
 5. **回测验证**：跑全历史，逐轮核对与案例一致（买入日、卖出日、收益）；检查买入后 10 日回撤 ≈ 0；保留历史赢家轮次不被破坏。
 6. **防过拟合纪律**：
    - 不引入无案例支撑的规则；不为单轮最优收益调参。
+   - 统计规律用 `scripts/event_study.py` 做事件分布检验（池化全部事件 + 前向收益 + bootstrap + 参数平台），而非个案 fit。
    - 诚实汇报 trade-off（如横盘顶延迟卖出的 1% 代价 vs 真延迟顶的 4-7% 收益）。
    - "错过行情"是允许的，系统不追求抓住所有轮次。
 7. **接入与同步**：`strategy/router.py` 分派接入 → 前端共振图自动生效；策略文件 docstring 与文档保持同步。
-
-## 9. 运行与验证
-
-```bash
-./start.sh                        # 一键启动前后端（自动建 venv/装依赖/镜像探测）
-cd backend && ruff check . && mypy . && pytest -q   # 后端检查框架
-cd frontend && npm run lint && npm run build        # 前端检查框架
-python3 scripts/backtest_portfolio.py  # 组合回测验证
-```
-
-- 数据回填入口：前端「数据管理」页（日期区间 + 强制重拉开关），优先于脚本。
-- 数据库：`~/.etf-monitor/etf_monitor.db`（`ETF_MONITOR_HOME` 可覆盖）。
-- 网络请求失败时前端必须优雅降级（空态 + 重试），禁止页面崩溃。
