@@ -242,3 +242,19 @@ npm run build   # tsc && vite build
    - 诚实汇报 trade-off（如横盘顶延迟卖出的 1% 代价 vs 真延迟顶的 4-7% 收益）。
    - "错过行情"是允许的，系统不追求抓住所有轮次。
 7. **接入与同步**：`strategy/router.py` 分派接入 → 前端共振图自动生效；策略文件 docstring 与文档保持同步。
+
+## 9. 部署与生产同步（本地开发完毕 → 线上）
+
+生产：`47.93.237.127`（阿里云，root 免密 SSH）。代码 `/root/Resonance`（origin/main）；前端产物 `/var/www/apps/resonance`；后端 systemd `resonance.service`（uvicorn :8001）；DB `/root/.etf-monitor/etf_monitor.db`；部署中心 `/ops/`（`/root/deploy-center`，登录口令不入库）；nginx 配置由独立仓库 `ng_conf` 维护。
+
+**本地开发完毕后，增量同步三步：**
+
+1. **上传代码**：`git push origin main`（本机 GitHub SSH 走本地代理 `127.0.0.1:7897`，需先启动代理，否则 `Proxy connection failed`）。
+2. **/ops 执行重新部署**：登录 `http://47.93.237.127/ops/` 对 `resonance` 一键部署（内部 = `git pull origin main` → `cd frontend && VITE_APP_BASE=/resonance npm run build` → rsync `dist` → `systemctl restart resonance`）。前端**必须在服务器带 `VITE_APP_BASE=/resonance` 构建**，禁止直接 scp 本地 dist（base 路径不同）。
+3. **数据增量同步至生产 DB**：只同步新增/缺失标的的 `etf_daily` 行（主键 `(date, code)`，用 `INSERT OR REPLACE`，不覆盖其他标的）：
+   - 本地显式列名导出 → `scp` 至服务器；
+   - 服务器 `systemctl stop resonance`（WAL 模式须先停写）→ 备份 DB → 导入 → `systemctl start resonance`；
+   - 验证 DB 行数与 `/api/etf/<code>/history`。
+   - 或让服务器自行增量回填：`POST /api/data/jobs`（`backfill_etf_daily` / `backfill_shares` / `refresh_calendar_slots`）。
+
+铁律：DB 永不进 git（`.gitignore` 已排除 `*.db`）；覆盖整库前必须先备份 server DB。
