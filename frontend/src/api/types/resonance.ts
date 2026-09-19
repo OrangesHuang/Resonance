@@ -82,6 +82,25 @@ export interface RegimePoint {
   regime: 'bull' | 'bear'
 }
 
+export interface ScanAllItem {
+  code: string
+  name: string
+  date: string
+  red_count: number
+  green_count: number
+  gray_count: number
+  verdict: string
+  indicators: ResonanceIndicator[]
+}
+
+export interface ScanAllResponse {
+  date: string | null
+  opportunity_resonance: ScanAllItem[]
+  danger_resonance: ScanAllItem[]
+  neutral: ScanAllItem[]
+  total: number
+}
+
 export interface TradesResponse {
   code: string
   trades: TradePoint[]

@@ -4,6 +4,7 @@ import useIsMobile from '../../hooks/useIsMobile'
 
 const TOP_NAV = [
   { to: '/resonance', label: 'ETF择时总览' },
+  { to: '/resonance/scan-all', label: '轮动扫描' },
   { to: '/compare', label: 'ETF走势对比' },
   { to: '/portfolio', label: 'ETF组合回测' },
 ]
@@ -86,7 +87,7 @@ function SidebarNav() {
   return (
     <nav className="flex-1 px-3 py-4 space-y-1">
       {TOP_NAV.map(item => (
-        <NavLink key={item.to} to={item.to} className={linkClass}>
+        <NavLink key={item.to} to={item.to} end className={linkClass}>
           {item.label}
         </NavLink>
       ))}

@@ -1,5 +1,5 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { fetchResonance, fetchResonanceDay, fetchEtfHistory } from '../api/client'
+import { fetchResonance, fetchResonanceDay, fetchEtfHistory, fetchResonanceScanAll } from '../api/client'
 import { cacheGet, cacheSet, cacheValid, mergeByDate, settledData } from '../utils/idbCache'
 import { CACHE_SCHEMA, type ResonanceOverview, type ResonanceHistoryPoint, type EtfHistoryResponse, type KlinePoint, type DailySignal } from '../api/types'
 
@@ -63,6 +63,15 @@ export function useEtfHistory(code: string, days = 3200) {
   return useQuery({
     queryKey: ['etfHistory', code],
     queryFn: () => fetchEtfHistoryCached(code, days),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useResonanceScanAll() {
+  return useQuery({
+    queryKey: ['resonanceScanAll'],
+    queryFn: fetchResonanceScanAll,
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   })

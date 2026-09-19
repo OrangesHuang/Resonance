@@ -17,12 +17,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from config import ETFS, DEFAULT_RESONANCE_CODE  # noqa: E402
-from store.daily_repo import get_by_code  # noqa: E402
-from store.sentiment_repo import get_turnover_series, get_margin_series  # noqa: E402
-from analysis.sentiment import enrich_turnover  # noqa: E402
-from analysis.resonance import compute_resonance, INDICATORS  # noqa: E402
-from analysis.resonance_evidence import compute_day_detail  # noqa: E402
+from base.config import ETFS, DEFAULT_RESONANCE_CODE  # noqa: E402
+from base.store.daily_repo import get_by_code  # noqa: E402
+from base.store.sentiment_repo import get_turnover_series, get_margin_series  # noqa: E402
+from base.analysis.sentiment.core import enrich_turnover  # noqa: E402
+from resonance.analysis.core import compute_resonance, INDICATORS  # noqa: E402
+from resonance.analysis.evidence import compute_day_detail  # noqa: E402
 
 STATE_ICON = {"red": "🔴", "green": "🟢", "gray": "⚪"}
 VERDICT_ICON = {"危险共振": "🔴", "机会共振": "🟢", "中性": "⚪"}

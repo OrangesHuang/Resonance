@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useResonance, useEtfHistory } from '../hooks/useResonance'
 import { fetchEtfList, fetchResonanceTrades, fetchStrategyVersions, refreshEtf } from '../api/client'
@@ -17,7 +18,8 @@ import { unionDates, alignKlineToDates, alignResonanceHistoryToDates } from '../
 const KLINE_DAYS = 3200  // 覆盖 2014-10 至今(中证1000 数据延伸起点, 约 2870 交易日)
 
 export default function Resonance() {
-  const [code, setCode] = useState('510300')  // 默认沪深300
+  const [searchParams] = useSearchParams()
+  const [code, setCode] = useState(() => searchParams.get('code') || '510300')  // 默认沪深300, 支持 /resonance?code= 跳转
   const [algoVersion, setAlgoVersion] = useState<'stable' | 'beta' | 'band'>('stable')  // 算法版本: 正式版/Beta/波段
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)

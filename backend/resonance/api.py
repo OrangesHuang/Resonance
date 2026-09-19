@@ -41,6 +41,52 @@ def resonance_overview(code: str = DEFAULT_RESONANCE_CODE, since: str | None = N
     return result
 
 
+@router.get("/scan-all")
+def resonance_scan_all():
+    """轮动扫描: 遍历全部 ETF 白名单, 按当日五灯共振结果分组排名。
+
+    单个 ETF 数据缺失/计算异常时跳过, 不影响其余标的返回(降级处理与
+    overview/trades 保持一致)。
+    """
+    opportunity, danger, neutral = [], [], []
+    for code in ETFS:
+        try:
+            etf_rows, turnover, margin = _load_series(code)
+            result = compute_resonance(code, etf_rows, turnover, margin)
+        except Exception:
+            continue
+        if result.get("date") is None:
+            continue
+        item = {
+            "code": result["code"],
+            "name": result["name"],
+            "date": result["date"],
+            "red_count": result["red_count"],
+            "green_count": result["green_count"],
+            "gray_count": result["gray_count"],
+            "verdict": result["verdict"],
+            "indicators": result["indicators"],
+        }
+        if result["verdict"] == "危险共振":
+            danger.append(item)
+        elif result["verdict"] == "机会共振":
+            opportunity.append(item)
+        else:
+            neutral.append(item)
+
+    opportunity.sort(key=lambda r: r["green_count"], reverse=True)
+    danger.sort(key=lambda r: r["red_count"], reverse=True)
+    neutral.sort(key=lambda r: r["green_count"] - r["red_count"], reverse=True)
+
+    return {
+        "date": (opportunity + danger + neutral)[0]["date"] if (opportunity or danger or neutral) else None,
+        "opportunity_resonance": opportunity,
+        "danger_resonance": danger,
+        "neutral": neutral,
+        "total": len(opportunity) + len(danger) + len(neutral),
+    }
+
+
 @router.get("/day")
 def resonance_day(code: str = DEFAULT_RESONANCE_CODE, date: str = ""):
     if not date:

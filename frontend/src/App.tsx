@@ -5,6 +5,7 @@ import EtfDetail from './pages/EtfDetail'
 import Sentiment from './pages/Sentiment'
 import TradeCalendar from './pages/TradeCalendar'
 import Resonance from './pages/Resonance'
+import ResonanceScanAll from './pages/ResonanceScanAll'
 import KlineCompare from './pages/KlineCompare'
 import PortfolioBacktest from './pages/PortfolioBacktest'
 import DataManage from './pages/DataManage'
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/monitor" element={<Dashboard />} />
           <Route path="/etf/:code" element={<EtfDetail />} />
           <Route path="/resonance" element={<Resonance />} />
+          <Route path="/resonance/scan-all" element={<ResonanceScanAll />} />
           <Route path="/compare" element={<KlineCompare />} />
           <Route path="/portfolio" element={<PortfolioBacktest />} />
           <Route path="/sentiment" element={<Sentiment />} />
