@@ -42,8 +42,8 @@ export default function KlineChart({ kline, groupId, height = 520, zoom, onReady
       { left: 60, right: 20, top: '76%', height: '14%' },
     ],
     xAxis: [
-      { type: 'category', data: dates, gridIndex: 0, axisLabel: { color: '#6b7280', fontSize: 10 }, boundaryGap: true },
-      { type: 'category', data: dates, gridIndex: 1, axisLabel: { show: false }, boundaryGap: true },
+      { type: 'category', data: dates, gridIndex: 0, axisLabel: { show: false }, axisPointer: { label: { show: false } }, boundaryGap: true },
+      { type: 'category', data: dates, gridIndex: 1, axisLabel: { show: false }, axisPointer: { label: { show: false } }, boundaryGap: true },
     ],
     yAxis: [
       { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: '#6b7280' } },

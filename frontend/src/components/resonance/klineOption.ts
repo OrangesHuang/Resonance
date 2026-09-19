@@ -181,10 +181,10 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
         macdPanel.grid,
       ],
       xAxis: [
-        { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { color: AXIS_LABEL, fontSize: 10 } },
-        { type: 'category', data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { show: false } },
-        { type: 'category', data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false } },
-        { type: 'category', data: dates, gridIndex: 3, boundaryGap: false, axisLabel: { show: false } },
+        { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
+        { type: 'category', data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
+        { type: 'category', data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
+        { type: 'category', data: dates, gridIndex: 3, boundaryGap: false, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
         macdPanel.xAxis,
       ],
       yAxis: [

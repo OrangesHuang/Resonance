@@ -154,9 +154,9 @@ export function buildCompareOption({ kline, trades, signals, sharedDates, rangeS
             { left: 55, right: 16, top: '82%', height: '11%' },
           ],
       xAxis: [
-        { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { color: '#6b7280', fontSize: 10 } },
-        { type: 'category', data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { show: false } },
-        ...(hasShares ? [{ type: 'category' as const, data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false } }] : []),
+        { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
+        { type: 'category', data: dates, gridIndex: 1, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
+        ...(hasShares ? [{ type: 'category' as const, data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } }] : []),
       ],
       yAxis: [
         { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: '#6b7280' } },

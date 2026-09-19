@@ -63,7 +63,14 @@ export function buildMacdPanel(kline: KlinePoint[], dates: string[]) {
 
   return {
     grid: { left: 60, right: 20, top: '74%', height: '11%' },
-    xAxis: { type: 'category' as const, data: dates, gridIndex: 4, boundaryGap: true, axisLabel: { show: false } },
+    xAxis: {
+      type: 'category' as const,
+      data: dates,
+      gridIndex: 4,
+      boundaryGap: true,
+      axisLabel: { show: false },
+      axisPointer: { label: { show: false } },
+    },
     yAxis: {
       scale: true,
       gridIndex: 4,
