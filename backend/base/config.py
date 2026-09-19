@@ -21,6 +21,9 @@ ETFS = {
     "515880": {"name": "国泰中证全指通信设备ETF", "idx": "通信设备", "market": "sh"},
     "588200": {"name": "嘉实上证科创板芯片ETF", "idx": "科创芯片", "market": "sh"},
     "159740": {"name": "大成恒生科技ETF", "idx": "恒生科技", "market": "sz"},
+    "512400": {"name": "南方中证申万有色金属ETF", "idx": "有色金属", "market": "sh"},
+    "510150": {"name": "招商上证消费80ETF", "idx": "消费", "market": "sh"},
+    "159842": {"name": "银华中证全指证券公司ETF", "idx": "券商", "market": "sz"},
 }
 
 INDEX_CODE = "sh000300"
