@@ -26,6 +26,7 @@ from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.job_manager import ProgressFn
 from base.store.daily_repo import (
     get_by_date,
+    get_first_daily_dates,
     get_first_share_dates,
     get_missing_share_dates,
     get_trading_dates,
@@ -95,6 +96,9 @@ def _fillable_targets(date: str, targets: list[str], first_share: dict[str, str]
 
     判据: 该标的已有份额的最早日期(无任何份额的标的视为"需先做区间回填",
     不参与自动补全 —— 否则会像 512100 那样在上市前的日期上反复失败)。
+    first_share 由调用方传入 get_first_daily_dates()+get_first_share_dates()
+    的合并结果, 全新标的(尚无份额记录)用其 K 线最早日期兜底, 避免被永久
+    判定为"尚未成立"。
     """
     out = []
     for code in targets:
@@ -175,7 +179,7 @@ def job_backfill_shares(
         dates = get_trading_dates()[-days:]
     if not dates:
         raise RuntimeError("etf_daily 无交易日,请先回填ETF日度数据")
-    first_share = get_first_share_dates()
+    first_share = {**get_first_daily_dates(), **get_first_share_dates()}
     prev_shares: dict = {}
     prev_window: dict[str, list[float]] = {}
     written = 0
@@ -247,7 +251,7 @@ def job_backfill_missing_shares(
     if not dates:
         progress(1, 1, "份额无缺失")
         return {"dates": 0, "written": 0, "fetched_dates": 0, "skipped_pre_listing": 0, "still_failed": 0}
-    first_share = get_first_share_dates()
+    first_share = {**get_first_daily_dates(), **get_first_share_dates()}
     prev_shares: dict = {}
     prev_window: dict[str, list[float]] = {}
     written = 0

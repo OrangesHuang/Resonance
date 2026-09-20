@@ -12,6 +12,7 @@ interface Props {
 export default function EtfSelector({ value, onChange, etfList }: Props) {
   const { pinned: pinnedCodes, togglePin } = usePinnedEtfs()
   const [expanded, setExpanded] = useState(false)
+  const [query, setQuery] = useState("")
   const isMobile = useIsMobile()
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -31,7 +32,28 @@ export default function EtfSelector({ value, onChange, etfList }: Props) {
     return () => document.removeEventListener("mousedown", handler)
   }, [expanded])
 
+  useEffect(() => {
+    if (!expanded) setQuery("")
+  }, [expanded])
+
   const currentEtf = etfList.find(e => e.code === value)
+
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? etfList.filter(
+        e => e.code.includes(q) || e.name.toLowerCase().includes(q) || e.idx.toLowerCase().includes(q)
+      )
+    : etfList
+
+  const groups: { idx: string; items: EtfInfo[] }[] = []
+  for (const etf of filtered) {
+    let g = groups.find(g => g.idx === etf.idx)
+    if (!g) {
+      g = { idx: etf.idx, items: [] }
+      groups.push(g)
+    }
+    g.items.push(etf)
+  }
 
   return (
     <div ref={panelRef} className="relative">
@@ -83,45 +105,63 @@ export default function EtfSelector({ value, onChange, etfList }: Props) {
         <div className={`
           ${isMobile ? "relative" : "absolute left-0 right-0 mt-1"}
           z-30 bg-gray-900 border border-gray-700 rounded-lg shadow-xl
-          max-h-72 overflow-y-auto
         `}>
-          {etfList.map(etf => {
-            const isPinned = validPinned.includes(etf.code)
-            const active = etf.code === value
-            return (
-              <div
-                key={etf.code}
-                className={`
-                  flex items-center justify-between px-3 py-2 cursor-pointer
-                  hover:bg-gray-800/60 transition-colors
-                  ${active ? "border-l-2 border-sky-500 bg-gray-800/30" : "border-l-2 border-transparent"}
-                `}
-                onClick={() => { onChange(etf.code); if (!isMobile) setExpanded(false) }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-mono ${active ? "text-sky-400" : "text-gray-500"}`}>
-                    {etf.code}
-                  </span>
-                  <span className={`text-sm ${active ? "text-white" : "text-gray-300"}`}>
-                    {etf.name}
-                  </span>
-                  <span className="text-xs text-gray-600">{etf.idx}</span>
-                </div>
-                <button
-                  onClick={e => { e.stopPropagation(); togglePin(etf.code) }}
-                  className={`
-                    px-1.5 py-0.5 rounded text-xs transition-colors
-                    ${isPinned
-                      ? "text-sky-400 bg-sky-900/30 hover:text-red-400"
-                      : "text-gray-600 hover:text-sky-400"}
-                  `}
-                  title={isPinned ? "取消置顶" : "置顶"}
-                >
-                  {isPinned ? "★" : "☆"}
-                </button>
+          <div className="p-2 border-b border-gray-800">
+            <input
+              autoFocus={!isMobile}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="搜索代码/名称/板块…"
+              className="w-full px-2.5 py-1.5 rounded text-xs bg-gray-800 text-gray-200
+                         border border-gray-700 focus:outline-none focus:border-sky-500 placeholder:text-gray-600"
+            />
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {groups.length === 0 && (
+              <div className="px-3 py-4 text-xs text-gray-500 text-center">无匹配结果</div>
+            )}
+            {groups.map(g => (
+              <div key={g.idx}>
+                <div className="px-3 pt-2 pb-1 text-[11px] text-gray-500 sticky top-0 bg-gray-900">{g.idx}</div>
+                {g.items.map(etf => {
+                  const isPinned = validPinned.includes(etf.code)
+                  const active = etf.code === value
+                  return (
+                    <div
+                      key={etf.code}
+                      className={`
+                        flex items-center justify-between px-3 py-2 cursor-pointer
+                        hover:bg-gray-800/60 transition-colors
+                        ${active ? "border-l-2 border-sky-500 bg-gray-800/30" : "border-l-2 border-transparent"}
+                      `}
+                      onClick={() => { onChange(etf.code); if (!isMobile) setExpanded(false) }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-mono ${active ? "text-sky-400" : "text-gray-500"}`}>
+                          {etf.code}
+                        </span>
+                        <span className={`text-sm ${active ? "text-white" : "text-gray-300"}`}>
+                          {etf.name}
+                        </span>
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); togglePin(etf.code) }}
+                        className={`
+                          px-1.5 py-0.5 rounded text-xs transition-colors
+                          ${isPinned
+                            ? "text-sky-400 bg-sky-900/30 hover:text-red-400"
+                            : "text-gray-600 hover:text-sky-400"}
+                        `}
+                        title={isPinned ? "取消置顶" : "置顶"}
+                      >
+                        {isPinned ? "★" : "☆"}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
       )}
     </div>

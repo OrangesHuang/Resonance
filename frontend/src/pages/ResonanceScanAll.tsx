@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useResonanceScanAll } from '../hooks/useResonance'
 import type { ScanAllItem, LightState } from '../api/types'
@@ -86,9 +87,15 @@ function Section({ kind, items, onSelect }: {
   )
 }
 
+function filterItems(items: ScanAllItem[], q: string): ScanAllItem[] {
+  if (!q) return items
+  return items.filter(item => item.code.includes(q) || item.name.toLowerCase().includes(q))
+}
+
 export default function ResonanceScanAll() {
   const { data, isLoading, error, refetch } = useResonanceScanAll()
   const navigate = useNavigate()
+  const [query, setQuery] = useState('')
 
   const goDetail = (code: string) => navigate(`/resonance?code=${code}`)
 
@@ -109,6 +116,11 @@ export default function ResonanceScanAll() {
     return <div className="text-gray-400 text-center py-20">轮动扫描数据加载中...</div>
   }
 
+  const q = query.trim().toLowerCase()
+  const opportunity = filterItems(data.opportunity_resonance, q)
+  const danger = filterItems(data.danger_resonance, q)
+  const neutral = filterItems(data.neutral, q)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
@@ -118,12 +130,19 @@ export default function ResonanceScanAll() {
             全部 {data.total} 只 ETF × 五灯共振 · 数据日期 {data.date ?? '-'} · 红灯=出货/过热，绿灯=吸筹/冷清
           </p>
         </div>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="搜索代码/名称…"
+          className="ml-auto px-2.5 py-1.5 rounded text-xs bg-gray-800 text-gray-200 w-48
+                     border border-gray-700 focus:outline-none focus:border-sky-500 placeholder:text-gray-600"
+        />
       </div>
 
       <div className="bg-gray-900/60 border border-gray-800 rounded-lg p-4 space-y-6">
-        <Section kind="opportunity" items={data.opportunity_resonance} onSelect={goDetail} />
-        <Section kind="danger" items={data.danger_resonance} onSelect={goDetail} />
-        <Section kind="neutral" items={data.neutral} onSelect={goDetail} />
+        <Section kind="opportunity" items={opportunity} onSelect={goDetail} />
+        <Section kind="danger" items={danger} onSelect={goDetail} />
+        <Section kind="neutral" items={neutral} onSelect={goDetail} />
       </div>
     </div>
   )

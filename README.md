@@ -14,6 +14,9 @@
 ### 1. 为什么看 ETF
 国家队救市/护盘时，通常通过申购宽基 ETF（沪深300、上证50、中证500/1000、科创50 等）
 间接入市。ETF 的**份额变化**、**量价配合**、**折溢价**是观测其动作的高信噪比窗口。
+除宽基外，白名单还覆盖算力/AI、有色金属、电力、军工、半导体、光伏、新能源、银行、
+医药、白酒、房地产、煤炭、钢铁等 39 只 ETF，覆盖主要行业板块，便于轮动扫描捕捉
+板块级资金动向。
 
 ### 2. 三因子 → 五指标 → 共振
 系统从三个维度刻画资金行为，再叠加两个市场情绪维度，共五个指标各亮一盏灯：
@@ -111,7 +114,7 @@ etf-monitor/
 │   ├── base/              # 跨页共用（页面领域间下沉）
 │   │   ├── config.py      # 全部可调常量（ETF清单/阈值/窗口/限流）
 │   │   ├── fetch/         # 数据源请求与解析（腾讯/akshare）
-│   │   ├── analysis/      # 纯函数：sentiment/ + strategy/（8只ETF策略+router）
+│   │   ├── analysis/      # 纯函数：sentiment/ + strategy/（少数ETF专属策略+router，其余走默认策略）
 │   │   ├── store/         # SQLite 访问层（database + 各表 repo）
 │   │   ├── scheduler/     # tasks/intraday_tasks/daily_tasks/state/job_manager/
 │   │   │                  #   job_registry/data_jobs/sentiment_jobs/rebuild/recalc/time_guard

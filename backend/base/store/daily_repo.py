@@ -254,6 +254,24 @@ def get_first_share_dates() -> dict[str, str]:
         conn.close()
 
 
+def get_first_daily_dates() -> dict[str, str]:
+    """各标的**已有K线的最早日期**(用于新标的的份额回填兜底基准)。
+
+    新加入白名单的 ETF 在 K 线回填完成前份额记录为零, 不在
+    get_first_share_dates() 的返回中, 若单用该函数会被份额回填任务永久判定
+    为"尚未成立"而跳过。用 K 线最早日期兜底, 只要日度数据已回填,
+    份额回填就能从对应日期起正常拉取。
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT code, MIN(date) AS d FROM etf_daily WHERE close_price IS NOT NULL GROUP BY code"
+        ).fetchall()
+        return {r["code"]: r["d"] for r in rows}
+    finally:
+        conn.close()
+
+
 def count_fillable_missing_shares(codes: list[str] | None = None, start: str | None = None) -> int:
     """可被「补全缺失份额」真正补上的缺失记录数(单条 SQL, 供状态页展示)。
 
