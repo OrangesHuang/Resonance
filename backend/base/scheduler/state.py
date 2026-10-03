@@ -22,3 +22,10 @@ def get_latest_signals() -> list[dict]:
 
 def get_last_update() -> str | None:
     return _last_update
+
+
+def forget_code(code: str) -> None:
+    """删除标的时清理该 code 的内存缓存与最新信号(避免残留展示/误判)。"""
+    _kline_cache.pop(code, None)
+    _share_delta_cache.pop(code, None)
+    _latest_signals[:] = [s for s in _latest_signals if s.get("code") != code]

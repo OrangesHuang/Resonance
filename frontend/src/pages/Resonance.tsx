@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { useResonance, useEtfHistory } from '../hooks/useResonance'
 import { fetchEtfList, fetchResonanceTrades, fetchStrategyVersions, refreshEtf } from '../api/client'
 import ResonanceLights from '../components/resonance/ResonanceLights'
-import ResonanceKline from '../components/resonance/ResonanceKline'
 import ResonanceChart from '../components/resonance/ResonanceChart'
 import ResonanceHeatmap from '../components/resonance/ResonanceHeatmap'
 import ResonanceEvidencePanel, { type ResonanceSelection } from '../components/resonance/ResonanceEvidencePanel'
 import ResonanceMethodNote from '../components/resonance/ResonanceMethodNote'
+import KlineSection from '../components/resonance/KlineSection'
+import DayStepBar from '../components/resonance/DayStepBar'
 import MarketSentimentSection from '../components/resonance/MarketSentimentSection'
 import EtfSelector from '../components/common/EtfSelector'
 import { useAxisPointerBridge } from '../hooks/useAxisPointerBridge'
@@ -17,7 +19,8 @@ import { unionDates, alignKlineToDates, alignResonanceHistoryToDates } from '../
 const KLINE_DAYS = 3200  // 覆盖 2014-10 至今(中证1000 数据延伸起点, 约 2870 交易日)
 
 export default function Resonance() {
-  const [code, setCode] = useState('510300')  // 默认沪深300
+  const [searchParams] = useSearchParams()
+  const [code, setCode] = useState(() => searchParams.get('code') || '510300')  // 默认沪深300, 支持 ?code= 直达
   const [algoVersion, setAlgoVersion] = useState<'stable' | 'beta' | 'band'>('stable')  // 算法版本: 正式版/Beta/波段
   const [selected, setSelected] = useState<ResonanceSelection | null>(null)
   const [dateWindow, setDateWindow] = useState<DateWindow | null>(null)
@@ -45,6 +48,13 @@ export default function Resonance() {
   const versions = strategyVersions?.[code] ?? ['stable']
   const hasBeta = versions.includes('beta')
   const hasBand = versions.includes('band')
+
+  // 标的下线(动态删除)或 URL 传入未知 code 时, 回退到首个在册标的
+  useEffect(() => {
+    if (etfList && etfList.length > 0 && !etfList.some((e) => e.code === code)) {
+      setCode(etfList[0].code)
+    }
+  }, [etfList, code])
 
   const tradeDates = useMemo(() => history?.kline.map(k => k.date) ?? [], [history])
   const klineStart = tradeDates[0] ?? null
@@ -218,24 +228,7 @@ export default function Resonance() {
         </button>
       </div>
 
-      <div className="bg-gray-950/95 backdrop-blur border border-gray-800 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => stepDay(-1)}
-          disabled={!canPrev}
-          className="px-3 py-1.5 rounded text-sm bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          ← 上一日
-        </button>
-        <span className="text-sm font-mono text-sky-400 min-w-[92px] text-center">{displayDate || '-'}</span>
-        <button
-          onClick={() => stepDay(1)}
-          disabled={!canNext}
-          className="px-3 py-1.5 rounded text-sm bg-gray-800 text-gray-200 border border-gray-700 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          下一日 →
-        </button>
-        <span className="ml-auto text-[11px] text-gray-600 hidden md:inline">逐日回放练盘感（键盘 ← → 亦可）· 点选/缩放任意图表，全部联动</span>
-      </div>
+      <DayStepBar displayDate={displayDate} canPrev={canPrev} canNext={canNext} onStep={stepDay} />
 
       {/* V1: 红绿灯面板 */}
       {data ? (
@@ -255,30 +248,19 @@ export default function Resonance() {
         alignDates={alignDates}
       />
 
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-        <div className="flex items-center gap-3 mb-2 flex-wrap">
-          <h3 className="text-sm font-medium text-gray-300">K线走势（点击K线查看当日依据）</h3>
-          <span className="text-[11px] text-gray-600">
-            淡红色带=危险共振日 · 淡绿色带=机会共振日 · 蓝色虚线=当前选中日 · 副图绿柱=国家队净申购（吸筹）/红柱=净赎回（卖出） · 底部曲线=综合概率（红→黄→绿渐变，45/35 虚线为吸筹/出货线） · B/S=策略买卖点
-          </span>
-        </div>
-        {history ? (
-          <ResonanceKline
-            key={code}
-            kline={alignedKline}
-            history={alignedHistory}
-            signals={history.daily_signals}
-            trades={tradesData?.trades ?? []}
-            selectedDate={selected?.date ?? null}
-            onSelectDate={selectDate}
-            dateWindow={dateWindow}
-            onZoomChange={handleZoom}
-            bridge={bridge}
-          />
-        ) : (
-          <div className="text-gray-500 text-center py-16">K线加载中...</div>
-        )}
-      </div>
+      <KlineSection
+        code={code}
+        kline={alignedKline}
+        history={alignedHistory}
+        signals={history?.daily_signals ?? []}
+        trades={tradesData?.trades ?? []}
+        selectedDate={selected?.date ?? null}
+        onSelectDate={selectDate}
+        dateWindow={dateWindow}
+        onZoomChange={handleZoom}
+        bridge={bridge}
+        loaded={!!history}
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">

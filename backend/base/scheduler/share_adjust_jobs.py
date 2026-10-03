@@ -48,10 +48,14 @@ from base.store.daily_repo import (
 from resonance.analysis.factors import calc_share_probability_dual
 
 
-def _scan_candidates() -> list[tuple[str, str, float, float, float]]:
-    """扫描全部标的, 返回 [(code, date, 前一日份额, 当日份额, 当日变化%)] 升序。"""
+def _scan_candidates(codes: list[str] | None = None) -> list[tuple[str, str, float, float, float]]:
+    """扫描标的, 返回 [(code, date, 前一日份额, 当日份额, 当日变化%)] 升序。
+
+    codes 为 None 时扫描全部在册标的; 显式传入时只扫这些标的(单标的回填用)。
+    """
     out: list[tuple[str, str, float, float, float]] = []
-    for code in ETFS:
+    targets = list(ETFS) if codes is None else codes
+    for code in targets:
         rows = list(reversed(get_by_code(code)))  # 升序
         prev: float | None = None
         for r in rows:
@@ -101,9 +105,9 @@ def _recompute_after(rows_asc: list[dict], split_idx: int, ratio: float) -> int:
     return touched
 
 
-def job_fix_share_splits(progress: ProgressFn, dry_run: bool = False) -> dict:
-    """修正全库份额折算/合并事件(幂等, 可重复执行)。"""
-    candidates = _scan_candidates()
+def job_fix_share_splits(progress: ProgressFn, dry_run: bool = False, codes: list[str] | None = None) -> dict:
+    """修正份额折算/合并事件(幂等, 可重复执行; codes 为空扫全部在册标的)。"""
+    candidates = _scan_candidates(codes)
     progress(0, max(len(candidates), 1), f"候选 {len(candidates)} 起(阈值 {SHARE_ADJUST_TRIGGER_PCT:.0f}%)")
     fixed: list[dict] = []
     real: list[dict] = []

@@ -7,6 +7,8 @@ import TradeCalendar from './pages/TradeCalendar'
 import Resonance from './pages/Resonance'
 import KlineCompare from './pages/KlineCompare'
 import PortfolioBacktest from './pages/PortfolioBacktest'
+import PrimaryExit from './pages/PrimaryExit'
+import EtfManage from './pages/EtfManage'
 import DataManage from './pages/DataManage'
 import ScheduledTasks from './pages/ScheduledTasks'
 import Methodology from './pages/Methodology'
@@ -27,7 +29,9 @@ export default function App() {
           <Route path="/resonance" element={<Resonance />} />
           <Route path="/compare" element={<KlineCompare />} />
           <Route path="/portfolio" element={<PortfolioBacktest />} />
+          <Route path="/supply" element={<PrimaryExit />} />
           <Route path="/sentiment" element={<Sentiment />} />
+          <Route path="/etfs" element={<EtfManage />} />
           <Route path="/calendar" element={<TradeCalendar />} />
           <Route path="/data" element={<DataManage />} />
           <Route path="/tasks" element={<ScheduledTasks />} />

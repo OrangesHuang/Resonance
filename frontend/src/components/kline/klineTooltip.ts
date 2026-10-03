@@ -16,6 +16,29 @@ function fmtAdjustNote(ratio: number): string {
   return `<span style="color:${ADJUST_COLOR}">（${kind} ×${ratio.toFixed(3)} 已扣除，非申赎）</span>`
 }
 
+export interface KlineTooltipExtras {
+  macd?: { dif: number[]; dea: number[]; hist: number[] }
+  force?: { main: number[]; acc: number[]; retail: number[]; dealer: number[] }
+}
+
+function num(v: number | undefined, digits = 2): string {
+  return v == null || !Number.isFinite(v) ? '-' : v.toFixed(digits)
+}
+
+function extraBlock(extras: KlineTooltipExtras | undefined, i: number): string {
+  if (!extras) return ''
+  let html = ''
+  if (extras.macd) {
+    const { dif, dea, hist } = extras.macd
+    html += `<br/>MACD：DIF ${num(dif[i])} · DEA ${num(dea[i])} · 柱 ${num(hist[i])}`
+  }
+  if (extras.force) {
+    const { main, acc, retail, dealer } = extras.force
+    html += `<br/>主力资金：主力 ${num(main[i])} · 吸筹 ${num(acc[i], 3)} · 散户线 ${num(retail[i], 1)} · 庄家线 ${num(dealer[i], 1)}`
+  }
+  return html
+}
+
 function rangeBlock(stats: RangeStats): string {
   const flow = stats.net_flow_yi
   const flowHtml = flow == null
@@ -35,11 +58,12 @@ function rangeBlock(stats: RangeStats): string {
 export function buildKlineTooltip(kline: KlinePoint[],
                                   sigByDate: Map<string, DailySignal>,
                                   tradesByDate: Map<string, TradePoint>,
-                                  rangeStats?: RangeStats | null) {
+                                  rangeStats?: RangeStats | null,
+                                  extras?: KlineTooltipExtras) {
   return (params: { dataIndex?: number }[]) => {
     const i = params[0]?.dataIndex
     const k = i != null ? kline[i] : undefined
-    if (!k) return ''
+    if (!k || i == null) return ''
     const s = sigByDate.get(k.date)
     const delta = s?.shares_delta_yi
     const adjust = s?.share_adjust
@@ -59,7 +83,8 @@ export function buildKlineTooltip(kline: KlinePoint[],
       `份额净申赎：${delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 亿份` : '-'}` +
       (adjust != null ? fmtAdjustNote(adjust) : '') + `<br/>` +
       `综合概率：${prob != null ? `${prob.toFixed(1)}%` : '-'}` +
-      (cpDir != null ? `（<span style="color:${cpColor}"><b>${cpDir}</b></span>）` : '') + `<br/>` +
+      (cpDir != null ? `（<span style="color:${cpColor}"><b>${cpDir}</b></span>）` : '') +
+      extraBlock(extras, i) + `<br/>` +
       tradeHtml +
       (rangeStats ? rangeBlock(rangeStats) : '') +
       `</div>`

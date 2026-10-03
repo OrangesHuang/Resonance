@@ -56,16 +56,19 @@ python3 scripts/backtest_portfolio.py          # 组合回测验证
 ```
 backend/
 ├── base/            # 共用功能（多页面领域共用）
-│   ├── config.py    # 系统级命名常量（ETF 清单/阈值/窗口/调度/限流）
-│   ├── fetch/       # HTTP 请求与原始数据解析（kline/realtime/shares/sentiment/calendar/adjust_factor/turnover_official）
+│   ├── config.py    # 系统级命名常量（阈值/窗口/调度/限流；ETFS 为运行时镜像, 真源在 etfs 表）
+│   ├── fetch/       # HTTP 请求与原始数据解析（kline/realtime/shares/sentiment/calendar/adjust_factor/turnover_official/supply）
 │   ├── store/       # 全部 SQLite 操作（参数化查询；database 连接建表迁移 + 各表 repo）
+│   │                #   etf_repo.py: etfs 清单表 CRUD/覆盖统计/load_into_config 镜像刷新
 │   ├── scheduler/   # 任务编排（tasks/daily_tasks/intraday_tasks/job_manager/job_registry/
 │   │                #   scheduled_defs/rebuild/recalc/time_guard/state + 各回填 jobs + calendar_slots）
+│   │                #   etf_backfill_job.py: 单标的五阶段回填; shares_fill.py: 份额逐日写入核心
 │   ├── analysis/    # 共用纯函数计算
 │   │   ├── sentiment/   # 市场情绪（共振页 + 情绪页共用）
 │   │   ├── strategy/    # 各 ETF 专属买卖点（共振页 + 组合回测共用）
-│   │   └── shares_adjust.py  # 份额复权
-│   └── api/         # 共用接口（etf.py 列表/K线/刷新、sentiment.py 情绪概览、static.py 静态托管）
+│   │   ├── shares_adjust.py  # 份额复权
+│   │   └── etf_naming.py     # ETF 简称→指数名标签(动态添加时带出)
+│   └── api/         # 共用接口（etf.py 列表/K线/刷新、etf_manage.py 清单增删、sentiment.py 情绪概览、static.py 静态托管）
 ├── resonance/       # 多指标共振页面领域
 │   ├── analysis/    # core.py 共振计算、evidence*.py 日级证据、composite.py 综合概率、factors.py 份额因子、intraday.py 盘中信号
 │   └── api.py       # /api/resonance 路由（overview/day/trades）
@@ -84,6 +87,7 @@ backend/
 
 - 新增页面领域：建 `<领域>/` 目录（`analysis/` + `api.py`），从 `api/` 迁入专属代码；共用代码留在/迁入 `base/`。
 - 依赖方向：`base/fetch/ → 领域 analysis → base/store → 领域 api`，严禁反向引用；`base/scheduler/` 为编排层，允许依赖各领域 `analysis` 的计算函数（如共振信号回填任务调 `resonance.analysis.composite`）。
+- ETF 清单为动态数据：`etfs` 表是真源，`config.ETFS` 只是运行时镜像（由 `etf_repo.load_into_config()` 原地刷新，禁止重新绑定）；镜像必须留在 `config.py`（`base/fetch` 不允许 import `base/store`）。新增依赖在册清单的逻辑时读 `ETFS` 即可，增删会自动生效。
 - 策略按标的拆文件：`base/analysis/strategy/<后缀>.py`，统一经 `base/analysis/strategy/router.py` 分派。
 - 新任务必须在 `base/scheduler/job_registry.py` 注册（标签/独占/默认参数）并在 `api/data.py` 校验参数；定时任务另在 `scheduled_defs.py` 登记。
 - 时间范围参数统一 `start_date`/`end_date`（`YYYY-MM-DD`），`days` 仅作无日期时的回退；日期在 akshare 边界转 `YYYYMMDD`。
@@ -102,6 +106,7 @@ backend/
 | `components/sentiment/` | 市场情绪（`SentimentLineChart`） |
 | `components/calendar/` | 交易日历（`MiniMonth`） |
 | `components/data/` | 数据管理（`JobsPanel`、`SchedulerPanel`、`SourceCard`、`FlowSteps`、`RecalcCard`） |
+| `components/etfmanage/` | ETF 管理（`AddEtfForm` 校验并添加、`EtfTable` 覆盖状态/按标的回填/两步确认硬删除） |
 | `hooks/` | React Query 数据 hooks + 图表联动（`useChartSync`、`useAxisPointerBridge`）、`useLocalStorage`/`usePinnedEtfs` 等 |
 | `utils/` | 通用工具（`calendar`、`idbCache` 前端历史缓存） |
 | `api/` | `client.ts`（全部 HTTP 封装）+ `types.ts`（`types/*.ts` 按领域拆分后的聚合出口） |

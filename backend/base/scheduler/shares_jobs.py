@@ -2,6 +2,7 @@
 
 逐日边拉边写, 已有份额/已完整的日期自动跳过, 中断后重跑续传;
 按 chunk_days 交易日一批上报进度, 每批入库后图表即增长。
+逐日写入核心见 shares_fill.py(区间回填与缺失补全共用)。
 被 job_registry.py 注册为后台任务, 同时被 scripts/backfill_shares.py 复用。
 """
 
@@ -15,144 +16,20 @@ from base.config import (
     BACKFILL_SLEEP_SEC,
     DEFAULT_CHUNK_DAYS,
     DEFAULT_SHARES_BACKFILL_DAYS,
-    ETFS,
-    SHARE_WINDOW,
     SHARES_FAIL_PAUSE_AFTER,
     SHARES_FAIL_PAUSE_SEC,
-    SHARES_RETRY_PASSES,
 )
-from base.fetch.shares import fetch_shares_for_date
 from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.job_manager import ProgressFn
-from base.store.daily_repo import (
-    get_by_date,
-    get_first_share_dates,
-    get_missing_share_dates,
-    get_trading_dates,
-    update_share_data,
+from base.scheduler.shares_fill import (
+    _fillable_targets,
+    _load_prev_shares,
+    _missing_share_etfs,
+    _retry_failed_dates,
+    _write_shares_date,
 )
+from base.store.daily_repo import get_by_date, get_first_share_dates, get_missing_share_dates, get_trading_dates
 from base.store.settings_repo import get_setting
-from resonance.analysis.factors import calc_share_probability_dual
-
-
-def _load_prev_shares(date: str, prev_shares: dict, prev_window: dict[str, list[float]]) -> None:
-    for r in get_by_date(date):
-        if r.get("shares_yi") is not None:
-            prev_shares[r["code"]] = r["shares_yi"]
-            hist = prev_window.setdefault(r["code"], [])
-            hist.append(r["shares_yi"])
-            if len(hist) > SHARE_WINDOW:
-                hist.pop(0)
-
-
-def _missing_share_etfs(date: str) -> list[str]:
-    """该日期在库中缺份额数据或缺 delta 的**当前在册** ETF。
-
-    - 缺 delta 也算缺失: 后补份额时 prev 可能未入库导致 delta 留空
-      (如 159352 2026-08-10 shares_yi 有值但 sd None, 需重算)。
-    - 只看 ETFS 在册标的: 库里保留着已移除标的的历史行(510880/159919/510310/
-      510330 等), 追它们的份额毫无意义, 还会让补全任务反复失败。
-    """
-    rows = {r["code"]: r for r in get_by_date(date)}
-    return [
-        c for c, r in rows.items() if c in ETFS and (r.get("shares_yi") is None or r.get("shares_delta_yi") is None)
-    ]
-
-
-def _write_shares_date(
-    date: str, prev_shares: dict, codes: list[str], prev_window: dict[str, list[float]] | None = None
-) -> int:
-    shares = fetch_shares_for_date(date)
-    if not shares:
-        return 0
-    n = 0
-    for code in codes:
-        shares_yi = shares.get(code)
-        if shares_yi is None:
-            continue
-        delta_yi = None
-        delta_pct = None
-        prev = prev_shares.get(code)
-        if prev is not None and prev > 0:
-            delta_yi = round(shares_yi - prev, 4)
-            delta_pct = round(delta_yi / prev * 100, 3)
-        # 双基准取强: 当日vs昨日 与 当日vs前N日均值(持续吸筹放大, 如12月底+3.8亿)
-        hist = prev_window.get(code, []) if prev_window else []
-        sp = calc_share_probability_dual(delta_pct, shares_yi, hist, SHARE_WINDOW)
-        update_share_data(date, code, shares_yi, delta_yi, delta_pct, sp)
-        prev_shares[code] = shares_yi
-        if prev_window is not None:
-            hist = prev_window.setdefault(code, [])
-            hist.append(shares_yi)
-            if len(hist) > SHARE_WINDOW:
-                hist.pop(0)
-        n += 1
-    return n
-
-
-def _fillable_targets(date: str, targets: list[str], first_share: dict[str, str]) -> list[str]:
-    """剔除"ETF 尚未成立"的日期上的标的。
-
-    判据: 该标的已有份额的最早日期(无任何份额的标的视为"需先做区间回填",
-    不参与自动补全 —— 否则会像 512100 那样在上市前的日期上反复失败)。
-    """
-    out = []
-    for code in targets:
-        first = first_share.get(code)
-        if first and date >= first:
-            out.append(code)
-    return out
-
-
-def _write_date(
-    date: str, force: bool, prev_shares: dict, prev_window: dict[str, list[float]], first_share: dict[str, str]
-) -> tuple[int, int]:
-    """写单日份额。返回 (写入行数, 目标标的数)。
-
-    目标数为 0 表示该日无需补(不算失败); 目标数 >0 而写入 0 行 = 远端拉取失败。
-    """
-    targets = [r["code"] for r in get_by_date(date)] if force else _missing_share_etfs(date)
-    targets = _fillable_targets(date, targets, first_share)
-    if not targets:
-        return 0, 0
-    return _write_shares_date(date, prev_shares, targets, prev_window), len(targets)
-
-
-def _retry_failed_dates(
-    progress: ProgressFn,
-    failed: list[str],
-    force: bool,
-    prev_shares: dict,
-    prev_window: dict[str, list[float]],
-    first_share: dict[str, str],
-    progress_base: int,
-    progress_total: int,
-) -> tuple[int, int, list[str]]:
-    """轮末重试"整日拉取失败"的日期(错开时间, 规避持续限流留下的永久缺口)。
-
-    即时重试(SHARES_RETRY)只覆盖秒级抖动; 588200 的 2025-09-26~10-20 共 11 天
-    就是三次即时重试全失败后被永久跳过的。返回 (写入行数, 成功天数, 仍失败日期)。
-    """
-    written = 0
-    ok_days = 0
-    still = list(failed)
-    for p in range(SHARES_RETRY_PASSES):
-        if not still:
-            break
-        progress(progress_base, progress_total, f"重试 {len(still)} 个失败日 (第 {p + 1}/{SHARES_RETRY_PASSES} 轮)")
-        time.sleep(SHARES_FAIL_PAUSE_SEC)  # 先给远端喘息, 再重试
-        pending: list[str] = []
-        for date in still:
-            _load_prev_shares(date, prev_shares, prev_window)
-            wrote, n_targets = _write_date(date, force, prev_shares, prev_window, first_share)
-            if wrote == 0 and n_targets > 0:
-                pending.append(date)
-            else:
-                written += wrote
-                ok_days += 1
-            time.sleep(BACKFILL_SLEEP_SEC)
-        still = pending
-    return written, ok_days, still
 
 
 def job_backfill_shares(
@@ -162,11 +39,13 @@ def job_backfill_shares(
     start_date: str | None = None,
     end_date: str | None = None,
     chunk_days: int = DEFAULT_CHUNK_DAYS,
+    codes: list[str] | None = None,
 ) -> dict:
     """回填份额数据(逐日边拉边写, 按 chunk_days 交易日一批上报进度)。
 
     末尾对"整日拉取失败"的日期做轮末重试(SHARES_RETRY_PASSES), 避免一次限流
-    抖动留下永久缺口。
+    抖动留下永久缺口。codes 显式指定时只补这些标的(单标的回填用), 跳过
+    "上市前"过滤并把补全目标收窄到该集合。
     """
     if start_date:
         end = end_date or datetime.now().strftime("%Y-%m-%d")
@@ -175,6 +54,7 @@ def job_backfill_shares(
         dates = get_trading_dates()[-days:]
     if not dates:
         raise RuntimeError("etf_daily 无交易日,请先回填ETF日度数据")
+    code_filter = set(codes) if codes else None
     first_share = get_first_share_dates()
     prev_shares: dict = {}
     prev_window: dict[str, list[float]] = {}
@@ -186,11 +66,20 @@ def job_backfill_shares(
     for i, date in enumerate(dates, 1):
         chunk_idx = min((i - 1) // chunk_days + 1, total_chunks)
         missing = _missing_share_etfs(date)
+        if code_filter is not None:
+            missing = [c for c in missing if c in code_filter]
         if not force and not missing:
             _load_prev_shares(date, prev_shares, prev_window)
             progress(chunk_idx, total_chunks, f"{date} 已完整 (第 {chunk_idx}/{total_chunks} 批)")
             continue
-        targets = _fillable_targets(date, missing, first_share) if not force else [r["code"] for r in get_by_date(date)]
+        if force:
+            targets = [r["code"] for r in get_by_date(date)]
+            if code_filter is not None:
+                targets = [c for c in targets if c in code_filter]
+        elif code_filter is not None:
+            targets = missing  # 显式指定标的: 不做上市前过滤(调用方已收窄区间)
+        else:
+            targets = _fillable_targets(date, missing, first_share)
         if not targets:
             _load_prev_shares(date, prev_shares, prev_window)
             progress(chunk_idx, total_chunks, f"{date} 无份额数据(上市前), 跳过")
@@ -210,7 +99,7 @@ def job_backfill_shares(
             written += wrote
         time.sleep(BACKFILL_SLEEP_SEC)
     retry_written, retry_days, still = _retry_failed_dates(
-        progress, failed, force, prev_shares, prev_window, first_share, total_chunks, total_chunks
+        progress, failed, force, prev_shares, prev_window, first_share, total_chunks, total_chunks, codes
     )
     written += retry_written
     fetched_dates += retry_days

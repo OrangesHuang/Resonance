@@ -12,7 +12,7 @@ L0 远端数据源（7 个）──▶ L1 SQLite 落库（6 张表）──▶ L
 ```mermaid
 flowchart TB
     subgraph L0["L0 远端数据源（原始）"]
-        A1["腾讯/新浪 K线<br/>date/open/close/high/low/volume<br/>（ETF×10 + 沪深300指数）"]
+        A1["腾讯/新浪 K线<br/>date/open/close/high/low/volume<br/>（在册 ETF 清单 + 沪深300指数）"]
         A2["上交所/深交所份额接口<br/>shares_yi（亿份）"]
         A3["交易所成交额(akshare)<br/>sh_amount_yi/sz_amount_yi/total_amount_yi"]
         A4["融资融券(akshare)<br/>fin_balance_yi/loan_balance_yi/fin_buy_yi"]
@@ -28,6 +28,7 @@ flowchart TB
         B4["margin_trading"]
         B5["trade_calendar"]
         B6["intraday_turnover<br/>amount_yi原始 + est_amount_yi加工"]
+        B7["etfs<br/>监控清单(动态增删, config.ETFS 为运行时镜像)"]
     end
 
     subgraph L2["L2 领域加工（纯函数）"]

@@ -87,6 +87,27 @@ def fetch_index_quote() -> RealtimeQuote | None:
     return quotes.get("000300")
 
 
+def fetch_etf_quote(code: str) -> dict | None:
+    """按代码探测一只 ETF 的行情(校验存在性 + 取名称/交易所)。
+
+    动态添加标的时 market 未知, 而腾讯符号必须带市场前缀: 按代码段先试
+    更可能的市场(5 开头先 sh, 1 开头先 sz), 空响应再试另一个。
+    失败返回 None(不抛异常)。
+    """
+    markets = ("sh", "sz") if code.startswith("5") else ("sz", "sh")
+    for market in markets:
+        try:
+            text = _fetch_raw(f"{market}{code}")
+        except Exception as e:  # 网络/解析失败均视为该市场无结果
+            print(f"[FETCH] quote probe failed ({market}{code}): {e}")
+            continue
+        for line in text.strip().split("\n"):
+            quote = _parse_line(line)
+            if quote and quote.code == code:
+                return {"code": code, "name": quote.name, "market": market, "price": quote.price}
+    return None
+
+
 def _fetch_raw(symbols: str) -> str:
     url = REALTIME_URL.format(symbols=symbols)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})

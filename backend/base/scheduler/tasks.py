@@ -39,9 +39,11 @@ from base.scheduler.intraday_tasks import (
     task_realtime_poll,
     task_turnover_poll,
 )
+from base.scheduler.supply_jobs import task_refresh_supply
 from base.scheduler.time_guard import is_trading_time, trading_day_guard
 from base.store.calendar_repo import get_calendar_count, reload_cache
 from base.store.database import init_db
+from base.store.etf_repo import load_into_config, seed_from_config
 from base.store.sentiment_repo import get_margin_count, get_turnover_count
 
 scheduler = AsyncIOScheduler()
@@ -62,6 +64,9 @@ def _to_thread(fn: Callable[..., object]) -> Callable[..., object]:
 
 def start_scheduler() -> None:
     init_db()
+    # ETF 清单: 库为真源(首启把 config.ETFS 播种进库), 镜像刷新后所有消费者生效
+    seed_from_config()
+    load_into_config()
     reload_cache()
     if get_calendar_count() == 0:
         task_sync_calendar()
@@ -139,6 +144,12 @@ def start_scheduler() -> None:
         _to_thread(task_sync_calendar),
         CronTrigger(day_of_week=CALENDAR_SYNC_DOW, hour=CALENDAR_SYNC_HOUR, minute=CALENDAR_SYNC_MIN),
         id="sync_calendar",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _to_thread(task_refresh_supply),
+        CronTrigger(day_of_week="sat", hour=8, minute=0),
+        id="refresh_supply",
         replace_existing=True,
     )
     scheduler.start()

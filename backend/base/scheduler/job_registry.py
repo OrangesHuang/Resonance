@@ -12,12 +12,14 @@ from base.config import (
 )
 from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.data_jobs import job_sync_calendar
+from base.scheduler.etf_backfill_job import job_backfill_etf
 from base.scheduler.etf_daily_jobs import job_backfill_etf_daily, job_backfill_missing_etf_daily
 from base.scheduler.rebuild import job_rebuild_all
 from base.scheduler.recalc import job_recalc_composite
 from base.scheduler.sentiment_jobs import job_fetch_etf_latest, job_fetch_sentiment
 from base.scheduler.share_adjust_jobs import job_fix_share_splits
 from base.scheduler.shares_jobs import job_backfill_missing_shares, job_backfill_shares
+from base.scheduler.supply_jobs import job_refresh_supply
 
 JOB_DEFS: dict[str, dict] = {
     "sync_calendar": {
@@ -48,6 +50,25 @@ JOB_DEFS: dict[str, dict] = {
             },
             {"step": "derive", "text": "综合概率 composite_prob → signal_level（V2 四层门控）"},
             {"step": "write", "text": "upsert 写入 etf_daily，已存在的日期跳过（勾选强制则覆盖）"},
+        ],
+    },
+    "backfill_etf": {
+        "label": "回填单只ETF数据",
+        "exclusive": False,
+        "defaults": {
+            "code": "",
+            "days": DEFAULT_ETF_SEED_DAYS,
+            "start_date": None,
+            "end_date": None,
+            "force": False,
+            "chunk_days": DEFAULT_CHUNK_DAYS,
+        },
+        "data_flow": [
+            {"step": "fetch", "text": "拉取该标的日K（前复权 OHLCV，起点前自动暖机）"},
+            {"step": "derive", "text": "逐日完整加工链 → upsert 写入 etf_daily"},
+            {"step": "fetch", "text": "回填该标的份额（逐日拉取，区间收窄到其上市后）"},
+            {"step": "derive", "text": "折算修正 + 综合概率重算（把份额层折进 composite_prob）"},
+            {"step": "write", "text": "刷新日历槽位台账，完成后可在 ETF 走势/共振页查看"},
         ],
     },
     "refresh_calendar_slots": {
@@ -162,6 +183,16 @@ JOB_DEFS: dict[str, dict] = {
             {"step": "write", "text": "更新 dir_prob / composite_prob / signal_level 三列（幂等，可重复执行）"},
         ],
     },
+    "refresh_supply": {
+        "label": "刷新一级退出数据(解禁/减持/新股)",
+        "exclusive": False,
+        "defaults": {},
+        "data_flow": [
+            {"step": "fetch", "text": "限售解禁明细(近90天+未来210天) + 股东减持明细(近约400天) + 新股发行一览"},
+            {"step": "write", "text": "upsert 到 unlock_events / reduction_events / ipo_events 三表"},
+            {"step": "note", "text": "减持为全量拉取(约2分钟), 建议手动触发或周更"},
+        ],
+    },
     "rebuild_all": {
         "label": "一键重建全部数据",
         "exclusive": True,
@@ -185,6 +216,7 @@ JOB_DEFS: dict[str, dict] = {
 JOB_FNS: dict[str, Callable[..., dict]] = {
     "sync_calendar": job_sync_calendar,
     "backfill_etf_daily": job_backfill_etf_daily,
+    "backfill_etf": job_backfill_etf,
     "backfill_missing_etf_daily": job_backfill_missing_etf_daily,
     "refresh_calendar_slots": job_refresh_calendar_slots,
     "backfill_shares": job_backfill_shares,
@@ -193,5 +225,6 @@ JOB_FNS: dict[str, Callable[..., dict]] = {
     "fetch_sentiment": job_fetch_sentiment,
     "fetch_etf_latest": job_fetch_etf_latest,
     "recalc_composite": job_recalc_composite,
+    "refresh_supply": job_refresh_supply,
     "rebuild_all": job_rebuild_all,
 }

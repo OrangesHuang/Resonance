@@ -24,7 +24,9 @@ const NAV_GROUPS = [
     label: '辅助数据',
     items: [
       { to: '/sentiment', label: '市场宏观指标' },
+      { to: '/supply', label: '一级退出监测' },
       { to: '/monitor', label: 'ETF流向分析' },
+      { to: '/etfs', label: 'ETF 管理' },
       { to: '/data', label: '数据管理' },
       { to: '/tasks', label: '定时任务' },
       { to: '/calendar', label: '交易日历' },

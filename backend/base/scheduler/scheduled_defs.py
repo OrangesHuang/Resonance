@@ -93,6 +93,15 @@ SCHEDULED_DEFS: dict[str, dict] = {
             {"step": "write", "text": "trade_calendar 表,供回填/定时任务判定交易日"},
         ],
     },
+    "refresh_supply": {
+        "label": "一级退出数据刷新",
+        "schedule": "每周六 08:00",
+        "purpose": "拉取限售解禁/股东减持/新股发行, 支撑「一级退出监测」页",
+        "data_flow": [
+            {"step": "fetch", "text": "东财限售解禁明细 + 股东减持明细(全量约2分钟) + 新股发行一览"},
+            {"step": "write", "text": "unlock_events / reduction_events / ipo_events 三表 upsert"},
+        ],
+    },
     "cleanup": {
         "label": "实时数据清理",
         "schedule": "每天 02:00",

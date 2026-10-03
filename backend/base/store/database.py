@@ -103,11 +103,75 @@ def init_db() -> None:
                 updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
 
+            -- ETF 监控清单(动态管理): config.ETFS 仅为运行时镜像, 本表为真源
+            CREATE TABLE IF NOT EXISTS etfs (
+                code       TEXT PRIMARY KEY,
+                name       TEXT NOT NULL,
+                idx        TEXT NOT NULL DEFAULT '',
+                market     TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            );
+
             CREATE TABLE IF NOT EXISTS intraday_turnover (
                 timestamp   TEXT PRIMARY KEY,
                 amount_yi   REAL,
                 est_amount_yi REAL,
                 created_at  TEXT DEFAULT (datetime('now','localtime'))
+            );
+
+            -- 一级退出监测: 限售解禁(未来供给压力)
+            CREATE TABLE IF NOT EXISTS unlock_events (
+                date            TEXT NOT NULL,
+                code            TEXT NOT NULL,
+                name            TEXT,
+                unlock_type     TEXT,
+                shares          REAL,
+                market_value    REAL,
+                ratio_pct       REAL,
+                pre20_chg       REAL,
+                post20_chg      REAL,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                PRIMARY KEY (date, code)
+            );
+            CREATE INDEX IF NOT EXISTS idx_unlock_date ON unlock_events(date);
+
+            -- 一级退出监测: 股东/高管减持(实际退出)
+            CREATE TABLE IF NOT EXISTS reduction_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                date            TEXT NOT NULL,
+                code            TEXT NOT NULL,
+                name            TEXT,
+                holder          TEXT,
+                role            TEXT,
+                shares_delta    REAL,
+                price           REAL,
+                amount          REAL,
+                ratio_pct       REAL,
+                reason          TEXT,
+                created_at      TEXT DEFAULT (datetime('now','localtime')),
+                UNIQUE (date, code, holder, shares_delta)
+            );
+            CREATE INDEX IF NOT EXISTS idx_reduction_date ON reduction_events(date);
+
+            -- 一级退出监测: 新股发行(供给节奏)
+            CREATE TABLE IF NOT EXISTS ipo_events (
+                code            TEXT PRIMARY KEY,
+                name            TEXT,
+                board           TEXT,
+                exchange        TEXT,
+                issue_date      TEXT,
+                list_date       TEXT,
+                price           REAL,
+                total_shares    REAL,
+                pe              REAL,
+                created_at      TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_ipo_issue ON ipo_events(issue_date);
+
+            CREATE TABLE IF NOT EXISTS supply_meta (
+                key        TEXT PRIMARY KEY,
+                value      TEXT,
+                updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
         """)
         _migrate_add_direction_columns(conn)

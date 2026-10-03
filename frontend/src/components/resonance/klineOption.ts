@@ -4,12 +4,14 @@ import type { KlinePoint, ResonanceHistoryPoint, DailySignal, TradePoint, Regime
 import { buildTradeBands, sanitizeBands } from '../kline/tradeBands'
 import { buildKlineTooltip } from '../kline/klineTooltip'
 import { buildMarks } from '../kline/klineMarks'
-import { buildMacdPanel } from './macdOption'
+import { buildMacdPanel, computeMacd } from './macdOption'
+import { buildForceFlowPanel, computeForceFlow } from './forceFlowOption'
 import { buildEmaOverlay } from './emaOverlay'
 import type { RangeSelection } from '../kline/rangeSelect'
 import type { RangeStats } from '../kline/rangeStats'
 
 const AXIS_LABEL = '#6b7280'
+const PANEL_TITLE = { color: AXIS_LABEL, fontSize: 10, fontWeight: 'normal' as const }
 const DANGER_BAND = 'rgba(239, 68, 68, 0.08)'
 const CHANCE_BAND = 'rgba(34, 197, 94, 0.08)'
 const UP_COLOR = '#ef4444'
@@ -82,6 +84,11 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
 
   // 标准 MACD 三件套 (DIF 12/26 + DEA + 红绿柱), 独立面板在综合概率下方
   const macdPanel = buildMacdPanel(kline, dates)
+  // 主力进出/吸筹/散户线/庄家线 独立副图(同花顺公式移植)
+  const forcePanel = buildForceFlowPanel(kline, dates)
+  // tooltip 需要原始序列值(MACD/主力), 面板内部也各算一遍, 数组小可接受
+  const macdRaw = computeMacd(kline.map(k => k.close))
+  const forceRaw = computeForceFlow(kline)
   // 主图叠加长周期价格均线 EMA120/EMA350(价格量纲, 共享价格轴 → 缩放不跳)
   const emaOverlay = buildEmaOverlay(kline)
 
@@ -120,14 +127,17 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
   // 移动端: 不使用 brush(触摸不支持), 改用两次点击选区间
   const brushActive = rangeSel.mode && !isMobile
   const insideZoom = brushActive
-    ? { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: false }
-    : { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4], moveOnMouseMove: true, preventDefaultMouseMove: true }
+    ? { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4, 5], moveOnMouseMove: false }
+    : { type: 'inside' as const, xAxisIndex: [0, 1, 2, 3, 4, 5], moveOnMouseMove: true, preventDefaultMouseMove: true }
 
   const { markPoint, markLine, markLineTop, probMarkLine } =
     buildMarks(trades, kline, dates, selectedDate)
 
   const tradeByDate = new Map(trades.map(t => [t.date, t]))
-  const tooltipFormatter = buildKlineTooltip(kline, sigByDate, tradeByDate, rangeStats)
+  const tooltipFormatter = buildKlineTooltip(kline, sigByDate, tradeByDate, rangeStats, {
+    macd: macdRaw,
+    force: forceRaw,
+  })
 
   return {
     option: {
@@ -163,6 +173,14 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
         formatter: tooltipFormatter as TooltipComponentOption['formatter'],
       },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
+      // 副图左上角小标题(替代原先挤成一行的长说明)
+      title: [
+        { text: '成交量', left: 64, top: '46.3%', textStyle: PANEL_TITLE },
+        { text: '份额净申赎(亿份)', left: 64, top: '54.3%', textStyle: PANEL_TITLE },
+        { text: '综合概率(%)', left: 64, top: '62.3%', textStyle: PANEL_TITLE },
+        { text: 'MACD(12,26,9)', left: 64, top: '70.3%', textStyle: PANEL_TITLE },
+        { text: '主力资金：主力进出/吸筹(柱) · 散户线/庄家线', left: 64, top: '79.8%', textStyle: PANEL_TITLE },
+      ],
       visualMap: [
         {
           show: false,
@@ -174,11 +192,12 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
         },
       ],
       grid: [
-        { left: 60, right: 20, top: 20, height: '34%' },
-        { left: 60, right: 20, top: '56%', height: '4.5%' },
-        { left: 60, right: 20, top: '61.5%', height: '4.5%' },
-        { left: 60, right: 20, top: '67%', height: '8%' },
+        { left: 60, right: 20, top: 16, height: '42%' },
+        { left: 60, right: 20, top: '46%', height: '6.5%' },
+        { left: 60, right: 20, top: '54%', height: '6.5%' },
+        { left: 60, right: 20, top: '62%', height: '6.5%' },
         macdPanel.grid,
+        forcePanel.grid,
       ],
       xAxis: [
         { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
@@ -186,13 +205,15 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
         { type: 'category', data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
         { type: 'category', data: dates, gridIndex: 3, boundaryGap: false, axisLabel: { show: false }, axisPointer: { label: { show: false } } },
         macdPanel.xAxis,
+        forcePanel.xAxis,
       ],
       yAxis: [
         { scale: true, gridIndex: 0, boundaryGap: ['3%', '3%'], splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: AXIS_LABEL } },
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
         { scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9 } },
-        { min: 0, max: 100, gridIndex: 3, splitNumber: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9, formatter: '{value}%' } },
+        { min: 0, max: 100, gridIndex: 3, splitNumber: 2, splitLine: { show: false }, axisLabel: { show: false } },
         macdPanel.yAxis,
+        forcePanel.yAxis,
       ],
       series: [
         {
@@ -255,12 +276,13 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
         },
         ...macdPanel.series,
         ...emaOverlay.series,
+        ...forcePanel.series,
       ],
       dataZoom: [
         insideZoom,
         {
           type: 'slider',
-          xAxisIndex: [0, 1, 2, 3, 4],
+          xAxisIndex: [0, 1, 2, 3, 4, 5],
           top: '92%',
           height: 16,
           borderColor: '#374151',

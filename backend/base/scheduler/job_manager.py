@@ -71,6 +71,21 @@ class JobManager:
         with self._lock:
             return any(j.task == task for j in self._active())
 
+    def active_codes(self) -> set[str]:
+        """活动任务 params 中涉及的 ETF 代码(删除标的前的占用检查)。"""
+        with self._lock:
+            codes: set[str] = set()
+            for job in self._active():
+                code = job.params.get("code")
+                if isinstance(code, str) and code:
+                    codes.add(code)
+            return codes
+
+    def is_any_active(self, tasks: set[str] | frozenset[str]) -> bool:
+        """给定任务集合中是否有任意一个在活动(如全局回填任务, 删除时需避让)。"""
+        with self._lock:
+            return any(j.task in tasks for j in self._active())
+
     def can_start(self, task: str, exclusive: bool) -> bool:
         with self._lock:
             active = self._active()

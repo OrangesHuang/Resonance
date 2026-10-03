@@ -13,11 +13,13 @@ from api.realtime import router as realtime_router
 from api.signals import router as signals_router
 from api.stats import router as stats_router
 from base.api.etf import router as etf_router
+from base.api.etf_manage import router as etf_manage_router
 from base.api.sentiment import router as sentiment_router
 from base.api.static import mount_frontend
 from base.scheduler.tasks import start_scheduler, stop_scheduler
 from portfolio.api import router as portfolio_router
 from resonance.api import router as resonance_router
+from supply.api import router as supply_router
 
 
 @asynccontextmanager
@@ -38,6 +40,7 @@ app.add_middleware(
 for router in (
     signals_router,
     etf_router,
+    etf_manage_router,
     realtime_router,
     stats_router,
     sentiment_router,
@@ -45,6 +48,7 @@ for router in (
     resonance_router,
     data_router,
     portfolio_router,
+    supply_router,
 ):
     app.include_router(router)
 

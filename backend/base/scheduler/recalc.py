@@ -39,9 +39,9 @@ def _idx_t5_return(rows: list[dict], idx: int) -> float:
     return (idx_close[idx] / idx_close[idx - 4] - 1) * 100
 
 
-def job_recalc_composite(progress: ProgressFn) -> dict:
-    """全量重算 dir_prob + composite_prob + signal_level。"""
-    codes = list(ETFS.keys())
+def job_recalc_composite(progress: ProgressFn, codes: list[str] | None = None) -> dict:
+    """重算 dir_prob + composite_prob + signal_level(codes 为空则全量)。"""
+    codes = list(ETFS.keys()) if codes is None else codes
     updated = 0
     unchanged = 0
     for i, code in enumerate(codes, 1):

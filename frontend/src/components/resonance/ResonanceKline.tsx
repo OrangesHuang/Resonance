@@ -262,7 +262,7 @@ export default function ResonanceKline({ kline, history, signals, trades, regime
       <ReactECharts
         onChartReady={onChartReady}
         option={option}
-        style={{ height: isMobile ? 400 : 620, cursor: 'pointer' }}
+        style={{ height: isMobile ? 470 : 740, cursor: 'pointer' }}
         lazyUpdate
         onEvents={onEvents}
       />

@@ -1,4 +1,4 @@
-import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, DataSettings, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse, ScheduledTaskInfo } from './types'
+import type { SignalResponse, EtfHistoryResponse, EtfInfo, RealtimeStatus, StatsResponse, SentimentOverview, SentimentRefreshResult, EtfRefreshResult, CalendarDays, CalendarRefreshResult, ResonanceOverview, ResonanceDayDetail, TradesResponse, DataStatus, DataSettings, JobState, StartJobRequest, StartJobResponse, PortfolioBacktestResponse, RealtimeTurnoverResponse, ScheduledTaskInfo, SupplyOverview, EtfManageRow, EtfValidateResult, EtfAddResult, EtfDeleteResult } from './types'
 
 const BASE = `${__APP_BASE__}/api`
 
@@ -146,6 +146,26 @@ export function updateDataSettings(body: DataSettings): Promise<DataSettings> {
   })
 }
 
+export function fetchSupplyOverview(weeks = 8): Promise<SupplyOverview> {
+  return get(`/supply/overview?weeks=${weeks}`)
+}
+
 export function startDataJob(req: StartJobRequest): Promise<StartJobResponse> {
   return post('/data/jobs', req)
+}
+
+export function fetchEtfManageList(): Promise<EtfManageRow[]> {
+  return get('/etfs')
+}
+
+export function validateEtfCode(code: string): Promise<EtfValidateResult> {
+  return get(`/etfs/validate?code=${code}`)
+}
+
+export function addEtf(body: { code: string; idx?: string }): Promise<EtfAddResult> {
+  return post('/etfs', body)
+}
+
+export function deleteEtf(code: string): Promise<EtfDeleteResult> {
+  return request<EtfDeleteResult>(`/etfs/${code}`, { method: 'DELETE' }, 30_000)
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timedelta
 from functools import partial
 
@@ -156,7 +157,12 @@ def _merge_params(defaults: dict, incoming: dict) -> dict:
 
 def _validate_params(params: dict) -> str | None:
     for k, v in params.items():
-        if k.endswith("days"):
+        if k == "code":
+            if not isinstance(v, str) or not re.fullmatch(r"\d{6}", v):
+                return "参数 code 必须为 6 位 ETF 代码"
+            if v not in ETFS:
+                return f"未知的ETF代码: {v}"
+        elif k.endswith("days"):
             if not isinstance(v, int) or isinstance(v, bool) or not (1 <= v <= JOB_DAYS_MAX):
                 return f"参数 {k} 必须为 1~{JOB_DAYS_MAX} 的整数"
         elif k in ("start_date", "end_date") and v is not None:
