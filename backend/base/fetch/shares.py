@@ -12,6 +12,7 @@ from base.config import (
 
 _SSE_CACHE: dict[str, dict[str, float]] = {}
 _SZSE_CACHE: dict[str, dict[str, float]] = {}
+_SSE_LOF_CACHE: dict[str, dict[str, float]] = {}
 
 
 def _date_to_ak(d: str) -> str:
@@ -85,6 +86,71 @@ def fetch_shares_szse(date_str: str) -> dict[str, float]:
     except Exception as e:
         print(f"[FETCH] SZSE shares {date_str} failed: {e}")
         return {}
+
+
+def fetch_shares_sse_lof() -> dict[str, float]:
+    """上交所 LOF 规模快照(单位: 亿份; 键为基金代码)。
+
+    注意: 该接口**只返回最新交易日一个快照**(日期参数会被忽略, 实测传历史
+    日期仍返回最新), 因此不能用于历史回填 —— 当前仅用于识别"LOF 标的没有
+    历史份额序列"。ETF 的逐日份额请用 fetch_shares_sse。
+    按本地日期缓存(快照基本日更, 避免同进程反复请求)。
+    """
+    key = datetime.now().strftime("%Y-%m-%d")
+    if key in _SSE_LOF_CACHE:
+        return _SSE_LOF_CACHE[key]
+
+    try:
+        import requests
+
+        url = "https://query.sse.com.cn/commonQuery.do"
+        params = {
+            "isPagination": "true",
+            "pageHelp.pageSize": "10000",
+            "pageHelp.pageNo": "1",
+            "pageHelp.beginPage": "1",
+            "pageHelp.cacheSize": "1",
+            "pageHelp.endPage": "1",
+            "sqlId": "COMMON_SSE_FUND_LOF_SCALE_CX_S",
+        }
+        headers = {
+            "Referer": "https://www.sse.com.cn/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+        r = requests.get(url, params=params, headers=headers, timeout=AKSHARE_TIMEOUT)
+        rows = r.json().get("result") or []
+        if not rows:
+            return {}
+        result = {}
+        for row in rows:
+            code = str(row.get("FUND_CODE", ""))
+            vol = row.get("INTERNAL_VOL")
+            if code and vol is not None:
+                result[code] = float(str(vol).replace(",", "")) / 1e4
+        _SSE_LOF_CACHE[key] = result
+        return result
+    except Exception as e:
+        print(f"[FETCH] SSE LOF shares failed: {e}")
+        return {}
+
+
+def share_data_source(code: str, date_str: str) -> str:
+    """该标的份额数据源类型(供回填前置判断, 避免对无数据标的逐日空转重试):
+
+    - "etf": ETF 逐日规模接口可用, 可完整回填历史;
+    - "lof": 仅存在于上交所 LOF 快照名单(无历史日期参数), 无法回填序列;
+    - "none": ETF/LOF 两个名单都没有;
+    - "unknown": 数据源异常, 无法判断(调用方按正常流程尝试)。
+    """
+    sse = fetch_shares_sse(date_str)
+    szse = fetch_shares_szse(date_str)
+    if not sse and not szse:
+        return "unknown"
+    if code in sse or code in szse:
+        return "etf"
+    if code in fetch_shares_sse_lof():
+        return "lof"
+    return "none"
 
 
 def fetch_shares_for_date(date_str: str) -> dict[str, float]:

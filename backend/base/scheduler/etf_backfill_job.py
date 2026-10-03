@@ -7,6 +7,8 @@
   - job_fix_share_splits   codes=[code] 折算修正
   - job_recalc_composite   codes=[code] 把份额层折进 composite_prob
 份额阶段区间收窄到该 code 在 etf_daily 的首/末行日期, 避免对其未上市日期空拉。
+前置探测份额数据源(share_data_source): LOF 只有最新快照、非名单标的没有数据,
+直接跳过份额阶段 —— 否则逐日尝试会天天"失败"并触发 60s 暂停, 长时间空转。
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from datetime import datetime
 
 from base.config import DEFAULT_CHUNK_DAYS, DEFAULT_ETF_SEED_DAYS, SEED_MIN_BARS
 from base.fetch.kline import fetch_index_kline
+from base.fetch.shares import share_data_source
 from base.scheduler.calendar_slots import job_refresh_calendar_slots
 from base.scheduler.etf_daily_jobs import _seed_one_etf, _trading_days_between, _warmup_start
 from base.scheduler.job_manager import ProgressFn
@@ -93,6 +96,25 @@ def job_backfill_etf(
     seed_start = start_date if start_date and start_date > min(dates) else min(dates)
     seed_end = end or max(dates)
 
+    # 前置探测份额数据源: LOF 只有最新快照(接口无历史日期), 非名单标的一概没有,
+    # 若照常逐日尝试会"每天都算失败"→ 连续失败暂停 60s, 481 天要空转数小时
+    source = share_data_source(code, seed_end)
+    if source in ("lof", "none"):
+        reason = "为 LOF(交易所仅最新份额快照, 无历史序列)" if source == "lof" else "不在交易所份额名单"
+        progress(_W_KLINE + _W_SHARES, _TOTAL, f"{code} {reason}, 跳过份额/折算阶段")
+        recalc_res = job_recalc_composite(_stage(progress, _W_KLINE + _W_SHARES + _W_SPLIT, _W_RECALC), codes=[code])
+        job_refresh_calendar_slots(_stage(progress, _TOTAL - 1, 1))
+        progress(_TOTAL, _TOTAL, f"{code} 完成(无份额数据): 日度 {etf_rows} 行 · 重算 {recalc_res['updated']} 行")
+        return {
+            "code": code,
+            "etf_rows": etf_rows,
+            "shares_written": 0,
+            "split_fixed": 0,
+            "recalc_updated": recalc_res["updated"],
+            "range": [seed_start, seed_end],
+            "shares_source": source,
+        }
+
     shares_res = job_backfill_shares(
         _stage(progress, _W_KLINE, _W_SHARES),
         start_date=seed_start,
@@ -118,4 +140,5 @@ def job_backfill_etf(
         "split_fixed": len(splits_res["fixed"]),
         "recalc_updated": recalc_res["updated"],
         "range": [seed_start, seed_end],
+        "shares_source": source,
     }

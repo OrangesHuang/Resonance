@@ -131,3 +131,30 @@ def test_validate_params_code_rules() -> None:
     assert _validate_params({"code": "15991"}) is not None
     assert _validate_params({"code": "999999"}) is not None  # 不在册
     assert _validate_params({"code": "510300"}) is None
+
+
+def test_backfill_etf_skips_shares_for_lof(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LOF 无历史份额(交易所仅最新快照): 跳过份额阶段而不是逐日空转重试。
+
+    回归防护: 501018(南方原油 LOF) 曾因此连续失败/暂停 60s, 481 天需数小时。
+    """
+    import base.scheduler.etf_backfill_job as job
+
+    monkeypatch.setattr(job, "share_data_source", lambda code, date: "lof")
+    monkeypatch.setattr(job, "fetch_index_kline", lambda **kwargs: [{"date": "2026-09-30"}] * 30)
+    monkeypatch.setattr(job, "_seed_one_etf", lambda *a, **k: (5, 1))
+    monkeypatch.setattr(job, "get_by_code", lambda code: [{"date": "2026-09-30"}, {"date": "2024-10-14"}])
+    monkeypatch.setattr(job, "job_recalc_composite", lambda *a, **k: {"updated": 5})
+    monkeypatch.setattr(job, "job_refresh_calendar_slots", lambda *a, **k: None)
+    called = {"shares": False}
+
+    def fake_shares(*args, **kwargs):
+        called["shares"] = True
+        return {"written": 0}
+
+    monkeypatch.setattr(job, "job_backfill_shares", fake_shares)
+
+    res = job.job_backfill_etf(lambda *a: None, code="501018", days=60)
+    assert res["shares_source"] == "lof"
+    assert res["shares_written"] == 0
+    assert called["shares"] is False

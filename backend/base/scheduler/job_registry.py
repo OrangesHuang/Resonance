@@ -66,7 +66,7 @@ JOB_DEFS: dict[str, dict] = {
         "data_flow": [
             {"step": "fetch", "text": "拉取该标的日K（前复权 OHLCV，起点前自动暖机）"},
             {"step": "derive", "text": "逐日完整加工链 → upsert 写入 etf_daily"},
-            {"step": "fetch", "text": "回填该标的份额（逐日拉取，区间收窄到其上市后）"},
+            {"step": "fetch", "text": "回填该标的份额（逐日拉取，区间收窄到其上市后；LOF/无份额数据源自动跳过）"},
             {"step": "derive", "text": "折算修正 + 综合概率重算（把份额层折进 composite_prob）"},
             {"step": "write", "text": "刷新日历槽位台账，完成后可在 ETF 走势/共振页查看"},
         ],
