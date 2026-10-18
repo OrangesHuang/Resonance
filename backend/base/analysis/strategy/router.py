@@ -9,7 +9,6 @@
 本模块纯函数无 I/O; 所需数据由调用方注入:
   t_pct / m_pct — {date: {percentile}} 成交额/融资余额分位(部分策略需要)
   hs300_rows    — 510300 日线(A500 复用其买卖点)
-  kc_idx_rows   — 589680 日线(科创50 参照其吸筹特征)
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
 from base.analysis.strategy.hs300_beta import run_hs300_beta_strategy
 from base.analysis.strategy.kc import KC_CODE, run_kc_strategy
 from base.analysis.strategy.kc50 import KC50_CODE, run_kc50_strategy
-from base.analysis.strategy.kc50_beta import run_kc50_beta_strategy
 from base.analysis.strategy.kc_beta import run_kc_beta_strategy
 from base.analysis.strategy.sc50 import SC50_CODE, run_sc50_strategy
 from base.analysis.strategy.sh50 import SH50_CODE, run_sh50_strategy
@@ -141,6 +139,8 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
     DIV_CODE: lambda rows, tp=None, mp=None: run_div_strategy(_inject_percentile(rows, tp or {}, mp or {})),
     SH50_CODE: run_sh50_strategy,
     SC50_CODE: run_sc50_strategy,
+    # 科创50 正式版 = kc50.py 独立买卖点(不复用科创综指; 2020-12 起 +628.2%
+    # vs 旧版复用综指日期 +117.7%, 2026-10-18 由 beta 升级; 需 _tp 注入)
     KC50_CODE: run_kc50_strategy,
     ZZ500_CODE: run_zz500_strategy_v2,
     # 沪深300 正式版 = hs300.py 牛熊分治(2019 起: 熊市绝望底/恐慌底/强承接底 +
@@ -166,8 +166,6 @@ BETA_STRATEGIES: dict[str, Callable[..., dict]] = {
     ZZ_CODE: run_zz_beta_strategy,
     # 科创综指 beta = 正式版 + 高位散户顶/加速赶顶/洗盘回买(2026-08-18 上线)
     KC_CODE: run_kc_beta_strategy,
-    # 科创50 beta = 独立买卖点先行策略(不复用科创综指, 2020-12 起全历史)
-    KC50_CODE: run_kc50_beta_strategy,
 }
 
 
@@ -193,7 +191,6 @@ def compute_trades(
     t_pct: dict | None = None,
     m_pct: dict | None = None,
     hs300_rows: list[dict] | None = None,
-    kc_idx_rows: list[dict] | None = None,
     version: str = "stable",
 ) -> dict:
     """生成与页面「共振买卖点」一致的交易信号。
@@ -215,12 +212,10 @@ def compute_trades(
 
     if fn is None:
         return _run_default(rows, t_pct, m_pct)
-    # 分位注入型(zz/div/hs300-beta): 策略签名单参数 rows, 内部读 _tp/_mp, 统一注入
-    if code in (ZZ_CODE, DIV_CODE, HS300_CODE) or (code == KC50_CODE and version == "beta"):
+    # 分位注入型(zz/div/hs300-beta/kc50): 策略签名单参数 rows, 内部读 _tp/_mp, 统一注入
+    if code in (ZZ_CODE, DIV_CODE, HS300_CODE, KC50_CODE):
         return fn(_inject_percentile(rows, t_pct, m_pct))
-    # kc50 需要 kc_idx_rows, a500 需要 hs300_rows
-    if code == KC50_CODE:
-        return fn(rows, kc_idx_rows)
+    # a500 需要 hs300_rows
     if code == A500_CODE:
         return fn(rows, hs300_rows)
     # hs300 stable 是 lambda 包装(收 tp/mp 转 _run_default)

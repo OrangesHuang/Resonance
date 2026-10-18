@@ -72,7 +72,6 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE, version: str = "stable"
         version = "stable"
 
     from base.analysis.strategy.a500 import A500_CODE
-    from base.analysis.strategy.kc50 import KC50_CODE
     from base.analysis.strategy.router import compute_trades
 
     etf_rows = list(reversed(get_by_code(code)))
@@ -92,15 +91,10 @@ def resonance_trades(code: str = DEFAULT_RESONANCE_CODE, version: str = "stable"
     )
 
     hs300_rows = None
-    kc_idx_rows = None
     if code == A500_CODE:
         hs300_rows = list(reversed(get_by_code("510300")))
-    elif code == KC50_CODE:
-        kc_idx_rows = list(reversed(get_by_code("589680")))
 
-    result = compute_trades(
-        code, etf_rows, t_pct=t_pct, m_pct=m_pct, hs300_rows=hs300_rows, kc_idx_rows=kc_idx_rows, version=version
-    )
+    result = compute_trades(code, etf_rows, t_pct=t_pct, m_pct=m_pct, hs300_rows=hs300_rows, version=version)
     return {
         "code": code,
         "trades": result["trades"],

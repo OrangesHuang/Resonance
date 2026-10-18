@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from resonance.analysis.core import INDICATORS, compute_resonance  # noqa: E402
 from base.analysis.sentiment.core import enrich_turnover  # noqa: E402
-from base.analysis.strategy.router import compute_trades  # noqa: E402
+from base.analysis.strategy.router import compute_trades, list_strategy_versions  # noqa: E402
 from base.config import ETFS  # noqa: E402
 from base.store.daily_repo import get_by_code  # noqa: E402
 from base.store.sentiment_repo import get_margin_series, get_turnover_series  # noqa: E402
@@ -52,7 +52,6 @@ def report(
     rows: list[dict],
     turnover: list[dict],
     margin: list[dict],
-    kc_idx_rows: list[dict] | None = None,
 ) -> None:
     name = ETFS[code]["name"]
     idx = ETFS[code]["idx"]
@@ -84,12 +83,10 @@ def report(
     for ind in r["indicators"]:
         print(f"    [{STATE_ICON.get(ind['state'], '?')}] {ind['name']}: {ind['display']}  ({ind['note']})")
 
-    versions = ["stable"]
-    if code == "588000":
-        versions.append("beta")
+    versions = list_strategy_versions().get(code, ["stable"])
     for version in versions:
         try:
-            res = compute_trades(code, rows, kc_idx_rows=kc_idx_rows, version=version)
+            res = compute_trades(code, rows, version=version)
         except Exception as exc:  # noqa: BLE001
             print(f"\n  【{version}】生成失败: {exc}")
             continue
@@ -105,9 +102,8 @@ def report(
 def main() -> None:
     turnover = enrich_turnover(get_turnover_series())
     margin = get_margin_series()
-    kc_idx = _asc("589680")
     for code in TARGETS:
-        report(code, _asc(code), turnover, margin, kc_idx)
+        report(code, _asc(code), turnover, margin)
 
 
 if __name__ == "__main__":
