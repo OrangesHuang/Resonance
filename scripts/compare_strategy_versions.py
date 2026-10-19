@@ -34,6 +34,9 @@ if "--base" in sys.argv:
     BASE = sys.argv[sys.argv.index("--base") + 1]
 
 rows = list(reversed(get_by_code(CODE)))
+if not rows:
+    # 空库最常见原因是没设 ETF_MONITOR_HOME, 否则本脚本会拿两份空交易记录比出"✓ 一致"
+    sys.exit("无 %s 日线数据 (ETF_MONITOR_HOME=%r), 拒绝输出假阳性对比" % (CODE, os.environ.get("ETF_MONITOR_HOME")))
 rows = [r for r in rows if r.get("composite_prob") is not None]
 turnover = enrich_turnover(get_turnover_series())
 margin = get_margin_series()
@@ -49,8 +52,10 @@ m_pct = percentile_series(
     SENTIMENT_ZONE_WINDOW,
     SENTIMENT_ZONE_MIN_PTS,
 )
-res_s = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, version="stable")
-res_b = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, version="beta")
+# 588200 复用 588000 买卖点日期, 参考端日线需一并加载(缺了会得到 0 笔)
+KC50_ROWS = list(reversed(get_by_code("588000"))) if CODE == "588200" else None
+res_s = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, kc50_rows=KC50_ROWS, version="stable")
+res_b = compute_trades(CODE, rows, t_pct=t_pct, m_pct=m_pct, kc50_rows=KC50_ROWS, version="beta")
 
 
 def seg(res):

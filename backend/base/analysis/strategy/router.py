@@ -9,6 +9,7 @@
 本模块纯函数无 I/O; 所需数据由调用方注入:
   t_pct / m_pct — {date: {percentile}} 成交额/融资余额分位(部分策略需要)
   hs300_rows    — 510300 日线(A500 复用其买卖点)
+  kc50_rows     — 588000 日线(588200 复用其买卖点)
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from collections.abc import Callable
 
 from base.analysis.strategy.a500 import A500_CODE, run_a500_strategy
 from base.analysis.strategy.band import run_band_strategy
+from base.analysis.strategy.chip import CHIP_CODE, run_chip_strategy
 from base.analysis.strategy.div import DIV_CODE, run_div_strategy
 from base.analysis.strategy.hs300 import HS300_CODE, run_hs300_strategy
 from base.analysis.strategy.hs300_beta import run_hs300_beta_strategy
@@ -142,6 +144,9 @@ STABLE_STRATEGIES: dict[str, Callable[..., dict]] = {
     # 科创50 正式版 = kc50.py 独立买卖点(不复用科创综指; 2020-12 起 +628.2%
     # vs 旧版复用综指日期 +117.7%, 2026-10-18 由 beta 升级; 需 _tp 注入)
     KC50_CODE: run_kc50_strategy,
+    # 科创芯片 正式版 = 复用 588000 买卖点日期(2022-12 起 +726.2% vs 买入持有
+    # +177.3%; 588200 与 588000 日收益 beta 1.18/相关 0.957; 需 kc50_rows)
+    CHIP_CODE: run_chip_strategy,
     ZZ500_CODE: run_zz500_strategy_v2,
     # 沪深300 正式版 = hs300.py 牛熊分治(2019 起: 熊市绝望底/恐慌底/强承接底 +
     # 牛市四路径 + 顶部确认卖, 全历史 +440.3% vs 通用共振 +69.3%, 2026-08-17 升级)
@@ -191,6 +196,7 @@ def compute_trades(
     t_pct: dict | None = None,
     m_pct: dict | None = None,
     hs300_rows: list[dict] | None = None,
+    kc50_rows: list[dict] | None = None,
     version: str = "stable",
 ) -> dict:
     """生成与页面「共振买卖点」一致的交易信号。
@@ -218,6 +224,10 @@ def compute_trades(
     # a500 需要 hs300_rows
     if code == A500_CODE:
         return fn(rows, hs300_rows)
+    # chip 复用 588000 买卖点: 参考端要带 _tp 分位注入(kc50 的 P7 线上极冷底读它)
+    if code == CHIP_CODE:
+        ref = run_kc50_strategy(_inject_percentile(kc50_rows or [], t_pct, m_pct))
+        return run_chip_strategy(rows, ref["trades"])
     # hs300 stable 是 lambda 包装(收 tp/mp 转 _run_default)
     if code == HS300_CODE and version == "stable":
         return fn(rows, t_pct, m_pct)

@@ -10,6 +10,8 @@ from fastapi import APIRouter, Query
 
 from base.analysis.sentiment.core import enrich_turnover, percentile_series, turnover_value
 from base.analysis.strategy.a500 import A500_CODE
+from base.analysis.strategy.chip import CHIP_CODE
+from base.analysis.strategy.kc50 import KC50_CODE
 from base.analysis.strategy.router import compute_trades
 from base.config import ETFS, SENTIMENT_ZONE_MIN_PTS, SENTIMENT_ZONE_WINDOW
 from base.store.calendar_repo import get_trade_days
@@ -61,6 +63,7 @@ def _load_trades(codes: list[str] | None = None) -> dict[str, list[dict]]:
             t_pct=t_pct,
             m_pct=m_pct,
             hs300_rows=hs300_rows if code == A500_CODE else None,
+            kc50_rows=list(reversed(get_by_code(KC50_CODE))) if code == CHIP_CODE else None,
         )
         out[code] = [t for t in result["trades"] if t["date"] >= TRADE_START]
     return out
