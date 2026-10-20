@@ -6,6 +6,7 @@ import { usePinnedEtfs } from '../hooks/usePinnedEtfs'
 import { toRows } from '../components/portfolio/TradePopups'
 import type { TradeRow } from '../components/portfolio/TradePopups'
 import PortfolioChart from '../components/portfolio/PortfolioChart'
+import { fmtPrice } from '../utils/format'
 
 const KIND_STYLE: Record<string, string> = {
   BUY: 'text-green-400',
@@ -137,7 +138,9 @@ export default function PortfolioBacktest() {
                   <td className="py-1.5 pr-3 text-gray-300">{t.code} {t.name}</td>
                   <td className={`py-1.5 pr-3 ${KIND_STYLE[t.kind] ?? ''}`}>{t.kind_label}</td>
                   <td className="py-1.5 pr-3 text-right text-gray-400">{t.weight_pct.toFixed(1)}%</td>
-                  <td className="py-1.5 pr-3 text-right text-gray-400 font-mono">{t.price}</td>
+                  <td className="py-1.5 pr-3 text-right text-gray-400 font-mono">
+                    {fmtPrice(t.price)}
+                  </td>
                   <td className="py-1.5 text-right text-gray-300 font-mono">{(t.amount / 10000).toFixed(2)} 万</td>
                 </tr>
               ))}

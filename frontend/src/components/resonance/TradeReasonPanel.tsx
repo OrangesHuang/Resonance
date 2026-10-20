@@ -1,4 +1,5 @@
 import type { TradePoint, DailySignal, KlinePoint } from '../../api/types'
+import { fmtPrice } from '../../utils/format'
 
 const DIR_LABELS: Record<string, string> = {
   ACCUMULATE: '吸筹',
@@ -41,7 +42,7 @@ export default function TradeReasonPanel({ trade, signal, kline, onClose }: {
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-gray-300">
           <span className={`font-bold ${accent}`}>{isBuy ? '◆ 买入' : '▼ 卖出'}</span>
-          <span className="font-mono text-gray-200"> {trade.date} @ {trade.price}</span>
+          <span className="font-mono text-gray-200"> {trade.date} @ {fmtPrice(trade.price)}</span>
         </span>
         <button onClick={onClose} className="text-gray-600 hover:text-gray-300 text-xs transition-colors">× 收起</button>
       </div>

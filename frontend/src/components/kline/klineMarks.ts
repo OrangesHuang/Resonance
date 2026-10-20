@@ -1,4 +1,5 @@
 import type { KlinePoint, TradePoint } from '../../api/types'
+import { fmtPrice } from '../../utils/format'
 
 interface Marks {
   markPoint: object
@@ -24,7 +25,7 @@ export function buildMarks(trades: TradePoint[], kline: KlinePoint[],
         symbolRotate: isBuy ? 0 : 180,
         itemStyle: { color: isBuy ? '#15803d' : '#ef4444' },
         label: { show: true, formatter: isBuy ? '买' : '卖', fontSize: 11, color: '#fff', offset: [0, isBuy ? 5 : -5] as [number, number] },
-        _reason: `${t.date} ${isBuy ? '买入' : '卖出'} @${t.price}\n${t.reason}`,
+        _reason: `${t.date} ${isBuy ? '买入' : '卖出'} @${fmtPrice(t.price)}\n${t.reason}`,
       }
     })
   const markPoint = {

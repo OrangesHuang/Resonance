@@ -1,6 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import * as echarts from 'echarts'
 import type { DailySignal, ZoomWindow } from '../../api/types'
+import { fmtSignedPct, pctColor } from '../../utils/format'
 
 interface Props {
   dates: string[]
@@ -53,7 +54,10 @@ export default function SignalHistoryChart({ dates, points, groupId, height = 42
         const cpText = cp == null
           ? '-'
           : `${cp.toFixed(1)}%${cpDir ? `<span style="color:${cpColor}">（${cpDir}）</span>` : ''}`
-        return `${p.axisValue}<br/>综合概率: <b>${cpText}</b><br/>量比: ${s.volume_ratio?.toFixed(2) ?? '-'}` +
+        const chgHtml = `<span style="color:${pctColor(s.change_pct)};font-weight:bold">` +
+          `${fmtSignedPct(s.change_pct)}</span>`
+        return `${p.axisValue} · ${chgHtml}<br/>综合概率: <b>${cpText}</b>` +
+          `<br/>量比: ${s.volume_ratio?.toFixed(2) ?? '-'}` +
           `<br/>价格位置: ${s.price_position?.toFixed(0) ?? '-'}%`
       },
     },

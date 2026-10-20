@@ -1,4 +1,5 @@
 import type { PortfolioTrade } from '../../api/types'
+import { fmtPrice } from '../../utils/format'
 
 export type TradeRow = {
   date: string
@@ -96,7 +97,9 @@ export function TradePopup({ popup, onClose }: { popup: PopupState; onClose: () 
         <div key={i} className="text-xs mb-1.5 last:mb-0">
           <span className={`font-bold ${KIND_STYLE[t.kind] ?? 'text-gray-300'}`}>{t.kind_label}</span>
           <span className="text-gray-300 ml-1">{t.name}</span>
-          <span className="text-gray-500 ml-1">{t.price} × {(t.amount / 10000).toFixed(2)}万</span>
+          <span className="text-gray-500 ml-1">
+            {fmtPrice(t.price)} × {(t.amount / 10000).toFixed(2)}万
+          </span>
         </div>
       ))}
     </div>

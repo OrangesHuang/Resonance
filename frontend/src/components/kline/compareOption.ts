@@ -1,6 +1,9 @@
 import type { EChartsOption } from 'echarts'
 import type { TooltipComponentOption } from 'echarts/components'
 import type { KlinePoint, TradePoint, DailySignal } from '../../api/types'
+import {
+  fmtPrice, fmtSignedPct, pctColor, priceAxisLabel, pricePointerLabel,
+} from '../../utils/format'
 import { buildTradeBands, sanitizeBands } from './tradeBands'
 import type { RangeSelection } from './rangeSelect'
 import type { RangeStats } from './rangeStats'
@@ -64,7 +67,7 @@ export function buildCompareOption({ kline, trades, signals, sharedDates, rangeS
           symbolRotate: isBuy ? 0 : 180,
           itemStyle: { color: isBuy ? '#15803d' : '#ef4444' },
           label: { show: true, formatter: isBuy ? '买' : '卖', fontSize: 10, color: '#fff', offset: [0, isBuy ? 5 : -5] as [number, number] },
-          _reason: `${t.date} ${isBuy ? '买入' : '卖出'} @${t.price}\n${t.reason}`,
+          _reason: `${t.date} ${isBuy ? '买入' : '卖出'} @${fmtPrice(t.price)}\n${t.reason}`,
         }
       }),
     tooltip: {
@@ -81,7 +84,7 @@ export function buildCompareOption({ kline, trades, signals, sharedDates, rangeS
     const m = tradesByDate.get(k.date)
     const tradeHtml = m
       ? `<br/><span style="color:${m.action === 'BUY' ? '#22c55e' : '#ef4444'};font-weight:bold">` +
-        `◆ ${m.action === 'BUY' ? '买入' : '卖出'} @${m.price} — ${m.reason}</span>`
+        `◆ ${m.action === 'BUY' ? '买入' : '卖出'} @${fmtPrice(m.price)} — ${m.reason}</span>`
       : ''
     let rangeHtml = ''
     if (rangeStats) {
@@ -102,9 +105,14 @@ export function buildCompareOption({ kline, trades, signals, sharedDates, rangeS
     const shareHtml = sig?.shares_delta_yi != null
       ? `<br/>净申赎：<span style="color:${sig.shares_delta_yi! >= 0 ? '#22c55e' : '#ef4444'};font-weight:bold">${sig.shares_delta_yi! >= 0 ? '+' : ''}${sig.shares_delta_yi!.toFixed(2)} 亿份</span>`
       : ''
+    const chgCol = pctColor(sig?.change_pct)
+    const chgTxt = fmtSignedPct(sig?.change_pct)
+    const chgHtml = `<span style="color:${chgCol};font-weight:bold">${chgTxt}</span>`
+    const ohlc = `开 ${fmtPrice(k.open)} · 收 ${fmtPrice(k.close)} · ` +
+      `高 ${fmtPrice(k.high)} · 低 ${fmtPrice(k.low)}`
     return `<div style="font-size:11px;line-height:1.8">` +
-      `<b>${k.date}</b><br/>` +
-      `开 ${k.open} · 收 ${k.close} · 高 ${k.high} · 低 ${k.low}<br/>` +
+      `<b>${k.date}</b> · ${chgHtml}<br/>` +
+      `${ohlc}<br/>` +
       `成交量：${k.volume.toLocaleString('zh-CN')}` +
       tradeHtml +
       shareHtml +
@@ -159,7 +167,13 @@ export function buildCompareOption({ kline, trades, signals, sharedDates, rangeS
         ...(hasShares ? [{ type: 'category' as const, data: dates, gridIndex: 2, boundaryGap: true, axisLabel: { show: false }, axisPointer: { label: { show: false } } }] : []),
       ],
       yAxis: [
-        { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: '#6b7280' } },
+        {
+          scale: true,
+          gridIndex: 0,
+          splitLine: { lineStyle: { color: '#1f2937' } },
+          axisLabel: priceAxisLabel('#6b7280'),
+          axisPointer: pricePointerLabel,
+        },
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
         ...(hasShares ? [{ scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { show: false } }] : []),
       ],

@@ -9,6 +9,7 @@ import { buildForceFlowPanel, computeForceFlow } from './forceFlowOption'
 import { buildEmaOverlay } from './emaOverlay'
 import type { RangeSelection } from '../kline/rangeSelect'
 import type { RangeStats } from '../kline/rangeStats'
+import { priceAxisLabel, pricePointerLabel } from '../../utils/format'
 
 const AXIS_LABEL = '#6b7280'
 const PANEL_TITLE = { color: AXIS_LABEL, fontSize: 10, fontWeight: 'normal' as const }
@@ -208,7 +209,14 @@ export function buildKlineOption({ kline, history, signals, trades, regimes, sel
         forcePanel.xAxis,
       ],
       yAxis: [
-        { scale: true, gridIndex: 0, boundaryGap: ['3%', '3%'], splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: AXIS_LABEL } },
+        {
+          scale: true,
+          gridIndex: 0,
+          boundaryGap: ['3%', '3%'],
+          splitLine: { lineStyle: { color: '#1f2937' } },
+          axisLabel: priceAxisLabel(AXIS_LABEL),
+          axisPointer: pricePointerLabel,
+        },
         { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
         { scale: true, gridIndex: 2, splitLine: { show: false }, axisLabel: { color: AXIS_LABEL, fontSize: 9 } },
         { min: 0, max: 100, gridIndex: 3, splitNumber: 2, splitLine: { show: false }, axisLabel: { show: false } },

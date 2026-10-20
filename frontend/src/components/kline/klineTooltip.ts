@@ -1,4 +1,5 @@
 import type { KlinePoint, DailySignal, TradePoint } from '../../api/types'
+import { fmtPrice, fmtSignedPct, pctColor } from '../../utils/format'
 import type { RangeStats } from './rangeStats'
 
 function fmtPct(v: number): string {
@@ -72,13 +73,20 @@ export function buildKlineTooltip(kline: KlinePoint[],
       prob == null ? null : prob >= 45 ? '吸筹' : prob <= 35 ? '出货' : '中性'
     const cpColor = cpDir === '吸筹' ? '#22c55e' : cpDir === '出货' ? '#ef4444' : '#9ca3af'
     const trade = tradesByDate.get(k.date)
+    const tp = fmtPrice(trade?.price)
     const tradeHtml = trade
       ? `<br/><span style="color:${trade.action === 'BUY' ? '#22c55e' : '#ef4444'};font-weight:bold">` +
-        `◆ ${trade.action === 'BUY' ? '买入' : '卖出'} @${trade.price} — ${trade.reason}</span>`
+        `◆ ${trade.action === 'BUY' ? '买入' : '卖出'} @${tp} — ${trade.reason}</span>`
       : ''
+    const chg = s?.change_pct
+    const chgCol = pctColor(chg)
+    const chgTxt = fmtSignedPct(chg)
+    const chgHtml = `<span style="color:${chgCol};font-weight:bold">${chgTxt}</span>`
+    const ohlc = `开 ${fmtPrice(k.open)} · 收 ${fmtPrice(k.close)} · ` +
+      `高 ${fmtPrice(k.high)} · 低 ${fmtPrice(k.low)}`
     return `<div style="font-size:11px;line-height:1.8">` +
-      `<b>${k.date}</b><br/>` +
-      `开 ${k.open} · 收 ${k.close} · 高 ${k.high} · 低 ${k.low}<br/>` +
+      `<b>${k.date}</b> · ${chgHtml}<br/>` +
+      `${ohlc}<br/>` +
       `成交量：${k.volume.toLocaleString('zh-CN')}<br/>` +
       `份额净申赎：${delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 亿份` : '-'}` +
       (adjust != null ? fmtAdjustNote(adjust) : '') + `<br/>` +

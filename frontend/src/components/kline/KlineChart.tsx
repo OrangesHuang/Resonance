@@ -1,16 +1,37 @@
 import ReactECharts from 'echarts-for-react'
 import * as echarts from 'echarts'
-import type { KlinePoint, ZoomWindow } from '../../api/types'
+import type { DailySignal, KlinePoint, ZoomWindow } from '../../api/types'
+import {
+  fmtPrice, fmtSignedPct, pctColor, priceAxisLabel, pricePointerLabel,
+} from '../../utils/format'
 
 interface Props {
   kline: KlinePoint[]
+  signals?: DailySignal[]
   groupId: string
   height?: number | string
   zoom: ZoomWindow
   onReady?: (inst: echarts.ECharts) => void
 }
 
-export default function KlineChart({ kline, groupId, height = 520, zoom, onReady }: Props) {
+function detailTooltip(k: KlinePoint, chg: number | null | undefined): string {
+  const col = pctColor(chg)
+  const chgSpan = `<span style="color:${col};font-weight:bold">${fmtSignedPct(chg)}</span>`
+  const head = chg == null ? `<b>${k.date}</b>` : `<b>${k.date}</b> · ${chgSpan}`
+  const o = fmtPrice(k.open)
+  const c = fmtPrice(k.close)
+  const h = fmtPrice(k.high)
+  const l = fmtPrice(k.low)
+  const vol = k.volume.toLocaleString('zh-CN')
+  return `<div style="font-size:11px;line-height:1.8">` +
+    `${head}<br/>` +
+    `开 ${o} · 收 ${c} · 高 ${h} · 低 ${l}<br/>` +
+    `成交量：${vol}</div>`
+}
+
+export default function KlineChart({
+  kline, signals = [], groupId, height = 520, zoom, onReady,
+}: Props) {
   if (kline.length === 0) {
     return <div className="text-gray-500 text-center py-10">暂无K线数据</div>
   }
@@ -18,6 +39,7 @@ export default function KlineChart({ kline, groupId, height = 520, zoom, onReady
   const dates = kline.map(k => k.date)
   const ohlc = kline.map(k => [k.open, k.close, k.low, k.high])
   const volumes = kline.map(k => k.volume)
+  const chgByDate = new Map(signals.map(s => [s.date, s.change_pct]))
 
   const onChartReady = (inst: echarts.ECharts) => {
     inst.group = groupId
@@ -35,6 +57,11 @@ export default function KlineChart({ kline, groupId, height = 520, zoom, onReady
       backgroundColor: '#111827',
       borderColor: '#374151',
       textStyle: { color: '#e5e7eb' },
+      formatter: (params: { dataIndex?: number }[]) => {
+        const i = params?.[0]?.dataIndex
+        const k = i == null ? undefined : kline[i]
+        return k ? detailTooltip(k, chgByDate.get(k.date)) : ''
+      },
     },
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
     grid: [
@@ -46,7 +73,13 @@ export default function KlineChart({ kline, groupId, height = 520, zoom, onReady
       { type: 'category', data: dates, gridIndex: 1, axisLabel: { show: false }, axisPointer: { label: { show: false } }, boundaryGap: true },
     ],
     yAxis: [
-      { scale: true, gridIndex: 0, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: '#6b7280' } },
+      {
+        scale: true,
+        gridIndex: 0,
+        splitLine: { lineStyle: { color: '#1f2937' } },
+        axisLabel: priceAxisLabel('#6b7280'),
+        axisPointer: pricePointerLabel,
+      },
       { scale: true, gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } },
     ],
     series: [

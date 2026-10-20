@@ -47,6 +47,8 @@ export interface ZoomWindow {
 
 export interface DailySignal {
   date: string
+  change_pct: number | null
+  close_price?: number | null
   composite_prob: number | null
   volume_ratio: number | null
   signal_level: string | null

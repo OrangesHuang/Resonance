@@ -95,7 +95,8 @@ export default function EtfDetail() {
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex flex-col min-h-0">
           <h3 className="text-sm font-medium text-gray-300 mb-3 shrink-0">K线走势 (最长约2.5年)</h3>
           <div className="flex-1 min-h-0">
-            <KlineChart kline={kline} groupId={SYNC_GROUP} height="100%" zoom={initialZoom}
+            <KlineChart kline={kline} signals={signals} groupId={SYNC_GROUP}
+              height="100%" zoom={initialZoom}
               onReady={inst => { klineChart.current = inst }} />
           </div>
         </div>
